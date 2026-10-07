@@ -1,0 +1,4 @@
+* text=auto
+*.pqax binary
+*.vpax binary
+*.parquet binary

@@ -1,0 +1,570 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "PQAX part, format version 0.x",
+  "description": "A part of a PQAX file: an object with one member for each table that it holds (serialization 7.2). A table is an object with one array for each field, and one element for each row (serialization 5.1). A member of a table whose value is not an array is not a field of this version, so every field accepts it. Unknown tables, fields, and members are allowed everywhere (serialization 9 rule 1). Validate summary.json against #/$defs/summaryPart and every other part against #/$defs/detailPart.",
+  "type": "object",
+  "properties": {
+    "sources": {"$ref": "#/$defs/sources"},
+    "tables": {"$ref": "#/$defs/tables"},
+    "columns": {"$ref": "#/$defs/columns"},
+    "partitionSpecs": {"$ref": "#/$defs/partitionSpecs"},
+    "partitionFields": {"$ref": "#/$defs/partitionFields"},
+    "sortOrders": {"$ref": "#/$defs/sortOrders"},
+    "sortFields": {"$ref": "#/$defs/sortFields"},
+    "physicalSchemas": {"$ref": "#/$defs/physicalSchemas"},
+    "physicalColumns": {"$ref": "#/$defs/physicalColumns"},
+    "writers": {"$ref": "#/$defs/writers"},
+    "operations": {"$ref": "#/$defs/operations"},
+    "issues": {"$ref": "#/$defs/issues"},
+    "modelBindings": {"$ref": "#/$defs/modelBindings"},
+    "tableBindings": {"$ref": "#/$defs/tableBindings"},
+    "columnBindings": {"$ref": "#/$defs/columnBindings"},
+    "partitions": {"$ref": "#/$defs/partitions"},
+    "files": {"$ref": "#/$defs/files"},
+    "rowGroups": {"$ref": "#/$defs/rowGroups"},
+    "columnChunks": {"$ref": "#/$defs/columnChunks"},
+    "deleteFiles": {"$ref": "#/$defs/deleteFiles"},
+    "commits": {"$ref": "#/$defs/commits"}
+  },
+  "additionalProperties": true,
+  "$defs": {
+    "summaryPart": {
+      "description": "summary.json: a part that holds no detail table (serialization 7.2 rules 2 and 3). It is an empty object when the footprint has no summary rows (7.2 rule 6).",
+      "$ref": "#",
+      "not": {
+        "anyOf": [
+          {"required": ["partitions"]},
+          {"required": ["files"]},
+          {"required": ["rowGroups"]},
+          {"required": ["columnChunks"]},
+          {"required": ["deleteFiles"]},
+          {"required": ["commits"]}
+        ]
+      }
+    },
+    "detailPart": {
+      "description": "A part other than summary.json: one table, which is not a summary table (serialization 7.2 rules 3 and 6). Every member of a part is a table, and the manifest lists it (7.2 rule 1).",
+      "$ref": "#",
+      "minProperties": 1,
+      "maxProperties": 1,
+      "not": {
+        "anyOf": [
+          {"required": ["sources"]},
+          {"required": ["tables"]},
+          {"required": ["columns"]},
+          {"required": ["partitionSpecs"]},
+          {"required": ["partitionFields"]},
+          {"required": ["sortOrders"]},
+          {"required": ["sortFields"]},
+          {"required": ["physicalSchemas"]},
+          {"required": ["physicalColumns"]},
+          {"required": ["writers"]},
+          {"required": ["operations"]},
+          {"required": ["issues"]},
+          {"required": ["modelBindings"]},
+          {"required": ["tableBindings"]},
+          {"required": ["columnBindings"]}
+        ]
+      }
+    },
+    "sources": {
+      "description": "Summary table: one row for each source. Object model 6.3.",
+      "type": "object",
+      "required": ["id", "kind"],
+      "properties": {
+        "id": {"$ref": "#/$defs/idField"},
+        "kind": {"$ref": "#/$defs/requiredStringField"},
+        "name": {"$ref": "#/$defs/stringField"},
+        "location": {"$ref": "#/$defs/stringField"},
+        "identifiers": {"$ref": "#/$defs/mapField"}
+      },
+      "additionalProperties": true
+    },
+    "tables": {
+      "description": "Summary table: one row for each table. Object model 6.4.",
+      "type": "object",
+      "required": ["id", "name", "format", "detailDepth"],
+      "properties": {
+        "id": {"$ref": "#/$defs/idField"},
+        "source": {"$ref": "#/$defs/referenceField", "description": "A reference to sources"},
+        "namespace": {"$ref": "#/$defs/stringListField"},
+        "name": {"$ref": "#/$defs/requiredStringField"},
+        "location": {"$ref": "#/$defs/stringField"},
+        "format": {"$ref": "#/$defs/requiredStringField"},
+        "tableId": {"$ref": "#/$defs/stringField"},
+        "description": {"$ref": "#/$defs/stringField"},
+        "createdAt": {"$ref": "#/$defs/timestampField"},
+        "properties": {"$ref": "#/$defs/mapField"},
+        "snapshotId": {"$ref": "#/$defs/stringField"},
+        "snapshotTimestamp": {"$ref": "#/$defs/timestampField"},
+        "delta": {"$ref": "#/$defs/deltaDetailsField"},
+        "iceberg": {"$ref": "#/$defs/icebergDetailsField"},
+        "clusteringColumns": {"$ref": "#/$defs/referenceListField", "description": "A list of references to columns"},
+        "collectedLevel": {"$ref": "#/$defs/integerField"},
+        "detailDepth": {"$ref": "#/$defs/requiredStringField"},
+        "fileCount": {"$ref": "#/$defs/integerField"},
+        "fileSize": {"$ref": "#/$defs/integerField"},
+        "rowCount": {"$ref": "#/$defs/integerField"},
+        "deletedRowCount": {"$ref": "#/$defs/integerField"},
+        "lastModifiedAt": {"$ref": "#/$defs/timestampField"},
+        "vOrderedFileCount": {"$ref": "#/$defs/integerField"},
+        "partitionCount": {"$ref": "#/$defs/integerField"},
+        "deleteFileCount": {"$ref": "#/$defs/integerField"},
+        "deleteFileSize": {"$ref": "#/$defs/integerField"},
+        "commitCount": {"$ref": "#/$defs/integerField"},
+        "commitsRead": {"$ref": "#/$defs/integerField"},
+        "oldestCommitAt": {"$ref": "#/$defs/timestampField"},
+        "nonLiveFileCount": {"$ref": "#/$defs/integerField"},
+        "nonLiveFileSize": {"$ref": "#/$defs/integerField"},
+        "metadataFileCount": {"$ref": "#/$defs/integerField"},
+        "metadataSize": {"$ref": "#/$defs/integerField"},
+        "footerCount": {"$ref": "#/$defs/integerField"},
+        "rowGroupCount": {"$ref": "#/$defs/integerField"},
+        "compressedSize": {"$ref": "#/$defs/integerField"},
+        "uncompressedSize": {"$ref": "#/$defs/integerField"},
+        "footerSize": {"$ref": "#/$defs/integerField"},
+        "staleColumnSize": {"$ref": "#/$defs/integerField"},
+        "columnTotalsSource": {"$ref": "#/$defs/stringField"},
+        "fileSizes": {"$ref": "#/$defs/distributionField"},
+        "rowGroupRowCounts": {"$ref": "#/$defs/distributionField"},
+        "partitionSizes": {"$ref": "#/$defs/distributionField"}
+      },
+      "additionalProperties": true
+    },
+    "columns": {
+      "description": "Summary table: one row for each column of a table. Object model 6.5.",
+      "type": "object",
+      "required": ["id", "table", "name", "dataType"],
+      "properties": {
+        "id": {"$ref": "#/$defs/idField"},
+        "table": {"$ref": "#/$defs/requiredReferenceField", "description": "A reference to tables"},
+        "fieldId": {"$ref": "#/$defs/integerField"},
+        "name": {"$ref": "#/$defs/requiredStringField"},
+        "dataType": {"$ref": "#/$defs/requiredStringField"},
+        "isNullable": {"$ref": "#/$defs/booleanField"},
+        "physicalName": {"$ref": "#/$defs/stringField"},
+        "isPartitionColumn": {"$ref": "#/$defs/booleanField"},
+        "description": {"$ref": "#/$defs/stringField"},
+        "compressedSize": {"$ref": "#/$defs/integerField"},
+        "uncompressedSize": {"$ref": "#/$defs/integerField"},
+        "valueCount": {"$ref": "#/$defs/integerField"},
+        "nullCount": {"$ref": "#/$defs/integerField"},
+        "chunkCount": {"$ref": "#/$defs/integerField"},
+        "dictionaryChunkCount": {"$ref": "#/$defs/integerField"},
+        "fallbackChunkCount": {"$ref": "#/$defs/integerField"},
+        "dictionaryPageSize": {"$ref": "#/$defs/integerField"},
+        "unencodedByteArrayDataBytes": {"$ref": "#/$defs/integerField"},
+        "codecs": {"$ref": "#/$defs/stringListField"},
+        "encodings": {"$ref": "#/$defs/stringListField"},
+        "fileCountWithoutColumn": {"$ref": "#/$defs/integerField"},
+        "largestChunkDistinctCount": {"$ref": "#/$defs/integerField"},
+        "distinctCount": {"$ref": "#/$defs/integerField"},
+        "distinctCountIsEstimate": {"$ref": "#/$defs/booleanField"},
+        "distinctCountSource": {"$ref": "#/$defs/stringField"}
+      },
+      "additionalProperties": true
+    },
+    "partitionSpecs": {
+      "description": "Summary table: one row for each partition spec of a table. Object model 6.6.",
+      "type": "object",
+      "required": ["id", "table"],
+      "properties": {
+        "id": {"$ref": "#/$defs/idField"},
+        "table": {"$ref": "#/$defs/requiredReferenceField", "description": "A reference to tables"},
+        "specId": {"$ref": "#/$defs/integerField"},
+        "isDefault": {"$ref": "#/$defs/booleanField"}
+      },
+      "additionalProperties": true
+    },
+    "partitionFields": {
+      "description": "Summary table: one row for each field of a partition spec. Object model 6.6.",
+      "type": "object",
+      "required": ["partitionSpec", "position"],
+      "properties": {
+        "partitionSpec": {"$ref": "#/$defs/requiredReferenceField", "description": "A reference to partitionSpecs"},
+        "position": {"$ref": "#/$defs/requiredIntegerField"},
+        "name": {"$ref": "#/$defs/stringField"},
+        "sourceColumns": {"$ref": "#/$defs/referenceListField", "description": "A list of references to columns"},
+        "transform": {"$ref": "#/$defs/stringField"}
+      },
+      "additionalProperties": true
+    },
+    "sortOrders": {
+      "description": "Summary table: one row for each sort order of a table. Object model 6.7.",
+      "type": "object",
+      "required": ["id", "table"],
+      "properties": {
+        "id": {"$ref": "#/$defs/idField"},
+        "table": {"$ref": "#/$defs/requiredReferenceField", "description": "A reference to tables"},
+        "orderId": {"$ref": "#/$defs/integerField"},
+        "isDefault": {"$ref": "#/$defs/booleanField"}
+      },
+      "additionalProperties": true
+    },
+    "sortFields": {
+      "description": "Summary table: one row for each field of a sort order. Object model 6.7.",
+      "type": "object",
+      "required": ["sortOrder", "position", "sourceColumn", "direction"],
+      "properties": {
+        "sortOrder": {"$ref": "#/$defs/requiredReferenceField", "description": "A reference to sortOrders"},
+        "position": {"$ref": "#/$defs/requiredIntegerField"},
+        "sourceColumn": {"$ref": "#/$defs/requiredReferenceField", "description": "A reference to columns"},
+        "transform": {"$ref": "#/$defs/stringField"},
+        "direction": {"$ref": "#/$defs/requiredStringField"},
+        "nullOrder": {"$ref": "#/$defs/stringField"}
+      },
+      "additionalProperties": true
+    },
+    "physicalSchemas": {
+      "description": "Summary table: one row for each distinct Parquet schema of a table. Object model 6.8.",
+      "type": "object",
+      "required": ["id", "table"],
+      "properties": {
+        "id": {"$ref": "#/$defs/idField"},
+        "table": {"$ref": "#/$defs/requiredReferenceField", "description": "A reference to tables"},
+        "fileCount": {"$ref": "#/$defs/integerField"}
+      },
+      "additionalProperties": true
+    },
+    "physicalColumns": {
+      "description": "Summary table: one row for each leaf column of a physical schema. Object model 6.8.",
+      "type": "object",
+      "required": ["id", "physicalSchema", "ordinal", "path", "physicalType"],
+      "properties": {
+        "id": {"$ref": "#/$defs/idField"},
+        "physicalSchema": {"$ref": "#/$defs/requiredReferenceField", "description": "A reference to physicalSchemas"},
+        "ordinal": {"$ref": "#/$defs/requiredIntegerField"},
+        "path": {"$ref": "#/$defs/requiredStringListField"},
+        "physicalType": {"$ref": "#/$defs/requiredStringField"},
+        "typeLength": {"$ref": "#/$defs/integerField"},
+        "logicalType": {"$ref": "#/$defs/stringField"},
+        "repetition": {"$ref": "#/$defs/stringField"},
+        "fieldId": {"$ref": "#/$defs/integerField"},
+        "column": {"$ref": "#/$defs/referenceField", "description": "A reference to columns"},
+        "compressedSize": {"$ref": "#/$defs/integerField"},
+        "uncompressedSize": {"$ref": "#/$defs/integerField"},
+        "chunkCount": {"$ref": "#/$defs/integerField"}
+      },
+      "additionalProperties": true
+    },
+    "writers": {
+      "description": "Summary table: one row for each writer found in a table. Object model 6.9.",
+      "type": "object",
+      "required": ["id", "table"],
+      "properties": {
+        "id": {"$ref": "#/$defs/idField"},
+        "table": {"$ref": "#/$defs/requiredReferenceField", "description": "A reference to tables"},
+        "createdBy": {"$ref": "#/$defs/stringField"},
+        "isVOrdered": {"$ref": "#/$defs/booleanField"},
+        "vOrderLevel": {"$ref": "#/$defs/stringField"},
+        "fileCount": {"$ref": "#/$defs/integerField"},
+        "fileSize": {"$ref": "#/$defs/integerField"}
+      },
+      "additionalProperties": true
+    },
+    "operations": {
+      "description": "Summary table: one row for each kind of operation of a table. Object model 6.10.",
+      "type": "object",
+      "required": ["table", "name"],
+      "properties": {
+        "table": {"$ref": "#/$defs/requiredReferenceField", "description": "A reference to tables"},
+        "name": {"$ref": "#/$defs/requiredStringField"},
+        "commitCount": {"$ref": "#/$defs/integerField"},
+        "lastAt": {"$ref": "#/$defs/timestampField"}
+      },
+      "additionalProperties": true
+    },
+    "issues": {
+      "description": "Summary table: one row for each problem met. Object model 6.16.",
+      "type": "object",
+      "required": ["code"],
+      "properties": {
+        "table": {"$ref": "#/$defs/referenceField", "description": "A reference to tables"},
+        "path": {"$ref": "#/$defs/stringField"},
+        "code": {"$ref": "#/$defs/requiredStringField"},
+        "message": {"$ref": "#/$defs/stringField"}
+      },
+      "additionalProperties": true
+    },
+    "modelBindings": {
+      "description": "Summary table: one row for each semantic model. Object model 6.17.",
+      "type": "object",
+      "required": ["id", "modelName"],
+      "properties": {
+        "id": {"$ref": "#/$defs/idField"},
+        "modelName": {"$ref": "#/$defs/requiredStringField"},
+        "serverName": {"$ref": "#/$defs/stringField"}
+      },
+      "additionalProperties": true
+    },
+    "tableBindings": {
+      "description": "Summary table: one row for each table of a semantic model. Object model 6.17.",
+      "type": "object",
+      "required": ["id", "modelBinding", "modelTable", "table"],
+      "properties": {
+        "id": {"$ref": "#/$defs/idField"},
+        "modelBinding": {"$ref": "#/$defs/requiredReferenceField", "description": "A reference to modelBindings"},
+        "modelTable": {"$ref": "#/$defs/requiredStringField"},
+        "table": {"$ref": "#/$defs/requiredReferenceField", "description": "A reference to tables"}
+      },
+      "additionalProperties": true
+    },
+    "columnBindings": {
+      "description": "Summary table: one row for each column of a semantic model. Object model 6.17.",
+      "type": "object",
+      "required": ["tableBinding", "modelColumn", "column"],
+      "properties": {
+        "tableBinding": {"$ref": "#/$defs/requiredReferenceField", "description": "A reference to tableBindings"},
+        "modelColumn": {"$ref": "#/$defs/requiredStringField"},
+        "column": {"$ref": "#/$defs/requiredReferenceField", "description": "A reference to columns"}
+      },
+      "additionalProperties": true
+    },
+    "partitions": {
+      "description": "Detail table: one row for each partition that holds data. Object model 6.6.",
+      "type": "object",
+      "required": ["id", "table"],
+      "properties": {
+        "id": {"$ref": "#/$defs/idField"},
+        "table": {"$ref": "#/$defs/requiredReferenceField", "description": "A reference to tables"},
+        "partitionSpec": {"$ref": "#/$defs/referenceField", "description": "A reference to partitionSpecs"},
+        "values": {"$ref": "#/$defs/partitionValuesField"},
+        "fileCount": {"$ref": "#/$defs/integerField"},
+        "fileSize": {"$ref": "#/$defs/integerField"},
+        "rowCount": {"$ref": "#/$defs/integerField"},
+        "deletedRowCount": {"$ref": "#/$defs/integerField"}
+      },
+      "additionalProperties": true
+    },
+    "files": {
+      "description": "Detail table: one row for each data file. Object model 6.11.",
+      "type": "object",
+      "required": ["id", "table"],
+      "properties": {
+        "id": {"$ref": "#/$defs/idField"},
+        "table": {"$ref": "#/$defs/requiredReferenceField", "description": "A reference to tables"},
+        "path": {"$ref": "#/$defs/stringField"},
+        "format": {"$ref": "#/$defs/stringField"},
+        "fileSize": {"$ref": "#/$defs/integerField"},
+        "modifiedAt": {"$ref": "#/$defs/timestampField"},
+        "rowCount": {"$ref": "#/$defs/integerField"},
+        "deletedRowCount": {"$ref": "#/$defs/integerField"},
+        "deletionVectorSize": {"$ref": "#/$defs/integerField"},
+        "partition": {"$ref": "#/$defs/referenceField", "description": "A reference to partitions"},
+        "sortOrder": {"$ref": "#/$defs/referenceField", "description": "A reference to sortOrders"},
+        "clusteringProvider": {"$ref": "#/$defs/stringField"},
+        "isVOrdered": {"$ref": "#/$defs/booleanField"},
+        "footerSize": {"$ref": "#/$defs/integerField"},
+        "physicalSchema": {"$ref": "#/$defs/referenceField", "description": "A reference to physicalSchemas"},
+        "writer": {"$ref": "#/$defs/referenceField", "description": "A reference to writers"},
+        "rowGroupCount": {"$ref": "#/$defs/integerField"},
+        "compressedSize": {"$ref": "#/$defs/integerField"},
+        "uncompressedSize": {"$ref": "#/$defs/integerField"}
+      },
+      "additionalProperties": true
+    },
+    "rowGroups": {
+      "description": "Detail table: one row for each row group. Object model 6.12.",
+      "type": "object",
+      "required": ["id", "file", "ordinal", "rowCount"],
+      "properties": {
+        "id": {"$ref": "#/$defs/idField"},
+        "file": {"$ref": "#/$defs/requiredReferenceField", "description": "A reference to files"},
+        "ordinal": {"$ref": "#/$defs/requiredIntegerField"},
+        "rowCount": {"$ref": "#/$defs/requiredIntegerField"},
+        "uncompressedSize": {"$ref": "#/$defs/integerField"},
+        "compressedSize": {"$ref": "#/$defs/integerField"}
+      },
+      "additionalProperties": true
+    },
+    "columnChunks": {
+      "description": "Detail table: one row for each column chunk. Object model 6.13.",
+      "type": "object",
+      "required": ["rowGroup", "physicalColumn", "compressedSize", "uncompressedSize"],
+      "properties": {
+        "rowGroup": {"$ref": "#/$defs/requiredReferenceField", "description": "A reference to rowGroups"},
+        "physicalColumn": {"$ref": "#/$defs/requiredReferenceField", "description": "A reference to physicalColumns"},
+        "codec": {"$ref": "#/$defs/stringField"},
+        "encodings": {"$ref": "#/$defs/stringListField"},
+        "valueCount": {"$ref": "#/$defs/integerField"},
+        "nullCount": {"$ref": "#/$defs/integerField"},
+        "compressedSize": {"$ref": "#/$defs/requiredIntegerField"},
+        "uncompressedSize": {"$ref": "#/$defs/requiredIntegerField"},
+        "hasDictionaryPage": {"$ref": "#/$defs/booleanField"},
+        "dictionaryPageSize": {"$ref": "#/$defs/integerField"},
+        "dataPageCount": {"$ref": "#/$defs/integerField"},
+        "dictionaryEncodedPageCount": {"$ref": "#/$defs/integerField"},
+        "unencodedByteArrayDataBytes": {"$ref": "#/$defs/integerField"},
+        "bloomFilterSize": {"$ref": "#/$defs/integerField"},
+        "minValue": {"$ref": "#/$defs/stringField"},
+        "maxValue": {"$ref": "#/$defs/stringField"},
+        "distinctCount": {"$ref": "#/$defs/integerField"},
+        "dictionaryEntryCount": {"$ref": "#/$defs/integerField"}
+      },
+      "additionalProperties": true
+    },
+    "deleteFiles": {
+      "description": "Detail table: one row for each delete file. Object model 6.14.",
+      "type": "object",
+      "required": ["id", "table", "kind"],
+      "properties": {
+        "id": {"$ref": "#/$defs/idField"},
+        "table": {"$ref": "#/$defs/requiredReferenceField", "description": "A reference to tables"},
+        "kind": {"$ref": "#/$defs/requiredStringField"},
+        "path": {"$ref": "#/$defs/stringField"},
+        "format": {"$ref": "#/$defs/stringField"},
+        "fileSize": {"$ref": "#/$defs/integerField"},
+        "recordCount": {"$ref": "#/$defs/integerField"},
+        "referencedFile": {"$ref": "#/$defs/referenceField", "description": "A reference to files"},
+        "equalityColumns": {"$ref": "#/$defs/referenceListField", "description": "A list of references to columns"},
+        "partition": {"$ref": "#/$defs/referenceField", "description": "A reference to partitions"}
+      },
+      "additionalProperties": true
+    },
+    "commits": {
+      "description": "Detail table: one row for each commit that was read. Object model 6.15.",
+      "type": "object",
+      "required": ["table", "commitId"],
+      "properties": {
+        "table": {"$ref": "#/$defs/requiredReferenceField", "description": "A reference to tables"},
+        "commitId": {"$ref": "#/$defs/requiredStringField"},
+        "parentId": {"$ref": "#/$defs/stringField"},
+        "timestamp": {"$ref": "#/$defs/timestampField"},
+        "operation": {"$ref": "#/$defs/stringField"},
+        "engine": {"$ref": "#/$defs/stringField"},
+        "isBlindAppend": {"$ref": "#/$defs/booleanField"},
+        "metrics": {"$ref": "#/$defs/mapField"},
+        "parameters": {"$ref": "#/$defs/mapField"}
+      },
+      "additionalProperties": true
+    },
+    "distribution": {
+      "description": "A Distribution (object model 4.3). It holds no name and no reference. A member that is null has no value.",
+      "type": "object",
+      "properties": {
+        "count": {"type": ["integer", "null"], "minimum": -9007199254740991, "maximum": 9007199254740991},
+        "sum": {"type": ["integer", "null"], "minimum": -9007199254740991, "maximum": 9007199254740991},
+        "minimum": {"type": ["integer", "null"], "minimum": -9007199254740991, "maximum": 9007199254740991},
+        "maximum": {"type": ["integer", "null"], "minimum": -9007199254740991, "maximum": 9007199254740991},
+        "firstQuartile": {"type": ["integer", "null"], "minimum": -9007199254740991, "maximum": 9007199254740991},
+        "median": {"type": ["integer", "null"], "minimum": -9007199254740991, "maximum": 9007199254740991},
+        "thirdQuartile": {"type": ["integer", "null"], "minimum": -9007199254740991, "maximum": 9007199254740991}
+      },
+      "additionalProperties": true
+    },
+    "deltaDetails": {
+      "description": "A DeltaDetails (object model 6.4.1). It holds no name and no reference. A member that is null has no value.",
+      "type": "object",
+      "properties": {
+        "minReaderVersion": {"type": ["integer", "null"], "minimum": -9007199254740991, "maximum": 9007199254740991},
+        "minWriterVersion": {"type": ["integer", "null"], "minimum": -9007199254740991, "maximum": 9007199254740991},
+        "readerFeatures": {"anyOf": [{"type": "null"}, {"$ref": "#/$defs/stringList"}]},
+        "writerFeatures": {"anyOf": [{"type": "null"}, {"$ref": "#/$defs/stringList"}]},
+        "checkpointVersion": {"type": ["integer", "null"], "minimum": -9007199254740991, "maximum": 9007199254740991},
+        "commitsAfterCheckpoint": {"type": ["integer", "null"], "minimum": -9007199254740991, "maximum": 9007199254740991},
+        "domains": {"anyOf": [{"type": "null"}, {"$ref": "#/$defs/stringList"}]}
+      },
+      "additionalProperties": true
+    },
+    "icebergDetails": {
+      "description": "A IcebergDetails (object model 6.4.2). It holds no name and no reference. A member that is null has no value.",
+      "type": "object",
+      "properties": {
+        "formatVersion": {"type": ["integer", "null"], "minimum": -9007199254740991, "maximum": 9007199254740991},
+        "currentSchemaId": {"type": ["integer", "null"], "minimum": -9007199254740991, "maximum": 9007199254740991},
+        "schemaCount": {"type": ["integer", "null"], "minimum": -9007199254740991, "maximum": 9007199254740991},
+        "snapshotCount": {"type": ["integer", "null"], "minimum": -9007199254740991, "maximum": 9007199254740991},
+        "refCount": {"type": ["integer", "null"], "minimum": -9007199254740991, "maximum": 9007199254740991},
+        "manifestCount": {"type": ["integer", "null"], "minimum": -9007199254740991, "maximum": 9007199254740991},
+        "manifestSize": {"type": ["integer", "null"], "minimum": -9007199254740991, "maximum": 9007199254740991},
+        "statisticsFileCount": {"type": ["integer", "null"], "minimum": -9007199254740991, "maximum": 9007199254740991}
+      },
+      "additionalProperties": true
+    },
+    "idField": {
+      "description": "The id of the row: a required field whose values are distinct positive integers (serialization 6 rule 1). uniqueItems checks one part; a table split in several parts must also be checked across them.",
+      "type": "array",
+      "items": {"$ref": "#/$defs/positiveInteger"},
+      "uniqueItems": true
+    },
+    "referenceField": {
+      "description": "An optional reference: the id of a row of another table, or null.",
+      "if": {"type": "array"},
+      "then": {"items": {"type": ["integer", "null"], "minimum": -9007199254740991, "maximum": 9007199254740991}}
+    },
+    "requiredReferenceField": {
+      "description": "A required reference: the id of a row of another table, never null.",
+      "type": "array",
+      "items": {"$ref": "#/$defs/integer"}
+    },
+    "referenceListField": {
+      "description": "An optional list of references, or null.",
+      "if": {"type": "array"},
+      "then": {"items": {"anyOf": [{"type": "null"}, {"$ref": "#/$defs/referenceList"}]}}
+    },
+    "integerField": {
+      "description": "An optional integer field.",
+      "if": {"type": "array"},
+      "then": {"items": {"type": ["integer", "null"], "minimum": -9007199254740991, "maximum": 9007199254740991}}
+    },
+    "requiredIntegerField": {"description": "A required integer field.", "type": "array", "items": {"$ref": "#/$defs/integer"}},
+    "stringField": {"description": "An optional string field.", "if": {"type": "array"}, "then": {"items": {"type": ["string", "null"]}}},
+    "requiredStringField": {"description": "A required string field.", "type": "array", "items": {"type": "string"}},
+    "booleanField": {"description": "An optional boolean field.", "if": {"type": "array"}, "then": {"items": {"type": ["boolean", "null"]}}},
+    "timestampField": {
+      "description": "An optional timestamp field.",
+      "if": {"type": "array"},
+      "then": {"items": {"anyOf": [{"type": "null"}, {"$ref": "#/$defs/timestamp"}]}}
+    },
+    "stringListField": {
+      "description": "An optional list of strings.",
+      "if": {"type": "array"},
+      "then": {"items": {"anyOf": [{"type": "null"}, {"$ref": "#/$defs/stringList"}]}}
+    },
+    "requiredStringListField": {"description": "A required list of strings.", "type": "array", "items": {"$ref": "#/$defs/stringList"}},
+    "partitionValuesField": {
+      "description": "The partition values: a list with a string, or null for a null partition value, for each field of the spec (object model 6.6). It is the only list that accepts null.",
+      "if": {"type": "array"},
+      "then": {"items": {"anyOf": [{"type": "null"}, {"type": "array", "items": {"type": ["string", "null"]}}]}}
+    },
+    "mapField": {
+      "description": "An optional map of string to string.",
+      "if": {"type": "array"},
+      "then": {"items": {"anyOf": [{"type": "null"}, {"$ref": "#/$defs/map"}]}}
+    },
+    "distributionField": {
+      "description": "An optional Distribution.",
+      "if": {"type": "array"},
+      "then": {"items": {"anyOf": [{"type": "null"}, {"$ref": "#/$defs/distribution"}]}}
+    },
+    "deltaDetailsField": {
+      "description": "The DeltaDetails of a Delta table.",
+      "if": {"type": "array"},
+      "then": {"items": {"anyOf": [{"type": "null"}, {"$ref": "#/$defs/deltaDetails"}]}}
+    },
+    "icebergDetailsField": {
+      "description": "The IcebergDetails of an Iceberg table.",
+      "if": {"type": "array"},
+      "then": {"items": {"anyOf": [{"type": "null"}, {"$ref": "#/$defs/icebergDetails"}]}}
+    },
+    "integer": {
+      "description": "An integer between -(2^53 - 1) and 2^53 - 1 (serialization 4). JSON Schema cannot see the text of a number, so it accepts 1.0 for 1, which the format does not.",
+      "type": "integer",
+      "minimum": -9007199254740991,
+      "maximum": 9007199254740991
+    },
+    "positiveInteger": {"type": "integer", "minimum": 1, "maximum": 9007199254740991},
+    "timestamp": {
+      "description": "UTC, with exactly three decimals, as 2026-10-05T08:15:30.000Z (serialization 4). The pattern checks the form, not the calendar.",
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}[.][0-9]{3}Z$"
+    },
+    "stringList": {"type": "array", "items": {"type": "string"}},
+    "referenceList": {"type": "array", "items": {"$ref": "#/$defs/integer"}},
+    "map": {
+      "description": "A map of string to string: an object whose values are strings.",
+      "type": "object",
+      "additionalProperties": {"type": "string"}
+    }
+  }
+}

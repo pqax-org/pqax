@@ -1,0 +1,45 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pqax"
+version = "0.1.0"
+description = "Read, validate, and write PQAX files: the footprint of Parquet tables, for analysis without access to the data."
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.10"
+dependencies = []
+authors = [{ name = "SQLBI" }]
+keywords = ["pqax", "parquet", "delta", "lakehouse", "footprint", "vertipaq"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Database",
+    "Typing :: Typed",
+]
+
+[project.optional-dependencies]
+pandas = ["pandas"]
+polars = ["polars"]
+dev = ["pytest", "jsonschema"]
+
+[project.scripts]
+pqax = "pqax.__main__:main"
+
+[tool.setuptools]
+packages = ["pqax"]
+
+[tool.setuptools.package-data]
+pqax = ["py.typed"]
+
+[project.urls]
+Homepage = "https://pqax.org"
+Repository = "https://github.com/pqax-org/pqax"

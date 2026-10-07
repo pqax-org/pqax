@@ -1,0 +1,21 @@
+# .NET
+bin/
+obj/
+.vs/
+*.user
+TestResults/
+
+# Node and TypeScript
+node_modules/
+dist/
+coverage/
+
+# Python
+__pycache__/
+*.egg-info/
+.pytest_cache/
+.venv/
+build/
+
+# Outputs of the research scripts
+research/**/data/

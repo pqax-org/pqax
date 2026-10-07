@@ -1,0 +1,33 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\Pqax\Pqax.csproj" />
+    <ProjectReference Include="..\Pqax.Collector\Pqax.Collector.csproj" />
+    <ProjectReference Include="..\Pqax.Collector.ParquetNet\Pqax.Collector.ParquetNet.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The sign-in of collect for OneLake. The libraries take a token provider and do not depend on it. -->
+    <PackageReference Include="Azure.Identity" Version="1.21.0" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFrameworks>net8.0;net10.0</TargetFrameworks>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>Pqax.Cli</RootNamespace>
+    <PackAsTool>true</PackAsTool>
+    <ToolCommandName>pqax</ToolCommandName>
+    <RollForward>Major</RollForward>
+    <PackageId>Pqax.Cli</PackageId>
+    <Description>The pqax command line: checks a PQAX file against the rules of the format, shows what a PQAX or VPAX file holds, and collects a footprint from OneLake or a local folder.</Description>
+    <PackageTags>pqax;parquet;delta;lakehouse;footprint;cli</PackageTags>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+
+</Project>

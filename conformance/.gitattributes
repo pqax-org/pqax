@@ -1,0 +1,5 @@
+# The kit compares exact bytes and sizes. The probe dump records the size of every Delta log file of the
+# fixtures, so git must not change their line ends on checkout, as core.autocrlf would.
+fixtures/** -text
+*.pqax binary
+*.vpax binary

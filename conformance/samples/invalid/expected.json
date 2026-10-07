@@ -1,0 +1,98 @@
+{
+  "container.caseCollision.pqax": {
+    "codes": ["container.caseCollision"],
+    "change": "An entry Summary.json, a copy of summary.json that the manifest does not list, differs from summary.json only in case."
+  },
+  "container.manifestMissing.pqax": {"codes": ["container.manifestMissing"], "change": "The archive has no manifest.json entry."},
+  "container.method.pqax": {"codes": ["container.method"], "change": "commits.json is compressed with bzip2, method 12."},
+  "container.partName.pqax": {
+    "codes": ["container.partName"],
+    "change": "The part commits.json is named commits 1.json, in the archive and in the manifest. A space is not allowed."
+  },
+  "depth.columnChunks.pqax": {
+    "codes": ["depth.columnChunks"],
+    "change": "In a file at the Column chunks depth, the second table has detailDepth Row groups."
+  },
+  "depth.files.pqax": {"codes": ["depth.files"], "change": "In a file at the Files depth, the second table has detailDepth Summary."},
+  "depth.rowGroups.pqax": {"codes": ["depth.rowGroups"], "change": "In a file at the Row groups depth, the second table has detailDepth Files."},
+  "json.bom.pqax": {"codes": ["json.bom"], "change": "summary.json starts with the byte order mark EF BB BF."},
+  "json.duplicateMember.pqax": {
+    "codes": ["json.duplicateMember"],
+    "change": "The commits table in commits.json has the member table twice, with the same array."
+  },
+  "json.integer.pqax": {"codes": ["json.integer"], "change": "rowGroups.rowCount of the first row group is 2048.5."},
+  "json.integerRange.pqax": {
+    "codes": ["json.integerRange"],
+    "change": "rowGroups.uncompressedSize of the first row group is 9007199254740993, which is 2^53 + 1."
+  },
+  "json.invalid.pqax": {"codes": ["json.invalid"], "change": "commits.json is cut in the middle, so it is not valid JSON."},
+  "json.timestamp.pqax": {"codes": ["json.timestamp"], "change": "files.modifiedAt of the first file has no decimals: 2023-11-14T22:15:00Z."},
+  "json.topLevel.pqax": {"codes": ["json.topLevel"], "change": "The top level of commits.json is an array that holds the object of the part."},
+  "json.type.map.pqax": {
+    "codes": ["json.type"],
+    "change": "tables.properties of the first table is an array of key and value pairs, where the model says map."
+  },
+  "json.type.pqax": {
+    "codes": ["json.type"],
+    "change": "files.footerSize of the first file is the string \"1139\", where the model says integer."
+  },
+  "manifest.duplicatePart.pqax": {"codes": ["manifest.duplicatePart"], "change": "The manifest lists commits.json twice, at the end."},
+  "manifest.firstPart.pqax": {"codes": ["manifest.firstPart"], "change": "The manifest lists files.json first and summary.json second."},
+  "manifest.format.pqax": {"codes": ["manifest.format"], "change": "format is vpax."},
+  "manifest.formatVersion.pqax": {"codes": ["manifest.formatVersion"], "change": "formatVersion is 0.1.0, three numbers."},
+  "manifest.partMissing.pqax": {"codes": ["manifest.partMissing"], "change": "The manifest lists commits.json, and the archive has no such entry."},
+  "manifest.required.level.pqax": {"codes": ["manifest.required"], "change": "collection has no level."},
+  "manifest.required.partTables.pqax": {"codes": ["manifest.required"], "change": "The element of parts for commits.json has no tables."},
+  "manifest.required.pqax": {"codes": ["manifest.required"], "change": "The manifest has no collection."},
+  "manifest.versionUnknown.pqax": {"codes": ["manifest.versionUnknown"], "change": "formatVersion is 9.0."},
+  "part.kind.detail-in-summary.pqax": {
+    "codes": ["part.kind"],
+    "change": "The commits table is in summary.json, and the manifest says so. There is no commits.json."
+  },
+  "part.kind.summary-in-detail.pqax": {
+    "codes": ["part.kind"],
+    "change": "The operations table is in a part of its own, operations.json, and the manifest says so."
+  },
+  "part.rowCount.array.pqax": {"codes": ["part.rowCount"], "change": "commits.engine has 5 values, and the other arrays of commits have 6."},
+  "part.rowCount.manifest.pqax": {"codes": ["part.rowCount"], "change": "The manifest states 7 commits in commits.json, which holds 6."},
+  "part.singleTable.pqax": {
+    "codes": ["part.singleTable"],
+    "change": "files.json holds the files and the rowGroups tables, and the manifest says so. There is no rowGroups.json."
+  },
+  "part.tables.pqax": {
+    "codes": ["part.tables"],
+    "change": "The manifest states 5 rows of operations in summary.json, and summary.json has no operations."
+  },
+  "part.tooLarge.pqax": {
+    "codes": ["part.tooLarge"],
+    "change": "commits.json holds 250,001 commits, each with only table 1 and commitId 1, and the manifest says so."
+  },
+  "table.idUnique.nonPositive.pqax": {"codes": ["table.idUnique"], "change": "sources has a third row whose id is 0. The manifest states 3 sources."},
+  "table.idUnique.repeated.pqax": {
+    "codes": ["table.idUnique"],
+    "change": "sources has a third row whose id is 2, as the second. The manifest states 3 sources."
+  },
+  "table.reference.list.pqax": {
+    "codes": ["table.reference"],
+    "change": "tables.clusteringColumns of the first table is [99], and columns has no row 99."
+  },
+  "table.reference.single.pqax": {"codes": ["table.reference"], "change": "files.writer of the first file is 99, and writers has no row 99."},
+  "table.required.missing.pqax": {"codes": ["table.required"], "change": "columns has no dataType field."},
+  "table.required.null.pqax": {"codes": ["table.required"], "change": "columns.name is null in the first row."},
+  "table.required.operationName.pqax": {"codes": ["table.required"], "change": "operations.name is null in the second row."},
+  "table.required.position.pqax": {"codes": ["table.required"], "change": "partitionFields has no position field, which serialization 5.3 requires."},
+  "totals.columnCompressedSize.pqax": {
+    "codes": ["totals.columnCompressedSize"],
+    "change": "columns.compressedSize of the first column is 1 more than the sum over its column chunks."
+  },
+  "totals.compressedSize.pqax": {
+    "codes": ["totals.compressedSize"],
+    "change": "tables.compressedSize of the first table is 1 more than the detail says."
+  },
+  "totals.fileCount.pqax": {"codes": ["totals.fileCount"], "change": "tables.fileCount of the first table is 1 more than the detail says."},
+  "totals.fileSize.pqax": {"codes": ["totals.fileSize"], "change": "tables.fileSize of the first table is 1 more than the detail says."},
+  "totals.rowGroupCount.pqax": {
+    "codes": ["totals.rowGroupCount"],
+    "change": "tables.rowGroupCount of the first table is 1 more than the detail says."
+  }
+}

@@ -1,0 +1,15 @@
+<Solution>
+  <Folder Name="/src/" />
+  <Folder Name="/src/dotnet/">
+    <Project Path="src/dotnet/Pqax.Cli/Pqax.Cli.csproj" />
+    <Project Path="src/dotnet/Pqax.Collector.ParquetNet/Pqax.Collector.ParquetNet.csproj" />
+    <Project Path="src/dotnet/Pqax.Collector/Pqax.Collector.csproj" />
+    <Project Path="src/dotnet/Pqax/Pqax.csproj" />
+  </Folder>
+  <Folder Name="/tests/" />
+  <Folder Name="/tests/dotnet/">
+    <Project Path="tests/dotnet/Pqax.Cli.Tests/Pqax.Cli.Tests.csproj" />
+    <Project Path="tests/dotnet/Pqax.Collector.Tests/Pqax.Collector.Tests.csproj" />
+    <Project Path="tests/dotnet/Pqax.Tests/Pqax.Tests.csproj" />
+  </Folder>
+</Solution>

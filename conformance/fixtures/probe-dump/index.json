@@ -1,0 +1,1 @@
+{"collectedAtUtc":"2026-10-05T20:55:12.7492636Z","maxFooters":100,"maxHistory":30,"tailKb":64,"requests":18,"bytesRead":195306,"seconds":0.1,"tables":[{"id":"L001","item":"Fix_Lakehouse","itemKind":"Lakehouse","namespace":[],"name":"sales"},{"id":"W001","item":"Fix_WH","itemKind":"Warehouse","namespace":["dbo"],"name":"orders"}]}

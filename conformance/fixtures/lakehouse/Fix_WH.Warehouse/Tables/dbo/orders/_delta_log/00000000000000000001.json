@@ -1,0 +1,2 @@
+{"commitInfo": {"timestamp": 1700000300000, "operation": "WRITE", "engineInfo": "Fixture-Warehouse/2.0"}}
+{"add": {"path": "b.parquet", "partitionValues": {}, "size": 1781, "modificationTime": 1700000300000, "dataChange": true}}

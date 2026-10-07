@@ -1,0 +1,32 @@
+{
+  "file": "embedded-deflated.vpax",
+  "embeddedPart": "Footprint.pqax",
+  "embeddedCompression": "deflated",
+  "format": "pqax",
+  "formatVersion": "0.1",
+  "parts": ["summary.json", "partitions.json", "files.json", "rowGroups.json", "columnChunks.json", "commits.json"],
+  "rows": {
+    "sources": 2,
+    "tables": 2,
+    "columns": 10,
+    "partitionSpecs": 1,
+    "partitionFields": 1,
+    "physicalSchemas": 2,
+    "physicalColumns": 8,
+    "writers": 3,
+    "operations": 5,
+    "partitions": 2,
+    "files": 5,
+    "rowGroups": 13,
+    "columnChunks": 52,
+    "commits": 6
+  },
+  "tablesFileSize": 199005,
+  "tablesRowCount": 21100,
+  "columnChunksCompressedSize": 191505,
+  "tables": [
+    {"id": 1, "fileCount": 3, "columnChunkCount": 40, "columnChunkCompressedSize": 153328},
+    {"id": 2, "fileCount": 2, "columnChunkCount": 12, "columnChunkCompressedSize": 38177}
+  ],
+  "largestColumns": [{"id": 4, "compressedSize": 128389}, {"id": 9, "compressedSize": 30997}, {"id": 1, "compressedSize": 19374}]
+}

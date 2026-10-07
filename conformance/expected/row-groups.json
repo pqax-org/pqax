@@ -1,0 +1,31 @@
+{
+  "file": "row-groups.pqax",
+  "embeddedPart": null,
+  "embeddedCompression": null,
+  "format": "pqax",
+  "formatVersion": "0.1",
+  "parts": ["summary.json", "partitions.json", "files.json", "rowGroups.json", "commits.json"],
+  "rows": {
+    "sources": 2,
+    "tables": 2,
+    "columns": 10,
+    "partitionSpecs": 1,
+    "partitionFields": 1,
+    "physicalSchemas": 2,
+    "physicalColumns": 8,
+    "writers": 3,
+    "operations": 5,
+    "partitions": 2,
+    "files": 5,
+    "rowGroups": 13,
+    "commits": 6
+  },
+  "tablesFileSize": 199005,
+  "tablesRowCount": 21100,
+  "columnChunksCompressedSize": 0,
+  "tables": [
+    {"id": 1, "fileCount": 3, "columnChunkCount": 0, "columnChunkCompressedSize": 0},
+    {"id": 2, "fileCount": 2, "columnChunkCount": 0, "columnChunkCompressedSize": 0}
+  ],
+  "largestColumns": []
+}

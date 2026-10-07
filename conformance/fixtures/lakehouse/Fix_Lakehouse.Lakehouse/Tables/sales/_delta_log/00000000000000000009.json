@@ -1,0 +1,1 @@
+{"commitInfo": {"timestamp": 1700000090000, "operation": "OPTIMIZE", "operationParameters": {"predicate": "[]"}, "operationMetrics": {"numAddedFiles": "2", "numRemovedFiles": "5"}, "engineInfo": "Fixture-Engine/1.0"}}

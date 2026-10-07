@@ -1,0 +1,34 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  all:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: .NET build and tests
+        run: dotnet test Pqax.slnx --nologo
+      - name: Python package and tests
+        run: |
+          pip install -e src/python pytest jsonschema
+          python -m pytest tests/python -q
+      - name: TypeScript package and tests
+        working-directory: src/typescript/pqax
+        run: |
+          npm ci
+          npm test
+      - name: Cross-implementation check
+        run: python conformance/cross_check.py

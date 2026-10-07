@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFrameworks>netstandard2.0;net8.0</TargetFrameworks>
+    <RootNamespace>Pqax.Collector</RootNamespace>
+    <PackageId>Pqax.Collector</PackageId>
+    <Description>Collects the footprint of Delta tables from OneLake or from a local folder: reads the Delta logs and the Parquet footers, and writes a PQAX file. Parses Parquet footers itself, with no Parquet library.</Description>
+    <PackageTags>pqax;parquet;delta;onelake;fabric;lakehouse;footprint</PackageTags>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Pqax\Pqax.csproj" />
+  </ItemGroup>
+
+  <ItemGroup Condition="'$(TargetFramework)' == 'netstandard2.0'">
+    <PackageReference Include="System.Text.Json" Version="8.0.5" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+
+</Project>

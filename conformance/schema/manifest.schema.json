@@ -1,0 +1,73 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "PQAX manifest, format version 0.x",
+  "description": "manifest.json: what the file is, how it was collected, and which parts it has (serialization 7.1). Unknown members are allowed everywhere (serialization 9 rule 1).",
+  "type": "object",
+  "required": ["format", "formatVersion", "collection", "parts"],
+  "properties": {
+    "format": {"const": "pqax"},
+    "formatVersion": {
+      "description": "Two numbers separated by a dot (serialization 9 rule 4). This schema describes the versions whose first number is 0.",
+      "type": "string",
+      "pattern": "^0[.][0-9]+$"
+    },
+    "collection": {"$ref": "#/$defs/collection"},
+    "obfuscatorDictionaryId": {"type": ["string", "null"]},
+    "obfuscatorLib": {"type": ["string", "null"]},
+    "obfuscatorLibVersion": {"type": ["string", "null"]},
+    "parts": {
+      "description": "The parts, in order. The first is summary.json (serialization 7.2 rule 2). That no part is listed twice cannot be expressed here.",
+      "type": "array",
+      "minItems": 1,
+      "items": {"$ref": "#/$defs/part"},
+      "allOf": [{"prefixItems": [{"properties": {"name": {"const": "summary.json"}}, "required": ["name"]}]}]
+    }
+  },
+  "additionalProperties": true,
+  "$defs": {
+    "collection": {
+      "description": "The Collection of the object model (6.2).",
+      "type": "object",
+      "required": ["level"],
+      "properties": {
+        "collectorApp": {"type": ["string", "null"]},
+        "collectorAppVersion": {"type": ["string", "null"]},
+        "collectorLib": {"type": ["string", "null"]},
+        "collectorLibVersion": {"type": ["string", "null"]},
+        "startedAt": {"anyOf": [{"type": "null"}, {"$ref": "#/$defs/timestamp"}]},
+        "completedAt": {"anyOf": [{"type": "null"}, {"$ref": "#/$defs/timestamp"}]},
+        "level": {"$ref": "#/$defs/integer"},
+        "includesDataValues": {"type": ["boolean", "null"]},
+        "includesPartitionValues": {"type": ["boolean", "null"]},
+        "requestCount": {"type": ["integer", "null"], "minimum": -9007199254740991, "maximum": 9007199254740991},
+        "bytesRead": {"type": ["integer", "null"], "minimum": -9007199254740991, "maximum": 9007199254740991}
+      },
+      "additionalProperties": true
+    },
+    "part": {
+      "description": "A part: the name of its entry, and the number of rows that it holds for each table.",
+      "type": "object",
+      "required": ["name", "tables"],
+      "properties": {
+        "name": {
+          "description": "ASCII letters, digits, '.', '-', and '_' (serialization 3 rule 4).",
+          "type": "string",
+          "pattern": "^[A-Za-z0-9._-]+$"
+        },
+        "tables": {"type": "object", "additionalProperties": {"$ref": "#/$defs/integer"}}
+      },
+      "additionalProperties": true
+    },
+    "integer": {
+      "description": "An integer between -(2^53 - 1) and 2^53 - 1 (serialization 4). JSON Schema cannot see the text of a number, so it accepts 1.0 for 1, which the format does not.",
+      "type": "integer",
+      "minimum": -9007199254740991,
+      "maximum": 9007199254740991
+    },
+    "timestamp": {
+      "description": "UTC, with exactly three decimals, as 2026-10-05T08:15:30.000Z (serialization 4). The pattern checks the form, not the calendar.",
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}[.][0-9]{3}Z$"
+    }
+  }
+}

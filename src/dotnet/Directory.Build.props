@@ -1,0 +1,21 @@
+<Project>
+
+  <PropertyGroup>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <Deterministic>true</Deterministic>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <Version>0.1.0</Version>
+    <Authors>SQLBI</Authors>
+    <Company>SQLBI</Company>
+    <Product>PQAX</Product>
+    <Description>PQAX: the footprint of Parquet tables, for analysis without access to the data.</Description>
+    <NeutralLanguage>en</NeutralLanguage>
+    <IsPackable>true</IsPackable>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <RepositoryUrl>https://github.com/pqax-org/pqax</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageProjectUrl>https://pqax.org</PackageProjectUrl>
+  </PropertyGroup>
+
+</Project>
