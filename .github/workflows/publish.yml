@@ -1,0 +1,214 @@
+name: Publish
+
+# Publishes one tag to NuGet, npm, and PyPI. RELEASING.md has the prerequisites and the steps.
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: The tag to publish, such as v0.1.0
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: publish-${{ github.event.release.tag_name || inputs.tag }}
+  cancel-in-progress: false
+
+env:
+  TAG: ${{ github.event.release.tag_name || inputs.tag }}
+
+jobs:
+  verify:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: refs/tags/${{ env.TAG }}
+          persist-credentials: false
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - name: Check that the four versions equal the tag
+        shell: python
+        run: |
+          import json, os, pathlib, re, sys, tomllib
+
+          def read(path):
+              return pathlib.Path(path).read_text(encoding="utf-8")
+
+          tag = os.environ["TAG"]
+          props = re.findall(r"<Version>\s*([^<\s]+)\s*</Version>", read("src/dotnet/Directory.Build.props"))
+          versions = {
+              "src/dotnet/Directory.Build.props": props[0] if len(props) == 1 else f"{len(props)} <Version> elements",
+              "src/typescript/pqax/package.json": json.loads(read("src/typescript/pqax/package.json"))["version"],
+              "src/python/pyproject.toml": tomllib.loads(read("src/python/pyproject.toml"))["project"]["version"],
+              "src/python/pqax/__init__.py": (re.findall(r'__version__\s*=\s*"([^"]+)"', read("src/python/pqax/__init__.py")) or ["no __version__"])[0],
+          }
+          for path, version in versions.items():
+              print(f"{version:<16} {path}")
+          if not tag.startswith("v"):
+              sys.exit(f"The tag {tag} does not start with v")
+          wrong = [path for path, version in versions.items() if version != tag[1:]]
+          if wrong:
+              sys.exit(f"Not {tag[1:]}, the version of the tag {tag}: {', '.join(wrong)}")
+          print(f"The four versions equal the tag {tag}")
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 10.0.x
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          package-manager-cache: false
+      # The suites of ci.yml. The .NET suites run in Release, so that the pack below packs what they tested.
+      - name: .NET build and tests
+        run: dotnet test Pqax.slnx -c Release --nologo -p:ContinuousIntegrationBuild=true
+      - name: Python package and tests
+        run: |
+          pip install -e "src/python[dev]"
+          python -m pytest tests/python -q
+      - name: TypeScript package and tests
+        working-directory: src/typescript/pqax
+        run: |
+          npm ci
+          npm test
+      - name: Cross-implementation check
+        run: python conformance/cross_check.py
+      - name: NuGet packages and their symbol packages
+        run: dotnet pack Pqax.slnx -c Release --no-build --nologo -p:ContinuousIntegrationBuild=true -o out/nuget
+      - name: npm tarball
+        working-directory: src/typescript/pqax
+        run: |
+          npm run build
+          mkdir -p ../../../out/npm
+          npm pack --pack-destination ../../../out/npm
+      - name: Python sdist and wheel
+        run: |
+          pip install build twine
+          python -m build src/python --outdir out/pypi
+          python -m twine check --strict out/pypi/*
+      - uses: actions/upload-artifact@v7
+        with:
+          name: nuget
+          path: out/nuget
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v7
+        with:
+          name: npm
+          path: out/npm
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v7
+        with:
+          name: pypi
+          path: out/pypi
+          if-no-files-found: error
+
+  # The secret NUGET_API_KEY, when set, is the key. When it is not, NuGet/login trades the OIDC token of the job for a
+  # key valid one hour, through the trusted publishing policy of the nuget.org user in the secret NUGET_USER.
+  nuget:
+    needs: verify
+    runs-on: ubuntu-latest
+    environment:
+      name: nuget
+      url: https://www.nuget.org/packages/Pqax
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: nuget
+          path: nuget
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 10.0.x
+      - name: Short-lived key by trusted publishing
+        id: login
+        if: env.NUGET_API_KEY == ''
+        env:
+          NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
+        uses: NuGet/login@v1
+        with:
+          user: ${{ secrets.NUGET_USER }}
+      # The symbol packages go in a push of their own: a push skips the .snupkg of a .nupkg that nuget.org already has,
+      # so a re-run of one push would not send a .snupkg that failed the first time. dotnet expands the wildcards, which
+      # have no folder in them so that they work on Windows too.
+      - name: Push the packages, then their symbol packages
+        working-directory: nuget
+        env:
+          NUGET_API_KEY: ${{ secrets.NUGET_API_KEY || steps.login.outputs.NUGET_API_KEY }}
+          SOURCE: https://api.nuget.org/v3/index.json
+        run: |
+          dotnet nuget push "*.nupkg" --api-key "$NUGET_API_KEY" --source "$SOURCE" --skip-duplicate --no-symbols
+          dotnet nuget push "*.snupkg" --api-key "$NUGET_API_KEY" --source "$SOURCE" --skip-duplicate
+
+  # The secret NPM_TOKEN, when set, goes to npm through NODE_AUTH_TOKEN, and npm still tries trusted publishing first.
+  # When it is not set, trusted publishing alone, with no token. --ignore-scripts leaves out prepublishOnly, which would
+  # build again and run the tests that verify ran, with the token in their environment.
+  npm:
+    needs: verify
+    runs-on: ubuntu-latest
+    environment:
+      name: npm
+      url: https://www.npmjs.com/package/pqax
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: refs/tags/${{ env.TAG }}
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+          package-manager-cache: false
+      - name: Build
+        working-directory: src/typescript/pqax
+        run: |
+          npm ci
+          npm run build
+      - name: Publish with the token
+        if: env.NPM_TOKEN != ''
+        working-directory: src/typescript/pqax
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: npm publish --provenance --access public --ignore-scripts
+      - name: Publish with trusted publishing
+        if: env.NPM_TOKEN == ''
+        working-directory: src/typescript/pqax
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          version=$(npm --version)
+          if [ "$(printf '%s\n' 11.5.1 "$version" | sort -V | head -n 1)" != 11.5.1 ]; then
+            echo "::error::npm $version is older than 11.5.1, the first version with trusted publishing"
+            exit 1
+          fi
+          npm publish --provenance --access public --ignore-scripts
+
+  # Trusted publishing only, with no token.
+  pypi:
+    needs: verify
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/p/pqax
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: pypi
+          path: dist
+      - uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          skip-existing: true

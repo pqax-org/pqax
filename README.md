@@ -6,7 +6,7 @@ This repository holds the format, its conformance kit, and the reference impleme
 
 ## Packages
 
-The packages are published from GitHub releases. All six are published from release 0.1.0 on, with one version number, as section 7.1 of the [contracts](docs/contracts.md) says. The [changelog](CHANGELOG.md) says what each release holds.
+The packages are published from GitHub releases, as [RELEASING.md](RELEASING.md) describes. All six are published from release 0.1.0 on, with one version number, as section 7.1 of the [contracts](docs/contracts.md) says. The [changelog](CHANGELOG.md) says what each release holds.
 
 | Package | Registry | Install | README |
 |---|---|---|---|

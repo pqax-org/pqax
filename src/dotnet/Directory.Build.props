@@ -5,10 +5,14 @@
     <Nullable>enable</Nullable>
     <Deterministic>true</Deterministic>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <!-- A security advisory on a dependency is a warning to read, not a broken build. -->
+    <WarningsNotAsErrors>NU1901;NU1902;NU1903;NU1904</WarningsNotAsErrors>
     <Version>0.1.0</Version>
     <Authors>SQLBI</Authors>
     <Company>SQLBI</Company>
     <Product>PQAX</Product>
+    <Copyright>Copyright (c) 2026 SQLBI</Copyright>
     <Description>PQAX: the footprint of Parquet tables, for analysis without access to the data.</Description>
     <NeutralLanguage>en</NeutralLanguage>
     <IsPackable>true</IsPackable>
@@ -16,6 +20,17 @@
     <RepositoryUrl>https://github.com/pqax-org/pqax</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
     <PackageProjectUrl>https://pqax.org</PackageProjectUrl>
+    <PackageReleaseNotes>https://github.com/pqax-org/pqax/blob/main/CHANGELOG.md</PackageReleaseNotes>
+  </PropertyGroup>
+
+  <!-- Source Link comes with the .NET SDK for GitHub: the nuspec records the repository and the commit, and the PDBs
+       point to the sources of that commit. The PDBs go to a .snupkg beside each .nupkg. CI passes
+       -p:ContinuousIntegrationBuild=true for deterministic paths. -->
+  <PropertyGroup>
+    <PublishRepositoryUrl>true</PublishRepositoryUrl>
+    <EmbedUntrackedSources>true</EmbedUntrackedSources>
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
   </PropertyGroup>
 
 </Project>

@@ -31,7 +31,7 @@ On NuGet.
 
 | Package | What it does | Format | Runs on | Known limits |
 |---|---|---|---|---|
-| `pqax` | Reads and validates PQAX files, also inside a VPAX file, in a browser and in Node, with no dependency | Reads 0.1 | Node 20.12 or later. Chrome and Edge 103, Firefox 113, Safari 16.4, or later. | Does not write. Tested in Node only: no browser has run it. A part is held in memory whole while it is parsed, and `validate` holds every part. |
+| `pqax` | Reads and validates PQAX files, also inside a VPAX file, in a browser and in Node, with no dependency | Reads 0.1 | Node 20.12 or later. Chrome and Edge 103, Firefox 113, Safari 16.4, or later. | Does not write. Tested in Node 24 and, through Playwright, in Chromium 156, Firefox 157, and WebKit 27.2. A part is held in memory whole while it is parsed, and `validate` holds every part. |
 
 ### PyPI
 

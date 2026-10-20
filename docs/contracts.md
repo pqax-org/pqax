@@ -24,6 +24,7 @@ Not in 0.1: the view model and the derived measures, Iceberg tables, obfuscation
 ```
 README.md
 CHANGELOG.md                      what each release holds
+RELEASING.md                      how a release is published
 LICENSE                           MIT
 Pqax.slnx                         every .NET project
 docs/
@@ -272,7 +273,7 @@ The tests are written from the kit and from section 4, not from the code.
 | `tests/dotnet/Pqax.Tests` | xunit | Every sample of the kit opens and gives the expected results. Every invalid sample is rejected with at least the expected codes. A footprint built with `FootprintBuilder` is written, read back, and equal, and its file passes the validator. Unknown fields survive `From` and `Write`. A table of 600,000 rows is split in parts of 250,000 and read back whole. An embedded footprint opens from a stored and from a deflated part. |
 | `tests/dotnet/Pqax.Collector.Tests` | xunit | The fixture lakehouse and warehouse are collected from `LocalStorage` at levels 1 and 2, and the result equals the probe dump of the same fixture in files, rows, row groups, column chunks, and sizes. The footer parser agrees with the dump on every footer. A missing checkpoint reader produces an issue, not an exception. |
 | `tests/dotnet/Pqax.Cli.Tests` | xunit | `check` returns 0 on a valid sample and 1 on an invalid one, with the codes in the output. `info` prints the parts and the rows. |
-| `tests/typescript` | vitest | The same conformance checks as the C# reader and validator, from `Uint8Array`, `Blob`, and a `ByteSource` that counts its reads: opening a sample must not read a detail part. |
+| `tests/typescript` | vitest | The same conformance checks as the C# reader and validator, from `Uint8Array`, `Blob`, and a `ByteSource` that counts its reads: opening a sample must not read a detail part. The suite runs in Node and, through Playwright, in Chromium, Firefox, and WebKit. |
 | `tests/python` | pytest | The same conformance checks as the C# reader and validator. The command line returns the right exit codes. |
 | Cross-implementation | a script in `conformance/` | A file written by the C# writer is read by the TypeScript and Python readers, and every validator accepts it |
 
@@ -303,7 +304,7 @@ This is the policy of version 0.1. It is not a decision of the maintainers, and 
 1. The six packages share one version number: `Pqax`, `Pqax.Cli`, `Pqax.Collector`, and `Pqax.Collector.ParquetNet` on NuGet, `pqax` on npm, and `pqax` on PyPI. Packages with the same number read and write the same format.
 2. The major and minor numbers are those of the format version that the packages write, so format 0.1 gives packages 0.1.x. The patch number counts the releases that do not change the format.
 3. A package states in its README and in its metadata which format versions it reads, every version with the same major number up to its own, and which it writes, its own. A reader still opens a file of a later version with the same major number and reads what it knows, as section 9 of the [serialization](serialization.md) requires.
-4. A release is a GitHub release tagged `v<version>`, such as `v0.1.0`, and the packages are published from it. The publish workflow checks that the tag equals the version in `src/dotnet/Directory.Build.props`, `src/typescript/pqax/package.json`, and `src/python/pyproject.toml`, so that the three registries get the same version.
+4. A release is a GitHub release tagged `v<version>`, such as `v0.1.0`, and the packages are published from it. The publish workflow checks that the tag equals the version in `src/dotnet/Directory.Build.props`, `src/typescript/pqax/package.json`, `src/python/pyproject.toml`, and `src/python/pqax/__init__.py`, so that the three registries get the same version.
 5. The format reaches 1.0 only as the [backlog](backlog.md) says, and the packages then become 1.0.0 together.
 
 ## 8. Decision log

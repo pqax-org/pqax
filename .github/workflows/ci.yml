@@ -5,25 +5,28 @@ on:
     branches: [main]
   pull_request:
 
+permissions:
+  contents: read
+
 jobs:
   all:
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-dotnet@v6
         with:
           dotnet-version: 10.0.x
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 24
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
       - name: .NET build and tests
-        run: dotnet test Pqax.slnx --nologo
+        run: dotnet test Pqax.slnx --nologo -p:ContinuousIntegrationBuild=true
       - name: Python package and tests
         run: |
-          pip install -e src/python pytest jsonschema
+          pip install -e "src/python[dev]"
           python -m pytest tests/python -q
       - name: TypeScript package and tests
         working-directory: src/typescript/pqax
@@ -32,3 +35,39 @@ jobs:
           npm test
       - name: Cross-implementation check
         run: python conformance/cross_check.py
+
+  # Every Python that pyproject.toml accepts, and the oldest and the newest of them with pandas and polars.
+  python-compat:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.10", "3.11", "3.12", "3.13", "3.14"]
+        extras: ["dev"]
+        include:
+          - { python: "3.10", extras: "dev,pandas,polars" }
+          - { python: "3.14", extras: "dev,pandas,polars" }
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Python package and tests
+        run: |
+          python -m pip install -e "src/python[${{ matrix.extras }}]"
+          python -m pytest tests/python -q -rs
+
+  # The TypeScript suite in the three browser engines, through Playwright.
+  browsers:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+      - name: TypeScript tests in Chromium, Firefox, and WebKit
+        working-directory: src/typescript/pqax
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium firefox webkit
+          npm run test:browsers
