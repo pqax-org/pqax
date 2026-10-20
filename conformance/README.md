@@ -18,7 +18,7 @@ Everything in the kit is synthetic. No name in it comes from a real lakehouse.
 | `samples/invalid/expected.json` | The codes that a validator must report for each invalid file |
 | `expected/<sample>.json` | The results that a reader must get from each valid file |
 | `fixtures/lakehouse` | A synthetic lakehouse and warehouse in the OneLake layout: Delta logs and Parquet files written by DuckDB |
-| `fixtures/probe-dump` | The output of the probe that preceded the collector on the fixture. It is the input of `make_kit.py`, and what the collector must reproduce. |
+| `fixtures/probe-dump` | The output of the probe that preceded the collector on the fixture. It is the input of `make_kit.py`, and the oracle of the collector tests. The section on the probe dump describes every field. |
 | `make_kit.py` | Rebuilds `samples/` and `expected/` from `fixtures/probe-dump` |
 | `check_schema.py` | Validates the samples against the schema |
 | `.gitattributes` | Keeps git from changing the line ends of the fixtures, whose sizes the probe dump records |
@@ -183,11 +183,152 @@ python conformance/check_schema.py
 
 `make_kit.py` deletes the files in `samples/`, `samples/invalid/`, and `expected/`, and writes them again. Do not edit them by hand: change the script.
 
-It reads `fixtures/probe-dump` and builds the tables with `build_pqax.py`, the builder of the [prototype](../research/prototype/README.md). That import is the one exception to the rule that the kit depends on nothing outside `conformance/`, `src/`, and `tests/`. When the Python package has a writer, `pqax.Builder`, the script will use it instead.
+It reads `fixtures/probe-dump` and builds the tables with `build_pqax.py`, the builder of the [prototype](../research/prototype/README.md). That import is the one exception to the rule that the kit depends on nothing outside `conformance/`, `src/`, and `tests/`. The Python package now has a writer, `pqax.Builder`, and the [backlog](../docs/backlog.md) has the item that makes the script use it.
 
 The output is deterministic: every zip entry has the date 2026-10-07 00:00 and the same attributes, and the entries are written in a fixed order. Two runs with the same Python give the same bytes. Another zlib can compress differently: the samples in the repository were written by Python 3.14 on Windows, whose zlib is zlib-ng 1.3.1. The content and the expected results do not depend on it.
 
 When the format changes, change the documents first, then `rules.md`, the schema, and `make_kit.py`, rebuild, and run `check_schema.py`, the checker of the prototype on every valid sample, and the suites of the three packages.
+
+## The probe dump
+
+`fixtures/probe-dump` is the output of the probe that preceded the collector, run on `fixtures/lakehouse`. It has three files, each one JSON object: `index.json` describes the run and lists the tables, and each table has a file named after its id, `L001.json` for the lakehouse table and `W001.json` for the warehouse table.
+
+The dump has two roles:
+
+- It is the input of `make_kit.py`. The script takes the collection of the manifest from `index.json`, and `build_pqax.py` builds every table of the samples from the table files.
+- It is the oracle of the collector tests. They collect `fixtures/lakehouse` through `LocalStorage` and compare the result with the samples, every table and field at every depth, and with the dump itself. They also compare the footer parser, the checkpoint reader, and the listing of a Delta log with the dump. A test finds the dump of a data file by its size, so the data files of the fixture must keep sizes that differ.
+
+Conventions of the probe:
+
+- A field without a value is left out, except in the arrays of a row group, which have `null` for a column chunk without the value.
+- A time from the Delta log is an integer of milliseconds since 1970-01-01 UTC, as the log writes it. The samples have it as a timestamp of the format.
+- The dump holds no data value. A partition value becomes a number: each partition column numbers its values from 0 in the order in which they first appear, and a null is a value of its own. A path keeps its folders with the number in place of the value, as in `Year=#1/part-0003.parquet`. The collector does the same unless `IncludePartitionValues` is set.
+- The probe kept no user name or user id of a commit, no value of an operation parameter, and no bound of the statistics. A footer key has its value only when the key is on the allow-list of the probe, as the V-Order keys are.
+
+In the tables below, the column Maps to names the tables and fields of the samples that `make_kit.py` builds from a field, as the file names them. The column Collector says what the tests hold the collector to:
+
+| Collector | Meaning |
+|---|---|
+| Footprint | The collector writes the same value into its footprint, or the value that the kit derives from it |
+| Parser | The footer parser, the checkpoint reader, or the storage listing returns the same value. The footprint does not hold it. |
+| Input | Input to the kit or to the tests only. The collector writes its own value, or none. |
+| None | Recorded by the probe and read by nothing |
+
+### index.json
+
+| Field | Type | Meaning | Maps to | Collector |
+|---|---|---|---|---|
+| `collectedAtUtc` | string | When the probe finished, in UTC with seven decimals: `2026-10-05T20:55:12.7492636Z` | `collection.completedAt` of the manifest, cut to three decimals | Input |
+| `maxFooters` | integer | The most footers that the probe read for one table | Nothing | None |
+| `maxHistory` | integer | The most commits that the probe read for the history of one table | Nothing | None |
+| `tailKb` | integer | The kilobytes that the probe read from the end of a file to get its footer | Nothing | None |
+| `requests` | integer | The storage requests of the probe | `collection.requestCount` | Input |
+| `bytesRead` | integer | The bytes that those requests read | `collection.bytesRead` | Input |
+| `seconds` | number | How long the probe ran, in seconds | Nothing | None |
+| `tables` | array of objects | One element for each table, in the order of the probe | Nothing: `make_kit.py` reads the table files | Input: the tests take the tables and their order from here |
+| `tables[].id` | string | The id of the table in the dump, which names its file: `L001` | Nothing | Input: the tests open `<id>.json` |
+| `tables[].item` | string | The OneLake item that holds the table | The same value as `item` in the table file | Footprint |
+| `tables[].itemKind` | string | The kind of the item: `Lakehouse` or `Warehouse` | The same value as `itemKind` in the table file | Footprint |
+| `tables[].namespace` | array of strings | The schema of the table, as `["dbo"]`, empty when the item has none | The same value as `namespace` in the table file | Footprint |
+| `tables[].name` | string | The name of the table | The same value as `name` in the table file | Footprint |
+
+The folder of a table in `fixtures/lakehouse` is `<item>.<itemKind>/Tables/<namespace>/<name>`, without the namespace folder when the namespace is empty. The tests find each table there. The other members of `collection` in the samples are constants of `make_kit.py`: `collectorApp`, `collectorAppVersion`, `level`, `includesDataValues`, and `includesPartitionValues`.
+
+### L001.json and W001.json
+
+A table file describes one table at its current version. The two files have the same fields, and `W001.json` leaves out those that its table has no value for, such as the checkpoint, the partitions, and the deletion vectors.
+
+In the table, `rowGroups[]` is short for `files[].footer.rowGroups[]`. In a row group, `numRows`, `totalByteSize`, and `totalCompressedSize` describe the row group. Every other field is an array with one element for each column chunk, in the order of the leaf columns of the schema of the file: element i is the chunk of `schemas[s].columns[i]`, where s is `footer.schema`. Each chunk is one row of `columnChunks` at the `Column chunks` depth.
+
+| Field | Type | Meaning | Maps to | Collector |
+|---|---|---|---|---|
+| `id` | string | The id of the table in the dump, which names the file | The order of the tables: the kit sorts the files by `id`, and `tables.id` counts from 1 in that order | Input |
+| `item` | string | The OneLake item that holds the table | `sources.name`, with one source for each item and kind | Footprint |
+| `itemKind` | string | `Lakehouse` or `Warehouse` | `sources.kind`: `OneLake lakehouse` or `OneLake warehouse` | Footprint |
+| `namespace` | array of strings | The schema of the table, empty when the item has none | `tables.namespace` | Footprint |
+| `name` | string | The name of the table | `tables.name` | Footprint |
+| `delta` | object | What the Delta log says about the current version | The `delta.` fields below | See below |
+| `delta.version` | integer | The current version: that of the newest commit | `tables.snapshotId`, as text. The commit of that version gives `tables.snapshotTimestamp`. | Footprint |
+| `delta.checkpointVersion` | integer | The version of the last checkpoint. Absent when the log has none. | `tables.delta.checkpointVersion`, and with `delta.version`, `tables.delta.commitsAfterCheckpoint` | Footprint |
+| `delta.checkpointKind` | string | The kind of that checkpoint, as `classic`. Absent when the log has none. | Nothing | None |
+| `delta.checkpointSize` | integer | The bytes of that checkpoint, 0 when the log has none | Nothing | None |
+| `delta.logFileCount` | integer | The files in `_delta_log`: commits, checkpoints, and `_last_checkpoint` | `tables.metadataFileCount` | Footprint |
+| `delta.logSize` | integer | Their bytes | `tables.metadataSize` | Footprint |
+| `delta.commitFileCount` | integer | The commit files in `_delta_log` | `tables.commitCount` | Footprint |
+| `delta.oldestCommitVersion` | integer | The version of the oldest of them | Nothing | None |
+| `delta.tableId` | string | `metaData.id` | `tables.tableId` | Footprint |
+| `delta.tableName` | string | `metaData.name`. Absent when the log has none. | Nothing | None |
+| `delta.hasDescription` | boolean | Whether `metaData.description` is set. The probe kept no text. | Nothing | None |
+| `delta.provider` | string | `metaData.format.provider`, as `parquet` | Nothing | Parser |
+| `delta.schemaString` | string | `metaData.schemaString`: the schema as JSON text | `columns`, one row for each field of the schema: `name`, `dataType`, `isNullable`, and `isPartitionColumn` for a name in `partitionColumns`. The physical names map the leaves of `schemas` to columns. | Footprint |
+| `delta.partitionColumns` | array of strings | `metaData.partitionColumns` | `columns.isPartitionColumn`. When not empty, one row of `partitionSpecs`, and one row of `partitionFields` for each column, with the transform `identity`. | Footprint |
+| `delta.configuration` | map of strings | `metaData.configuration`: the table properties | `tables.properties` | Footprint |
+| `delta.createdTime` | integer | `metaData.createdTime` | `tables.createdAt` | Footprint |
+| `delta.minReaderVersion`, `delta.minWriterVersion` | integer | `protocol.minReaderVersion` and `protocol.minWriterVersion` | `tables.delta.minReaderVersion` and `tables.delta.minWriterVersion` | Footprint |
+| `delta.readerFeatures`, `delta.writerFeatures` | array of strings | The table features of `protocol`, empty when it has none | `tables.delta.readerFeatures` and `tables.delta.writerFeatures` | Footprint |
+| `delta.domains` | map of strings | The `domainMetadata` actions: for each domain, its configuration as JSON text | `tables.delta.domains`, the names sorted. The `clusteringColumns` of `delta.clustering` give `tables.clusteringColumns`. | Footprint |
+| `delta.removedFileCount`, `delta.removedFileSize` | integer | The files that `remove` actions took out of the table and that the log still tracks, and the sum of their sizes | `tables.nonLiveFileCount` and `tables.nonLiveFileSize` | Footprint |
+| `delta.partitionValueCounts` | map of integers | The distinct values of each partition column | Nothing: the kit counts the partitions from `files[].partition` | None |
+| `files` | array of objects | One element for each data file of the current version: the `add` actions that the state keeps | One row of `files` each, at the `Files` depth and deeper. The totals of `tables` count every file at every depth. | Footprint |
+| `files[].path` | string | `add.path`, with partition values replaced by numbers | `files.path` | Footprint |
+| `files[].size` | integer | `add.size` | `files.fileSize`. Summed in `tables.fileSize`, `partitions.fileSize`, and `writers.fileSize`, and in the distribution `tables.fileSizes`. | Footprint |
+| `files[].modificationTime` | integer | `add.modificationTime` | `files.modifiedAt`. The latest is `tables.lastModifiedAt`. | Footprint |
+| `files[].numRecords` | integer | `numRecords` in the statistics of `add`. Absent when the action has no statistics. | `files.rowCount`, or `footer.numRows` when absent. Summed in `tables.rowCount` and `partitions.rowCount`. | Footprint |
+| `files[].statsColumnCount` | integer | The columns that those statistics cover. Absent with them. | Nothing | None |
+| `files[].partition` | map of integers | For each partition column, the number of the value of the file. Absent when the table has no partition columns. | `files.partition`: one row of `partitions` for each distinct map, at the `Files` depth and deeper, with its totals. Also `tables.partitionCount` and `tables.partitionSizes`. | Footprint |
+| `files[].deletionVectorStorage` | string | `deletionVector.storageType`, as `u` | Nothing | None |
+| `files[].deletionVectorSize` | integer | `deletionVector.sizeInBytes` | `files.deletionVectorSize` | Footprint |
+| `files[].deletedRows` | integer | `deletionVector.cardinality`: the rows marked as deleted | `files.deletedRowCount`, 0 when absent. Summed in `tables.deletedRowCount` and `partitions.deletedRowCount`. | Footprint |
+| `files[].tags` | map of strings | `add.tags`. Absent when the action has none. The fixture has the keys `VORDER` and `INSERTION_TIME`. | `VORDER` set to `true` makes the file V-Ordered: `files.isVOrdered`, `tables.vOrderedFileCount`, and the writer of the file. `INSERTION_TIME` is not read. | Footprint, for `VORDER` |
+| `files[].footer` | object | The footer of the file, as the probe decoded it. Absent when the probe did not read it. | The `footer.` and `rowGroups[]` fields below. Also `files.rowGroupCount`, `files.compressedSize`, and `files.uncompressedSize`, over the row groups and column chunks of the file. | Footprint |
+| `files[].footer.footerSize` | integer | The length of the footer: the bytes of the `FileMetaData`, without the length and the magic that close the file | `files.footerSize`, summed in `tables.footerSize` | Footprint |
+| `files[].footer.requests` | integer | The requests that the probe made to read the footer | Nothing | None |
+| `files[].footer.version` | integer | `version` of the `FileMetaData` | Nothing | Parser |
+| `files[].footer.createdBy` | string | `created_by`: the writer of the file | `writers.createdBy`, with one writer for each combination of `createdBy`, V-Order, and V-Order level, and `files.writer` | Footprint |
+| `files[].footer.numRows` | integer | `num_rows` of the file | `files.rowCount` when `numRecords` is absent | Footprint |
+| `files[].footer.keyValues` | array of objects | The `key_value_metadata` of the footer, in order | A key that ends with `vorder.enabled`, with the value `true`, makes the file V-Ordered. A key that ends with `vorder.level` gives `writers.vOrderLevel`. | Footprint |
+| `files[].footer.keyValues[].key` | string | The key | See `keyValues` | Parser |
+| `files[].footer.keyValues[].valueLength` | integer | The length of the value | Nothing | Parser |
+| `files[].footer.keyValues[].value` | string | The value, for a key on the allow-list | See `keyValues` | Parser |
+| `files[].footer.schema` | integer | The position of the schema of the file in `schemas`, from 0 | `files.physicalSchema`, and `physicalSchemas.fileCount` | Footprint |
+| `files[].footer.rowGroups` | array of objects | The row groups of the file, in order | One row of `rowGroups` each, at the `Row groups` depth and deeper, with its position as `ordinal`. Counted in `files.rowGroupCount` and `tables.rowGroupCount`. | Footprint |
+| `rowGroups[].numRows` | integer | `num_rows` of the row group | `rowGroups.rowCount`, and the distribution `tables.rowGroupRowCounts` | Footprint |
+| `rowGroups[].totalByteSize` | integer | `total_byte_size` of the row group | `rowGroups.uncompressedSize` | Footprint |
+| `rowGroups[].totalCompressedSize` | integer | `total_compressed_size` of the row group | `rowGroups.compressedSize`, or the sum of `compressed` when absent | Footprint |
+| `rowGroups[].codec` | array of strings | `codec` of each chunk | `columnChunks.codec`, and `columns.codecs` | Footprint |
+| `rowGroups[].encodings` | array of strings | `encodings` of each chunk, in one string separated by commas | `columnChunks.encodings`, split and sorted, and `columns.encodings` | Footprint |
+| `rowGroups[].numValues` | array of integers | `num_values` of each chunk | `columnChunks.valueCount`, summed in `columns.valueCount` | Footprint |
+| `rowGroups[].compressed` | array of integers | `total_compressed_size` of each chunk | `columnChunks.compressedSize`. Summed as `compressedSize` in `columns`, `physicalColumns`, `files`, and `tables`, and in `tables.staleColumnSize` for a leaf that maps to no column. | Footprint |
+| `rowGroups[].uncompressed` | array of integers | `total_uncompressed_size` of each chunk | `columnChunks.uncompressedSize`, summed as `uncompressedSize` in the same tables | Footprint |
+| `rowGroups[].dataPageOffset` | array of integers | `data_page_offset` of each chunk | With `dictionaryPageOffset`, `columnChunks.dictionaryPageSize` | Footprint |
+| `rowGroups[].dictionaryPageOffset` | array of integer or null | `dictionary_page_offset` of each chunk, `null` when it has no dictionary page | `columnChunks.hasDictionaryPage`. `dataPageOffset` minus it is `columnChunks.dictionaryPageSize`. Also `columns.dictionaryChunkCount` and `columns.dictionaryPageSize`. | Footprint |
+| `rowGroups[].nullCount` | array of integer or null | `null_count` of the statistics of each chunk | `columnChunks.nullCount`, summed in `columns.nullCount` | Footprint |
+| `rowGroups[].distinctCount` | array of integer or null | `distinct_count` of the statistics of each chunk | `columnChunks.distinctCount`. The largest is `columns.largestChunkDistinctCount`. | Footprint |
+| `rowGroups[].hasMinMax` | array of booleans | Whether the statistics of each chunk have bounds | Nothing | Parser |
+| `rowGroups[].encodingStats` | array of string or null | `encoding_stats` of each chunk, as items `PAGE_TYPE:ENCODING:COUNT` separated by semicolons. `null` in the fixture. | `columnChunks.dataPageCount` and `columnChunks.dictionaryEncodedPageCount`, and `columns.fallbackChunkCount` | Footprint |
+| `rowGroups[].bloomFilterLength` | array of integer or null | `bloom_filter_length` of each chunk | `columnChunks.bloomFilterSize` | Footprint |
+| `rowGroups[].unencodedByteArrayBytes` | array of integer or null | `unencoded_byte_array_data_bytes` of the size statistics of each chunk. `null` in the fixture. | Nothing: `make_kit.py` does not read it. The collector writes it as `columnChunks.unencodedByteArrayDataBytes`. | Footprint |
+| `rowGroups[].columnIndexLength` | array of integer or null | `column_index_length` of each chunk. `null` in the fixture. | Nothing | Parser |
+| `rowGroups[].offsetIndexLength` | array of integer or null | `offset_index_length` of each chunk. `null` in the fixture. | Nothing | Parser |
+| `schemas` | array of objects | The distinct Parquet schemas of the footers that the probe read | One row of `physicalSchemas` each | Footprint |
+| `schemas[].columns` | array of objects | The leaf columns of the schema, in the order in which a row group stores them | One row of `physicalColumns` each, with its position as `ordinal` | Footprint |
+| `schemas[].columns[].path` | array of strings | `path_in_schema` of the leaf | `physicalColumns.path`. Its first name, matched with the physical name or the name of a column, gives `physicalColumns.column`. | Footprint |
+| `schemas[].columns[].type` | string | The physical type, as `INT64` | `physicalColumns.physicalType` | Footprint |
+| `schemas[].columns[].repetition` | string | `repetition_type`, as `OPTIONAL` | `physicalColumns.repetition` | Footprint |
+| `schemas[].columns[].converted` | string | `converted_type`, as `UTF8`. Absent when the leaf has none. | `physicalColumns.logicalType`, when the leaf has no logical type | Footprint |
+| `commits` | array of objects | The most recent commits, up to `maxHistory`, in the order of their versions | One row of `commits` each, at the `Files` depth and deeper. Counted in `tables.commitsRead`. | Footprint |
+| `commits[].version` | integer | The version of the commit, which names its file | `commits.commitId`, as text | Footprint |
+| `commits[].timestamp` | integer | `commitInfo.timestamp` | `commits.timestamp` and `operations.lastAt`. The oldest is `tables.oldestCommitAt`. | Footprint |
+| `commits[].operation` | string | `commitInfo.operation` | `commits.operation`, and one row of `operations` for each operation, with `commitCount` | Footprint |
+| `commits[].engine` | string | `commitInfo.engineInfo` | `commits.engine` | Footprint |
+| `commits[].isBlindAppend` | boolean | `commitInfo.isBlindAppend`. Absent when the commit has none. | `commits.isBlindAppend` | Footprint |
+| `commits[].metrics` | map of strings | `commitInfo.operationMetrics`, empty when the commit has none | `commits.metrics` | Footprint |
+| `commits[].parameterKeys` | array of strings | The names of `commitInfo.operationParameters`, without the values | Nothing, as the samples have no data values | Footprint, with data values only: the keys of `commits.parameters` |
+| `issues` | array of strings | The problems that the probe met, each as `Code: message`. Empty in the fixture. | One row of `issues` each, with `code` and `message` | Footprint: the collector records no issue for the fixture |
+
+The kit fills the other fields of the samples without a field of the dump: `tables.format` is `Delta`, `tables.detailDepth` is the depth of the sample, `tables.collectedLevel` is 2 when a footer was read and 1 otherwise, `tables.footerCount` counts the files with a footer, `tables.columnTotalsSource` is `Footers`, and `columns.fileCountWithoutColumn` counts, for a column that is not a partition column, the files whose schema has no leaf for it.
+
+`build_pqax.py` also reads fields that the fixture does not have: `files[].clusteringProvider`, for `files.clusteringProvider`; `logical`, `typeLength`, and `fieldId` of a leaf in `schemas[].columns[]`, for `physicalColumns.logicalType`, which takes `logical` before `converted`, `physicalColumns.typeLength`, and `physicalColumns.fieldId`; and the keys `delta.columnMapping.id`, `delta.columnMapping.physicalName`, and `comment` in the metadata of a field of `schemaString`, for `columns.fieldId`, `columns.physicalName`, and `columns.description`.
 
 ## Cross-implementation check
 

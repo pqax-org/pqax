@@ -646,10 +646,12 @@ The first version of the format has no views. The tables of the [serialization](
 
 ## 11. Open questions
 
+The [backlog](backlog.md) tracks questions 1, 3, and 5 before version 1.0, and question 7 later.
+
 1. **Choosing the depth.** How a collector decides the depth of each table: a limit on the objects of one table, a limit for the whole footprint, or both. The limits need real lakehouses to be tuned.
 2. **Distribution.** Whether the quartiles are enough, or whether fixed size classes would say more about small files.
 3. **File paths.** Paths are long and mostly random, so they dominate the size of the `Files` depth. Whether a collection may leave them out.
-4. **Reading a sample of footers.** Whether a collector may read only some footers of a very large table. The totals are then partial, as rule 3 of section 4.2 already allows.
+4. **Reading a sample of footers.** ~~Whether a collector may read only some footers of a very large table. The totals are then partial, as rule 3 of section 4.2 already allows.~~ Answered in version 0.1: the collector reads every footer by default, and with `MaxFootersPerTable` a sample spread evenly over the files sorted by modification time, and the totals of level 2 then cover the footers read, as `FooterCount` says.
 5. **Commit limit.** How many recent commits to read and keep by default. In the test, reading 30 commits for each table took most of the requests.
 6. **Dictionary page size.** On 9,613 column chunks written by Fabric, the size derived from the two offsets was always within the size of the chunk. It still has to be compared with the page header, and tested on files from other writers.
 7. **Comparing footprints.** Whether TableId, File.Path, and FieldId are enough to compare two footprints of the same lakehouse taken at different times.

@@ -72,7 +72,7 @@ Each item has a stage: **Before publishing** means before the first NuGet, npm, 
 | Item | Why | Stage |
 |---|---|---|
 | ~~Create the GitHub organization and move the format, the kit, the code, the tests, and the research into this repository~~ Done on 7 October 2026, with a fresh history | The code gets its own home | Before publishing |
-| Continuous integration: build, the five suites, and the cross-implementation check on every push | The checks run by hand today | Before publishing |
+| ~~Continuous integration: build, the five suites, and the cross-implementation check on every push~~ Done on 7 October 2026, with the workflow [`.github/workflows/ci.yml`](../.github/workflows/ci.yml) | The checks run by hand today | Before publishing |
 | Publish `Pqax`, `Pqax.Cli`, `Pqax.Collector`, and `Pqax.Collector.ParquetNet` to NuGet, `pqax` to npm and PyPI, with release notes and the versioning policy of the plan | Decided: the libraries are the product | Before publishing |
 | Sites on pqax.org for the format and pqax.tools for the web reader | Domains registered on 7 October 2026 | Later |
 | VertiPaq Analyzer 3 collects through `Pqax.Collector` and shows the footprint next to the VertiPaq figures | The purpose of the format | Later |

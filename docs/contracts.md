@@ -8,21 +8,22 @@ What the first version delivers:
 
 | Piece | Content |
 |---|---|
-| C# `Pqax` | Reads, writes, and validates PQAX files. Targets netstandard2.0 and net8.0. No dependency beyond zip and JSON. Published later as a NuGet package. |
-| C# `Pqax.Cli` | `pqax check <file>` and `pqax info <file>`, over the library |
+| C# `Pqax` | Reads, writes, and validates PQAX files. Targets netstandard2.0 and net8.0. No dependency beyond zip and JSON. Published as a NuGet package from release 0.1.0. |
+| C# `Pqax.Cli` | `pqax check <file>`, `pqax info <file>`, and `pqax collect`, over the library and the collector |
 | C# `Pqax.Collector` | Collects Delta tables from a local folder or from OneLake, at collection levels 1 and 2, and writes a PQAX file. Its own Parquet footer parser. No Parquet library. |
 | C# `Pqax.Collector.ParquetNet` | Reads Delta checkpoints, which are Parquet files with nested data, with Parquet.Net. It plugs into the collector through an interface. |
 | TypeScript `pqax` | Reads and validates PQAX files in a browser and in Node, with no dependency |
-| Python `pqax` | Reads and validates PQAX files with the standard library, loads tables into data frames when pandas or polars is installed, and has a command line |
+| Python `pqax` | Reads, validates, and writes PQAX files with the standard library, loads tables into data frames when pandas or polars is installed, and has a command line |
 | Conformance kit | A JSON Schema of every part, sample files with expected results, the list of validation rules with their codes, and the fixture that the collector tests use |
 | Tests | For every piece, written from the conformance kit and the contracts of section 4, not from the code |
 
-Not in 0.1: the view model and the derived measures, Iceberg tables, obfuscation, a Python writer, publishing to any package registry, collection level 3 and 4.
+Not in 0.1: the view model and the derived measures, Iceberg tables, obfuscation, collection level 3 and 4. The packages are published from release 0.1.0, as section 7.1 says.
 
 ## 2. Layout
 
 ```
 README.md
+CHANGELOG.md                      what each release holds
 LICENSE                           MIT
 Pqax.slnx                         every .NET project
 docs/
@@ -54,6 +55,7 @@ tests/python                      pytest
 research/prototype                the prototype that tested the serialization
 research/detail-encoding          the experiment that compared encodings of a large table
 .github/workflows/ci.yml          builds and runs every suite
+.github/workflows/publish.yml     publishes a release to NuGet, npm, and PyPI
 ```
 
 Nothing under `src/`, `tests/`, and `conformance/` depends on a path outside those three folders. `research/` holds the experiments that the documents cite.
@@ -67,7 +69,7 @@ Nothing under `src/`, `tests/`, and `conformance/` depends on a path outside tho
 5. Names: a table or field keeps the name of the file, in the casing of the language: `fileCount` in TypeScript and in the file, `FileCount` in C#, `file_count` only for Python functions and never for the keys of a table, which stay as in the file.
 6. Every package has a README in the style of the documents of this repository: short sentences, tables, no marketing.
 7. A deviation from the contracts of section 4 is documented in the README of the package, with its reason.
-8. Nothing is published from a working copy. Releases follow the versioning of section 7.
+8. Nothing is published from a working copy. Releases follow the versioning of section 7.1.
 
 ## 4. Contracts
 
@@ -286,13 +288,23 @@ The item-by-item list is the [backlog](backlog.md). The lines below are the dire
 
 - **Real tables.** Run the collector against more real workspaces and against tables written by other engines, compare the results with what a probe read, and fix the differences.
 - **Format 1.0.** Freeze the format when the collector has run on tables written by at least three engines, and when the JSON Schema and the kit are complete. Until then, every change to the format bumps the kit and the three packages together.
-- **Publishing.** NuGet first, with the public API reviewed once more against the needs of DAX Studio, Bravo, and Tabular Editor. npm and PyPI follow. A package states which format versions it reads and writes.
+- **Publishing.** The six packages are published together from a GitHub release, as section 7.1 says, after the public API is reviewed once more against the needs of DAX Studio, Bravo, and Tabular Editor. A package states which format versions it reads and writes.
 - **Derived measures and the view model.** Define them in the object model, then implement them in TypeScript for the application and once more in C# only if a tool asks.
 - **VPAX integration.** The VPAX library learns to embed `Footprint.pqax` and the obfuscator learns to obfuscate it, with `FootprintBuilder.From` as the base.
 - **Python writer.** Offer or contribute a PQAX export to semantic-link-labs once the format is 1.0.
 - **Iceberg.** The model has the fields. The collector gets a metadata reader for Iceberg tables when a user asks.
 
 Risks to watch: the format changes before 1.0 and the three packages drift, which the kit guards against; the footer parser meets a Thrift construct it does not expect, which fuzzing with files from several writers guards against; checkpoints come in forms the probe never saw, such as multi-part checkpoints and v2 checkpoints with sidecars, which the collector must report as issues rather than fail on; memory in .NET for a million column chunks as row objects, which a columnar storage behind the same API fixes later.
+
+### 7.1 Versioning and releases
+
+This is the policy of version 0.1. It is not a decision of the maintainers, and the decision log of section 8 does not list it.
+
+1. The six packages share one version number: `Pqax`, `Pqax.Cli`, `Pqax.Collector`, and `Pqax.Collector.ParquetNet` on NuGet, `pqax` on npm, and `pqax` on PyPI. Packages with the same number read and write the same format.
+2. The major and minor numbers are those of the format version that the packages write, so format 0.1 gives packages 0.1.x. The patch number counts the releases that do not change the format.
+3. A package states in its README and in its metadata which format versions it reads, every version with the same major number up to its own, and which it writes, its own. A reader still opens a file of a later version with the same major number and reads what it knows, as section 9 of the [serialization](serialization.md) requires.
+4. A release is a GitHub release tagged `v<version>`, such as `v0.1.0`, and the packages are published from it. The publish workflow checks that the tag equals the version in `src/dotnet/Directory.Build.props`, `src/typescript/pqax/package.json`, and `src/python/pyproject.toml`, so that the three registries get the same version.
+5. The format reaches 1.0 only as the [backlog](backlog.md) says, and the packages then become 1.0.0 together.
 
 ## 8. Decision log
 

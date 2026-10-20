@@ -389,8 +389,8 @@ The prototype has a checker for the rules of sections 3 to 9: the container, the
 
 ## 15. Open questions
 
-1. **JSON Schema.** The format spec asks for a schema of every part. The names are now confirmed, so it can be written. The checker of the prototype is a first step toward a conformance test.
-2. **Media type.** Whether to register one for `.pqax`. Until then the embedded part uses `application/zip`.
-3. **File paths.** They take half of the `files` table. The object model already asks whether a collection may leave them out.
-4. **Issues.** They are in the summary. A collection that fails on every file would make the summary large, so a collector needs a limit.
-5. **.NET.** A reader and a writer in C# are still to be written, and the reader must also run on .NET Framework.
+1. **JSON Schema.** ~~The format spec asks for a schema of every part. The names are now confirmed, so it can be written. The checker of the prototype is a first step toward a conformance test.~~ Answered in version 0.1: the [conformance kit](../conformance/README.md) has a JSON Schema, draft 2020-12, of the manifest and of every table, in `conformance/schema`.
+2. **Media type.** Whether to register one for `.pqax`. Until then the embedded part uses `application/zip`. Tracked in section 4 of the [backlog](backlog.md), for later.
+3. **File paths.** They take half of the `files` table. The object model already asks whether a collection may leave them out. Tracked in section 4 of the [backlog](backlog.md), by the item on the open questions that touch the file, before 1.0.
+4. **Issues.** They are in the summary. A collection that fails on every file would make the summary large, so a collector needs a limit. Tracked in section 4 of the [backlog](backlog.md), by the item on the open questions that touch the file, before 1.0. Until then the collector keeps 100 issues for each table, and one more that counts the rest.
+5. **.NET.** ~~A reader and a writer in C# are still to be written, and the reader must also run on .NET Framework.~~ Answered in version 0.1: the reader and the writer are in [src/dotnet/Pqax](../src/dotnet/Pqax/README.md), and the reader runs on .NET Framework through the netstandard2.0 target.

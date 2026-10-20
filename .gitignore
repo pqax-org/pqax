@@ -19,3 +19,6 @@ build/
 
 # Outputs of the research scripts
 research/**/data/
+
+# Build outputs of agents and local packaging (dotnet --artifacts-path)
+.artifacts/
