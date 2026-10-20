@@ -1,11 +1,10 @@
 // The reader of the TypeScript package: what it reads and when, the facts of conformance/README.md that the expected
 // files do not hold, the invalid samples, and rows and indexById (plan 4.4).
-import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { PqaxError, embeddedSource, indexById, openEmbedded, openPqax, rows, validate } from "pqax";
 import {
   CountingSource, DETAIL_TABLES, EMBEDDED_PART, INVALID, REFUSED, SAMPLES, SUMMARY_TABLES, bytesOf, centralDirectory,
-  computeShape, dataOffset, entrySpans, expectedByName, invalidCases, rewriteZip, shapeOf, touchedEntries,
+  computeShape, dataOffset, entrySpans, expectedByName, invalidCases, join, rewriteZip, shapeOf, touchedEntries,
 } from "./kit";
 
 const EXPECTED = expectedByName();
@@ -190,7 +189,7 @@ describe("the invalid samples, read by a reader", () => {
 
 describe("cases that the kit has no file for", () => {
   it("reads a listed summary.json that the archive does not have as empty summary tables", async () => {
-    const bytes = rewriteZip(sample(), (name) => (name === "summary.json" ? null : undefined));
+    const bytes = await rewriteZip(sample(), (name) => (name === "summary.json" ? null : undefined));
     const doc = await openPqax(bytes);
     for (const name of SUMMARY_TABLES) {
       const table = (doc.summary as Record<string, { length: number } | undefined>)[name];
@@ -203,7 +202,7 @@ describe("cases that the kit has no file for", () => {
 
   it("refuses a package without the footprint with embedded.partMissing", async () => {
     const vpax = bytesOf(join(SAMPLES, "embedded-stored.vpax"));
-    const without = rewriteZip(vpax, (name) => (name === EMBEDDED_PART ? null : undefined));
+    const without = await rewriteZip(vpax, (name) => (name === EMBEDDED_PART ? null : undefined));
     expect(await codeOf(openEmbedded(without))).toBe("embedded.partMissing");
     expect(await codeOf(embeddedSource(without))).toBe("embedded.partMissing");
     expect(await codeOf(openEmbedded(vpax, "Nothing.pqax"))).toBe("embedded.partMissing");

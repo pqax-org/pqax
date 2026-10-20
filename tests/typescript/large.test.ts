@@ -1,8 +1,10 @@
 // A footprint of 600,000 column chunks in three parts of 250,000, 250,000, and 100,000 rows, read back whole and
-// validated. The package has no writer, so the file is written here with node:zlib. It takes a few seconds.
+// validated. The package has no writer, so the file is written here with the zip writer of the tests. It takes a few
+// seconds.
 import { describe, expect, it } from "vitest";
 import { openPqax, validate } from "pqax";
-import { CountingSource, toBytes, writeZip } from "./kit";
+import { CountingSource, toBytes } from "./kit";
+import { writeZip } from "./zip";
 
 const FILES = 100;
 const GROUPS_PER_FILE = 100;
@@ -15,7 +17,7 @@ function range(count: number, map: (index: number) => unknown = (index) => index
   return Array.from({ length: count }, (_, index) => map(index));
 }
 
-function largeFootprint(): { bytes: Uint8Array; sizes: number[] } {
+async function largeFootprint(): Promise<{ bytes: Uint8Array; sizes: number[] }> {
   const sizes = Array.from({ length: CHUNKS }, (_, index) => 1 + ((index * 7919) % 1000));
   const fileSizes = range(FILES, (index) => 1000 + index) as number[];
   const summary = {
@@ -56,12 +58,12 @@ function largeFootprint(): { bytes: Uint8Array; sizes: number[] } {
   const manifest = { format: "pqax", formatVersion: "0.1", collection: { collectorApp: "pqax-tests", level: 2 }, parts };
   entries.push(["manifest.json", toBytes(manifest)], ["summary.json", toBytes(summary)], ["files.json", toBytes(files)],
     ["rowGroups.json", toBytes(rowGroups)], ...chunkParts);
-  return { bytes: writeZip(entries), sizes };
+  return { bytes: await writeZip(entries), sizes };
 }
 
 describe("a footprint of 600,000 column chunks", () => {
   it("is read back whole from parts of 250,000 rows, and is valid", { timeout: 120_000 }, async () => {
-    const { bytes, sizes } = largeFootprint();
+    const { bytes, sizes } = await largeFootprint();
     const source = new CountingSource(bytes);
     const doc = await openPqax(source);
     expect(doc.manifest.parts.filter((part) => "columnChunks" in part.tables).map((part) => part.tables.columnChunks))

@@ -1,6 +1,6 @@
 # pqax
 
-Reads and validates PQAX files, in a browser and in Node. A PQAX file holds the footprint of a set of Parquet tables: a zip archive of JSON tables, as the [serialization](../../../docs/serialization.md) defines it. The package has no dependency.
+Reads and validates PQAX files, in a browser and in Node. A PQAX file holds the footprint of a set of Parquet tables: a zip archive of JSON tables, as the [serialization](https://github.com/pqax-org/pqax/blob/main/docs/serialization.md) defines it. The package has no dependency.
 
 Version 0.1.0. It reads format version 0.x, whatever the second number. It is not published to npm yet.
 
@@ -32,6 +32,29 @@ An input is a `Blob` (a `File` is one), an `ArrayBuffer`, a `Uint8Array` or anot
 | Browsers | Chrome and Edge 103, Firefox 113, Safari 16.4, or later |
 
 The reader inflates parts with `DecompressionStream("deflate-raw")`, which these versions have. The main entry imports nothing from Node. The Node helper is in the second entry, `pqax/node`.
+
+## Browsers
+
+The tests run in Node and in the three browser engines, through Playwright and the browser mode of vitest. The browsers run every test file but `node.test.ts`, which tests `pqax/node`.
+
+| Engine | Build tested | Browsers on the engine |
+|---|---|---|
+| Chromium | Chrome Headless Shell 156.0.8078.4 | Chrome, Edge |
+| Gecko | Firefox 157.0 | Firefox |
+| WebKit | WebKit 27.2 | Safari |
+
+These are the builds of Playwright 1.64.1, run on Windows 11 in October 2026. The WebKit build has the engine of Safari, JavaScriptCore included, but it is not Safari. No test ran in Safari or in Edge.
+
+`readTable` on one detail part of 250,000 column chunks, the most that a part may hold, takes these times. The part has 14 fields of integers, strings, lists of strings, booleans, and nulls: 22.2 MB of JSON, 2.6 MB deflated. A time is the median of nine reads, from three runs of `tests/typescript/timing.test.ts`, on an Intel Core Ultra X7 358H. Every read is within 30% of its median.
+
+| Platform | Stored | Deflated |
+|---|---|---|
+| Node 24.19 | 79 ms | 141 ms |
+| Chromium 156 | 77 ms | 90 ms |
+| Firefox 157 | 114 ms | 145 ms |
+| WebKit 27.2 | 50 ms | 62 ms |
+
+A time covers the read of the entry, the inflate of a deflated part, the decoding, `JSON.parse`, and the typing of the values. The test prints the times, and fails only when a read takes 10 seconds or more.
 
 ## Use
 
@@ -111,7 +134,7 @@ It also throws a `PqaxError` when an entry that it must read cannot be read: `co
 
 ## Validation
 
-`validate` reports the codes of section 4.1 of the [contracts](../../../docs/contracts.md), with the exact conditions of the [rules of the conformance kit](../../../conformance/rules.md). The result has `isValid`, `issues`, and `checks`, the number of checks that ran. An issue has a `code`, a `message`, and, when they apply, the `part`, the `table`, and the `field`. Messages hold names of the format, counts, rows, and ids, and no value from the data.
+`validate` reports the codes of section 4.1 of the [contracts](https://github.com/pqax-org/pqax/blob/main/docs/contracts.md), with the exact conditions of the [rules of the conformance kit](https://github.com/pqax-org/pqax/blob/main/conformance/rules.md). The result has `isValid`, `issues`, and `checks`, the number of checks that ran. An issue has a `code`, a `message`, and, when they apply, the `part`, the `table`, and the `field`. Messages hold names of the format, counts, rows, and ids, and no value from the data.
 
 It reports every issue that it finds, and skips the rules that an earlier failure leaves without the data that they need:
 
@@ -142,7 +165,7 @@ Notes on what it checks:
 - The reader does not replace a reference to a missing row with `null` in the arrays: checking a reference to a detail table would mean reading that table. `indexById` finds nothing for such a reference.
 - Entry names are read as UTF-8.
 - `validate` holds every part in memory, and scans the text of each part once more after `JSON.parse`, to find what `JSON.parse` loses: repeated member names and numbers written with a fraction or an exponent. On a file with 1,000,000 column chunks in four parts, `readTable` takes about 0.4 s and `validate` about 1.1 s, in Node 24.
-- Tested in Node only. The main entry uses only APIs that browsers have, but no browser ran it.
+- Tested in Node 24 and in the Playwright builds of Chromium, Firefox, and WebKit, on Windows. Not tested in Safari or Edge themselves, nor on a phone.
 
 ## Build and test
 
@@ -150,9 +173,13 @@ Notes on what it checks:
 npm install
 npm run build        # tsc, into dist/
 npm run typecheck
-npm test             # vitest, on the tests in tests/typescript at the root of the repository
+npm test             # vitest in Node, on the tests in tests/typescript at the root of the repository
+npx playwright install chromium firefox webkit   # once, before the next line: about 1.2 GB
+npm run test:browsers   # the same tests in the three browsers, headless, but node.test.ts
 npm run smoke        # after a build: the conformance kit, through the built package
 node scripts/smoke.mjs file.pqax ...   # after a build: opens, reads, and validates the files
 ```
 
-The tests import the package as `pqax` and `pqax/node`. The vitest configuration maps both names to the TypeScript sources, so the tests need no build.
+The tests import the package as `pqax` and `pqax/node`. The vitest configuration maps both names to the TypeScript sources, so the tests need no build. It also turns the files of the conformance kit into a module, `virtual:pqax-kit`, so that the tests read the samples in the same way in Node and in a browser. `vitest.browser.config.ts` runs the tests in the browsers.
+
+`npm publish` runs the build and `npm test` first. It publishes with provenance, which npm creates only in a CI service such as GitHub Actions.

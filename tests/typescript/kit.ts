@@ -1,32 +1,21 @@
-// What the TypeScript tests share: where the conformance kit is, what it expects, the numbers of the expected shape,
-// a ByteSource that counts its reads, and a small zip reader and writer to build the cases that the kit has no file for.
-// The numbers are computed here from what the reader returns, as conformance/README.md defines them, so that the
-// tests check the package and not a copy of its code. Nothing here imports the package.
-import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
-import { crc32, deflateRawSync, inflateRawSync } from "node:zlib";
+// What the TypeScript tests share: the files of the conformance kit and what it expects, the numbers of the expected
+// shape, a ByteSource that counts its reads, and a small zip reader to look into the files. The zip writer is in
+// zip.ts. The numbers are computed here from what the reader returns, as conformance/README.md defines them, so that
+// the tests check the package and not a copy of its code. Nothing here imports the package or a module of Node, so
+// that the tests run in browsers too.
+import { files, root } from "virtual:pqax-kit";
+import { inflateRaw, writeZip } from "./zip";
 
-function findRoot(start: string): string {
-  let folder = start;
-  for (;;) {
-    if (existsSync(join(folder, "conformance")) && statSync(join(folder, "conformance")).isDirectory() &&
-        existsSync(join(folder, "Pqax.slnx"))) {
-      return folder;
-    }
-    const parent = dirname(folder);
-    if (parent === folder) {
-      throw new Error(`No folder with conformance/ and Pqax.slnx above ${start}`);
-    }
-    folder = parent;
-  }
-}
+const decoder = new TextDecoder();
+const encoder = new TextEncoder();
 
-export const ROOT = findRoot(dirname(fileURLToPath(import.meta.url)));
-export const KIT = join(ROOT, "conformance");
-export const SAMPLES = join(KIT, "samples");
-export const INVALID = join(SAMPLES, "invalid");
-export const EXPECTED = join(KIT, "expected");
+// The paths of the kit are relative to conformance/, with forward slashes. The module "virtual:pqax-kit", which
+// vitest.config.ts makes when the tests start, holds the files.
+export const SAMPLES = "samples";
+export const INVALID = "samples/invalid";
+export const EXPECTED = "expected";
+/** The folder of the kit on disk, for the tests of pqax/node, which read files. */
+export const KIT_DIR: string = root;
 export const EMBEDDED_PART = "Footprint.pqax";
 
 export const SUMMARY_TABLES = ["sources", "tables", "columns", "partitionSpecs", "partitionFields", "sortOrders",
@@ -83,14 +72,50 @@ export interface InvalidCase {
   change: string;
 }
 
+const kitBytes = new Map<string, Uint8Array<ArrayBuffer>>();
+
+function kitFile(path: string): Uint8Array<ArrayBuffer> {
+  let bytes = kitBytes.get(path);
+  if (bytes === undefined) {
+    const base64 = files[path];
+    if (base64 === undefined) {
+      throw new Error(`The conformance kit has no file ${path}`);
+    }
+    const binary = atob(base64);
+    bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) {
+      bytes[i] = binary.charCodeAt(i);
+    }
+    kitBytes.set(path, bytes);
+  }
+  return bytes;
+}
+
+/** Joins the parts of a path of the kit. */
+export function join(...parts: string[]): string {
+  return parts.join("/");
+}
+
+/** The bytes of a file of the kit, as a new Uint8Array that starts at offset 0 of its own buffer. */
+export function bytesOf(path: string): Uint8Array<ArrayBuffer> {
+  return kitFile(path).slice();
+}
+
+/** The text of a file of the kit. */
+export function textOf(path: string): string {
+  return decoder.decode(kitFile(path));
+}
+
 export function readJson<T>(path: string): T {
-  return JSON.parse(readFileSync(path, "utf8")) as T;
+  return JSON.parse(textOf(path)) as T;
 }
 
 /** Every expected file, by its name without .json, such as "sample". */
 export function expectedByName(): Record<string, Expected> {
   const result: Record<string, Expected> = {};
-  for (const file of readdirSync(EXPECTED).filter((name) => name.endsWith(".json")).sort()) {
+  const folder = `${EXPECTED}/`;
+  const names = Object.keys(files).filter((path) => path.startsWith(folder)).map((path) => path.slice(folder.length));
+  for (const file of names.filter((name) => name.endsWith(".json") && !name.includes("/")).sort()) {
     result[file.slice(0, -5)] = readJson<Expected>(join(EXPECTED, file));
   }
   return result;
@@ -98,11 +123,6 @@ export function expectedByName(): Record<string, Expected> {
 
 export function invalidCases(): Record<string, InvalidCase> {
   return readJson<Record<string, InvalidCase>>(join(INVALID, "expected.json"));
-}
-
-/** The bytes of a file as a plain Uint8Array that starts at offset 0 of its own buffer. */
-export function bytesOf(path: string): Uint8Array<ArrayBuffer> {
-  return new Uint8Array(readFileSync(path));
 }
 
 /** The keys of a columnar table that hold values: every member that is an array. */
@@ -209,6 +229,28 @@ export function shapeOf(expected: Expected): Shape {
   return shape;
 }
 
+/** What {@link documentShape} needs of an open document. */
+export interface DocumentLike {
+  readonly manifest: {
+    format?: unknown;
+    formatVersion?: unknown;
+    parts: readonly { name: string; tables: Readonly<Record<string, number>> }[];
+  };
+  readonly summary: { readonly tables?: unknown; readonly physicalColumns?: unknown; readonly physicalSchemas?: unknown };
+  rowCount(name: string): number;
+  readTable(name: "columnChunks"): Promise<unknown>;
+}
+
+/** The numbers of an expected file, computed from an open document. */
+export async function documentShape(doc: DocumentLike): Promise<Shape> {
+  return computeShape(doc.manifest, (name) => doc.rowCount(name), {
+    tables: doc.summary.tables,
+    columnChunks: await doc.readTable("columnChunks"),
+    physicalColumns: doc.summary.physicalColumns,
+    physicalSchemas: doc.summary.physicalSchemas,
+  });
+}
+
 // ---- a ByteSource that counts its reads ----
 
 export class CountingSource {
@@ -233,7 +275,7 @@ export class CountingSource {
   }
 }
 
-// ---- a small zip reader and writer ----
+// ---- a small zip reader ----
 
 export interface ZipEntryInfo {
   name: string;
@@ -243,9 +285,6 @@ export interface ZipEntryInfo {
   size: number;
   offset: number;
 }
-
-const decoder = new TextDecoder();
-const encoder = new TextEncoder();
 
 /** The entries of the central directory, and where the directory starts. */
 export function centralDirectory(bytes: Uint8Array): { entries: ZipEntryInfo[]; directoryOffset: number } {
@@ -291,12 +330,12 @@ export function dataOffset(bytes: Uint8Array, entry: ZipEntryInfo): number {
 }
 
 /** The content of every entry, stored or deflated, by name. */
-export function readEntries(bytes: Uint8Array): Map<string, Uint8Array> {
+export async function readEntries(bytes: Uint8Array): Promise<Map<string, Uint8Array>> {
   const result = new Map<string, Uint8Array>();
   for (const entry of centralDirectory(bytes).entries) {
     const start = dataOffset(bytes, entry);
     const raw = bytes.subarray(start, start + entry.compressedSize);
-    result.set(entry.name, entry.method === 0 ? raw.slice() : new Uint8Array(inflateRawSync(raw)));
+    result.set(entry.name, entry.method === 0 ? raw.slice() : await inflateRaw(raw));
   }
   return result;
 }
@@ -324,72 +363,11 @@ export function touchedEntries(spans: Map<string, [number, number]>, ranges: rea
   return touched;
 }
 
-/** A zip archive with these entries, in this order, deflated or stored, all dated 2026-10-07. */
-export function writeZip(entries: readonly [string, Uint8Array | string][], method: 0 | 8 = 8): Uint8Array {
-  const chunks: Uint8Array[] = [];
-  const directory: Uint8Array[] = [];
-  let offset = 0;
-  const date = ((2026 - 1980) << 9) | (10 << 5) | 7;
-  for (const [name, content] of entries) {
-    const data = typeof content === "string" ? encoder.encode(content) : content;
-    const stored = method === 0 ? data : new Uint8Array(deflateRawSync(data));
-    const nameBytes = encoder.encode(name);
-    const crc = crc32(data) >>> 0;
-    const local = new Uint8Array(30 + nameBytes.length);
-    const lv = new DataView(local.buffer);
-    lv.setUint32(0, 0x04034b50, true);
-    lv.setUint16(4, 20, true);
-    lv.setUint16(6, 0, true);
-    lv.setUint16(8, method, true);
-    lv.setUint16(10, 0, true);
-    lv.setUint16(12, date, true);
-    lv.setUint32(14, crc, true);
-    lv.setUint32(18, stored.length, true);
-    lv.setUint32(22, data.length, true);
-    lv.setUint16(26, nameBytes.length, true);
-    lv.setUint16(28, 0, true);
-    local.set(nameBytes, 30);
-    const central = new Uint8Array(46 + nameBytes.length);
-    const cv = new DataView(central.buffer);
-    cv.setUint32(0, 0x02014b50, true);
-    cv.setUint16(4, 20, true);
-    cv.setUint16(6, 20, true);
-    cv.setUint16(8, 0, true);
-    cv.setUint16(10, method, true);
-    cv.setUint16(12, 0, true);
-    cv.setUint16(14, date, true);
-    cv.setUint32(16, crc, true);
-    cv.setUint32(20, stored.length, true);
-    cv.setUint32(24, data.length, true);
-    cv.setUint16(28, nameBytes.length, true);
-    cv.setUint32(42, offset, true);
-    central.set(nameBytes, 46);
-    chunks.push(local, stored);
-    directory.push(central);
-    offset += local.length + stored.length;
-  }
-  const directorySize = directory.reduce((sum, chunk) => sum + chunk.length, 0);
-  const end = new Uint8Array(22);
-  const ev = new DataView(end.buffer);
-  ev.setUint32(0, 0x06054b50, true);
-  ev.setUint16(8, entries.length, true);
-  ev.setUint16(10, entries.length, true);
-  ev.setUint32(12, directorySize, true);
-  ev.setUint32(16, offset, true);
-  const all = [...chunks, ...directory, end];
-  const result = new Uint8Array(all.reduce((sum, chunk) => sum + chunk.length, 0));
-  let position = 0;
-  for (const chunk of all) {
-    result.set(chunk, position);
-    position += chunk.length;
-  }
-  return result;
-}
-
 /** A copy of a zip archive whose entries go through change: new content, null to drop the entry, undefined to keep it. */
-export function rewriteZip(bytes: Uint8Array, change: (name: string, data: Uint8Array) => Uint8Array | string | null | undefined): Uint8Array {
+export async function rewriteZip(bytes: Uint8Array,
+  change: (name: string, data: Uint8Array) => Uint8Array | string | null | undefined): Promise<Uint8Array> {
   const entries: [string, Uint8Array | string][] = [];
-  for (const [name, data] of readEntries(bytes)) {
+  for (const [name, data] of await readEntries(bytes)) {
     const replaced = change(name, data);
     if (replaced === null) {
       continue;

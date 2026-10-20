@@ -5,11 +5,10 @@
   "homepage": "https://pqax.org",
   "repository": {
     "type": "git",
-    "url": "https://github.com/pqax-org/pqax.git",
+    "url": "git+https://github.com/pqax-org/pqax.git",
     "directory": "src/typescript/pqax"
   },
   "description": "Reads and validates PQAX files, the footprint of Parquet tables, in a browser and in Node",
-  "private": true,
   "type": "module",
   "exports": {
     ".": {
@@ -34,10 +33,18 @@
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
-    "smoke": "node scripts/smoke.mjs --kit"
+    "test:browsers": "vitest run --config vitest.browser.config.ts",
+    "smoke": "node scripts/smoke.mjs --kit",
+    "prepublishOnly": "npm run build && npm test"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
   },
   "devDependencies": {
     "@types/node": "^26.6.4",
+    "@vitest/browser-playwright": "^5.0.3",
+    "playwright": "^1.64.1",
     "typescript": "^7.0.2",
     "vitest": "^5.0.3"
   }

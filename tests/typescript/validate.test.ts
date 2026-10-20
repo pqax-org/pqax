@@ -1,13 +1,10 @@
 // The validator of the TypeScript package against the conformance kit (conformance/README.md, "A validator test", and
-// plan 4.1 and 4.4).
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
+// plan 4.1 and 4.4). node.test.ts adds fromFile of pqax/node.
 import { describe, expect, it } from "vitest";
 import { embeddedSource, type PqaxInput, validate } from "pqax";
-import { fromFile } from "pqax/node";
 import {
-  CountingSource, EMBEDDED_PART, INVALID, KIT, PLAN_CODES, SAMPLES, bytesOf, expectedByName, invalidCases, json,
-  rewriteZip, toBytes,
+  CountingSource, EMBEDDED_PART, INVALID, PLAN_CODES, SAMPLES, bytesOf, expectedByName, invalidCases, join, json,
+  rewriteZip, textOf, toBytes,
 } from "./kit";
 
 const EXPECTED = expectedByName();
@@ -51,7 +48,7 @@ describe("invalid samples", () => {
 
 describe("the validator", () => {
   it("lists the codes of rules.md, which are the codes of the plan", () => {
-    const text = readFileSync(join(KIT, "rules.md"), "utf8");
+    const text = textOf("rules.md");
     const section = text.split("## 1. The codes")[1]!.split("\n## ")[0]!;
     const listed = new Set([...section.matchAll(/^\| `([A-Za-z0-9]+\.[A-Za-z0-9]+)` \|/gm)].map((match) => match[1]!));
     expect([...listed].sort()).toEqual([...PLAN_CODES].sort());
@@ -73,14 +70,12 @@ describe("the validator", () => {
   });
 
   it("gives the same result from every kind of input", async () => {
-    const path = join(INVALID, "totals.fileSize.pqax");
-    const bytes = bytesOf(path);
+    const bytes = bytesOf(join(INVALID, "totals.fileSize.pqax"));
     const results = [
       await validate(bytes),
       await validate(new Blob([bytes])),
       await validate(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength)),
       await validate(new CountingSource(bytes)),
-      await validate(await fromFile(path)),
     ];
     for (const result of results) {
       expect([...codes(result)]).toEqual(["totals.fileSize"]);
@@ -89,7 +84,7 @@ describe("the validator", () => {
   });
 
   it("reports every issue, not only the first", async () => {
-    const bytes = rewriteZip(bytesOf(join(SAMPLES, "sample.pqax")), (name, data) => {
+    const bytes = await rewriteZip(bytesOf(join(SAMPLES, "sample.pqax")), (name, data) => {
       const content = json(data);
       if (name === "summary.json") {
         content.tables.fileCount[0] += 1;
@@ -112,7 +107,7 @@ describe("the validator", () => {
   });
 
   it("accepts a valid sample written again by another zip writer", async () => {
-    const bytes = rewriteZip(bytesOf(join(SAMPLES, "sample.pqax")), () => undefined);
+    const bytes = await rewriteZip(bytesOf(join(SAMPLES, "sample.pqax")), () => undefined);
     const result = await validate(bytes);
     expect(result.issues.map((issue) => issue.code)).toEqual([]);
   });
