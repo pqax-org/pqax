@@ -1,6 +1,6 @@
 # Pqax.Collector.ParquetNet
 
-Reads Delta checkpoints for the [PQAX collector](../Pqax.Collector/README.md). A checkpoint is a Parquet file with nested data, which needs a complete Parquet reader, so the collector takes it through an interface, `ICheckpointReader`, and this package implements it with [Parquet.Net](https://github.com/aloneguid/parquet-dotnet).
+Reads Delta checkpoints for the [PQAX collector](https://github.com/pqax-org/pqax/blob/main/src/dotnet/Pqax.Collector/README.md). A checkpoint is a Parquet file with nested data, which needs a complete Parquet reader, so the collector takes it through an interface, `ICheckpointReader`, and this package implements it with [Parquet.Net](https://github.com/aloneguid/parquet-dotnet).
 
 | | |
 |---|---|

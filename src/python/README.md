@@ -1,6 +1,6 @@
 # pqax for Python
 
-`pqax` reads, validates, and writes PQAX files: the footprint of Parquet tables, as a zip of JSON tables. The format is defined by the [serialization](../../docs/serialization.md) and the [object model](../../docs/object-model.md), and the validation rules by the [conformance kit](../../conformance/rules.md).
+`pqax` reads, validates, and writes PQAX files: the footprint of Parquet tables, as a zip of JSON tables. The format is defined by the [serialization](https://github.com/pqax-org/pqax/blob/main/docs/serialization.md) and the [object model](https://github.com/pqax-org/pqax/blob/main/docs/object-model.md), and the validation rules by the [conformance kit](https://github.com/pqax-org/pqax/blob/main/conformance/rules.md).
 
 | | |
 |---|---|
@@ -69,7 +69,7 @@ for issue in result.issues:
     print(issue.code, issue.message, issue.part, issue.table, issue.field)
 ```
 
-The validator reports every issue that it finds, with the codes of section 4.1 of the [contracts](../../docs/contracts.md): `container.*`, `json.*`, `manifest.*`, `part.*`, `table.*`, `depth.*`, `totals.*`, and, for `validate_embedded`, `embedded.partMissing`. A rule that cannot be evaluated because an earlier one failed is skipped. A file that cannot be opened raises `OSError`. A file that is not a zip archive is an issue, `container.manifestMissing`, and so is a VPAX file given to `validate`.
+The validator reports every issue that it finds, with the codes of section 4.1 of the [contracts](https://github.com/pqax-org/pqax/blob/main/docs/contracts.md): `container.*`, `json.*`, `manifest.*`, `part.*`, `table.*`, `depth.*`, `totals.*`, and, for `validate_embedded`, `embedded.partMissing`. A rule that cannot be evaluated because an earlier one failed is skipped. A file that cannot be opened raises `OSError`. A file that is not a zip archive is an issue, `container.manifestMissing`, and so is a VPAX file given to `validate`.
 
 ## Data frames
 
