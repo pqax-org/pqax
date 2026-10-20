@@ -7,6 +7,7 @@ import sys
 
 import pytest
 
+import pqax
 from pqax_kit import INVALID, ROOT, SAMPLES, code_pattern, expected_by_name, invalid_cases
 
 EXPECTED = expected_by_name()
@@ -73,6 +74,18 @@ def test_info_on_a_file_that_a_reader_refuses_fails():
     code, _, err = run("info", INVALID / "manifest.versionUnknown.pqax")
     assert code != 0
     assert err.strip()
+
+
+def test_the_version_is_the_one_of_pyproject_everywhere():
+    """pyproject.toml, which the release checks against the tag, pqax.__version__, --version, and the README."""
+    package = ROOT / "src" / "python"
+    version = re.search(r'^version = "([^"]+)"', (package / "pyproject.toml").read_text(encoding="utf-8"),
+                        flags=re.MULTILINE).group(1)
+    assert pqax.__version__ == version
+    code, out, _ = run("--version")
+    assert code == 0
+    assert f"pqax {version}," in out
+    assert f"| Version | {version} |" in (package / "README.md").read_text(encoding="utf-8")
 
 
 def test_check_of_a_vpax_checks_the_embedded_footprint():

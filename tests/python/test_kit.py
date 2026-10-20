@@ -72,7 +72,7 @@ def test_rules_list_the_codes_of_the_plan():
 def test_valid_samples_match_the_schema():
     validators = schema_validators()
     if validators is None:
-        pytest.skip("jsonschema is not installed")
+        pytest.skip("jsonschema 4.18 or later, with referencing, is not installed")
     for path in sorted(SAMPLES.iterdir()):
         if path.suffix in (".pqax", ".vpax"):
             assert schema_errors(footprint_bytes(path), validators) == [], path.name

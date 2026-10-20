@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=64"]
+requires = ["setuptools>=77"]  # 77 reads the license as an SPDX expression
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -8,6 +8,7 @@ version = "0.1.0"
 description = "Read, validate, and write PQAX files: the footprint of Parquet tables, for analysis without access to the data."
 readme = "README.md"
 license = "MIT"
+license-files = ["LICENSE"]
 requires-python = ">=3.10"
 dependencies = []
 authors = [{ name = "SQLBI" }]
@@ -28,8 +29,8 @@ classifiers = [
 
 [project.optional-dependencies]
 pandas = ["pandas"]
-polars = ["polars"]
-dev = ["pytest", "jsonschema"]
+polars = ["polars>=1.0"]
+dev = ["pytest", "jsonschema>=4.18"]
 
 [project.scripts]
 pqax = "pqax.__main__:main"

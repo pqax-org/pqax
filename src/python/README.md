@@ -7,9 +7,15 @@
 | Version | 0.1.0 |
 | Format | Reads every version 0.x. Writes version 0.1. |
 | Python | 3.10 or later |
-| Dependencies | None. `to_dataframe` uses pandas or polars when one is installed. |
+| Dependencies | None. `to_dataframe` uses pandas, or polars 1.0 or later, when one is installed. |
 
 ## Install
+
+```bash
+pip install pqax                       # the package and the pqax command
+pip install "pqax[pandas]"             # with pandas, for to_dataframe
+pip install "pqax[polars]"             # with polars, for to_dataframe
+```
 
 From the root of the repository:
 
@@ -18,6 +24,8 @@ pip install -e src/python              # the package and the pqax command
 pip install -e "src/python[pandas]"    # with pandas, for to_dataframe
 pip install -e "src/python[dev]"       # with pytest and jsonschema, for the tests
 ```
+
+Python versions: 3.10 or later. The tests run on 3.10 and 3.14, each without extras and with both pandas and polars. The package has no dependency: the `pandas` and `polars` extras only install the library that `to_dataframe` uses.
 
 ## Read a file
 
@@ -70,7 +78,9 @@ frame = pqax.to_dataframe(doc.table("columnChunks"))             # pandas when i
 frame = pqax.to_dataframe(doc.summary["tables"], library="polars")
 ```
 
-With pandas, an integer or boolean column with `None` values gets a nullable type, so it does not turn into floats. Lists and objects stay as Python objects. Timestamps stay strings; `pqax.parse_timestamp` turns one into a `datetime`.
+With pandas, an integer or boolean column with `None` values gets a nullable type, so it does not turn into floats. Lists and objects stay as Python objects. Timestamps stay strings; `pqax.parse_timestamp` turns one into a `datetime`. The rows of `doc.rows(name)` give the same frame as `doc.table(name)`.
+
+`to_dataframe` needs polars 1.0 or later, and raises `ImportError` with an earlier version, which loses the values of a column that mixes types.
 
 ## Write a file
 
@@ -145,3 +155,4 @@ All derive from `PqaxError`, whose `code` is the validation code that the error 
 - The reader replaces a value of another JSON type with `None` only at the level of the field. An element of a list, or a member of a nested object, is returned as the file has it.
 - `container.zip64` looks at the central directory and its locator, as the kit says. A ZIP64 field in a local header alone is not reported.
 - No pandas or polars type is chosen for timestamps, lists, maps, or nested objects.
+- On Python 3.10, `parse_timestamp` reads fewer of the other forms of ISO 8601, as `datetime.fromisoformat` does there: a fraction of seconds with other than three or six digits, a comma before the fraction, an offset without a colon, and the basic form, such as `20261005T081530Z`, raise `ValueError`. The form of the format reads on every version.

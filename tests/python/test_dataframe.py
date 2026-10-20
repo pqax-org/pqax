@@ -3,14 +3,17 @@ from __future__ import annotations
 
 import importlib.util
 import sys
+import types
 
 import pytest
 
 import pqax
-from pqax_kit import SAMPLES
+from pqax_kit import SAMPLES, expected_by_name
 
 HAS_PANDAS = importlib.util.find_spec("pandas") is not None
 HAS_POLARS = importlib.util.find_spec("polars") is not None
+LIBRARIES = [pytest.param("pandas", marks=pytest.mark.skipif(not HAS_PANDAS, reason="pandas is not installed")),
+             pytest.param("polars", marks=pytest.mark.skipif(not HAS_POLARS, reason="polars is not installed"))]
 
 
 @pytest.fixture(scope="module")
@@ -62,3 +65,37 @@ def test_without_pandas_and_polars_to_dataframe_raises_import_error(files, monke
     monkeypatch.setitem(sys.modules, "polars", None)
     with pytest.raises(ImportError):
         pqax.to_dataframe(files)
+
+
+@pytest.mark.parametrize("library", LIBRARIES)
+def test_every_table_of_every_sample_gives_a_frame_and_its_rows_the_same_frame(library):
+    for name, expected in sorted(expected_by_name().items()):
+        path = str(SAMPLES / expected["file"])
+        part = expected["embeddedPart"]
+        with (pqax.open_embedded(path, part) if part else pqax.open(path)) as doc:
+            for table_name in doc.table_names:
+                where = f"{name}, {table_name}"
+                table = doc.table(table_name)
+                rows = list(doc.rows(table_name))
+                frame = pqax.to_dataframe(table, library=library)
+                assert frame.shape == (len(rows), len(table)), where
+                assert list(frame.columns) == list(table), where
+                from_rows = pqax.to_dataframe(rows, library=library)
+                if library == "pandas":
+                    import pandas
+
+                    pandas.testing.assert_frame_equal(from_rows, frame, obj=where)
+                else:
+                    assert from_rows.equals(frame), where
+
+
+def test_a_polars_before_1_0_is_refused(files, monkeypatch):
+    monkeypatch.setitem(sys.modules, "polars", types.SimpleNamespace(__version__="0.20.31"))
+    with pytest.raises(ImportError, match="polars 1.0 or later"):
+        pqax.to_dataframe(files, library="polars")
+
+
+def test_a_row_that_is_not_a_mapping_is_refused(monkeypatch):
+    monkeypatch.setitem(sys.modules, "pandas", types.SimpleNamespace())  # refused before pandas is used
+    with pytest.raises(TypeError):
+        pqax.to_dataframe([(1, 2)], library="pandas")
