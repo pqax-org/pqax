@@ -19,8 +19,13 @@ namespace Pqax.Collector;
 /// The token comes from a delegate, so that the library does not depend on Azure.Identity. The delegate is called
 /// before every request and is expected to cache the token; it must return an access token for <see cref="Scope"/>.
 /// The token is sent in the <c>Authorization</c> header and is never stored or written anywhere.
+/// <para>
+/// The discovery records <c>abfss://&lt;workspace&gt;@&lt;host&gt;/&lt;item&gt;</c> as the location of a source, with the
+/// host of the endpoint and the workspace and item as the caller gave them, and the identifiers <c>workspaceId</c> and
+/// <c>itemId</c> for those given as ids.
+/// </para>
 /// </remarks>
-public sealed class OneLakeStorage : IStorage, IStorageStatistics, IDisposable
+public sealed class OneLakeStorage : IStorage, IStorageStatistics, ILocatedStorage, IDisposable
 {
     /// <summary>The scope of the access token that the token provider must return.</summary>
     public const string Scope = "https://storage.azure.com/.default";
@@ -36,6 +41,7 @@ public sealed class OneLakeStorage : IStorage, IStorageStatistics, IDisposable
     private readonly HttpClient http;
     private readonly bool ownsClient;
     private readonly string baseUrl;
+    private readonly string authority;
     private readonly int maxRetries;
     private readonly Action<string>? trace;
     private long requests;
@@ -72,8 +78,9 @@ public sealed class OneLakeStorage : IStorage, IStorageStatistics, IDisposable
             ownsClient = true;
         }
 
-        string endpoint = (options.Endpoint ?? DefaultEndpoint).ToString().TrimEnd('/');
-        baseUrl = endpoint + "/" + Uri.EscapeDataString(workspace);
+        Uri endpointUri = options.Endpoint ?? DefaultEndpoint;
+        baseUrl = endpointUri.ToString().TrimEnd('/') + "/" + Uri.EscapeDataString(workspace);
+        authority = endpointUri.Authority;
     }
 
     /// <summary>The name or the id of the workspace.</summary>
@@ -192,6 +199,37 @@ public sealed class OneLakeStorage : IStorage, IStorageStatistics, IDisposable
         }
     }
 
+    /// <summary>The ABFSS URI of a folder of the workspace, with the workspace as the caller gave it, name or id.</summary>
+    string ILocatedStorage.LocationOf(string path)
+    {
+        string folder = path.Trim('/');
+        return "abfss://" + Workspace + "@" + authority + (folder.Length == 0 ? string.Empty : "/" + folder);
+    }
+
+    /// <summary>
+    /// <c>workspaceId</c> when the workspace was given as an id, and <c>itemId</c> when the item was. A name gives no
+    /// identifier: the listing of the DFS endpoint has no id, and the collector does not guess one.
+    /// </summary>
+    IReadOnlyDictionary<string, string>? ILocatedStorage.IdentifiersOf(string item)
+    {
+        var identifiers = new SortedDictionary<string, string>(StringComparer.Ordinal);
+        if (IsId(Workspace))
+        {
+            identifiers["workspaceId"] = Workspace;
+        }
+
+        string folder = item.Trim('/');
+        if (IsId(folder))
+        {
+            identifiers["itemId"] = folder;
+        }
+
+        return identifiers.Count == 0 ? null : identifiers;
+    }
+
+    /// <summary>Whether a workspace or an item is named by its id: a GUID with hyphens, as Fabric writes its ids.</summary>
+    private static bool IsId(string value) => Guid.TryParseExact(value, "D", out _);
+
     private static IReadOnlyList<StorageEntry> Sorted(List<StorageEntry> entries)
     {
         entries.Sort((a, b) => string.CompareOrdinal(a.Name, b.Name));
@@ -305,7 +343,17 @@ public sealed class OneLakeStorage : IStorage, IStorageStatistics, IDisposable
 
     private async Task<byte[]> ReadBodyAsync(HttpResponseMessage response)
     {
-        byte[] body = await response.Content.ReadAsByteArrayAsync().ConfigureAwait(false);
+        byte[] body;
+        try
+        {
+            body = await response.Content.ReadAsByteArrayAsync().ConfigureAwait(false);
+        }
+        catch (Exception e) when (e is HttpRequestException || e is System.IO.IOException)
+        {
+            // The connection broke while the answer came in: a failed request, as IStorage says.
+            throw new StorageException("The answer of OneLake could not be read: " + e.GetType().Name + ".", null, e);
+        }
+
         Interlocked.Add(ref bytes, body.Length);
         return body;
     }
@@ -326,7 +374,9 @@ public sealed class OneLakeStorage : IStorage, IStorageStatistics, IDisposable
             HttpResponseMessage response;
             try
             {
-                response = await http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellation).ConfigureAwait(false);
+                // The body is read here too, so the timeout of the client and the cancellation of the caller cover a body that
+                // stalls after the headers. Every answer is small enough to buffer: a listing, a log file, a footer tail.
+                response = await http.SendAsync(request, HttpCompletionOption.ResponseContentRead, cancellation).ConfigureAwait(false);
             }
             catch (HttpRequestException) when (attempt < maxRetries)
             {
@@ -345,6 +395,12 @@ public sealed class OneLakeStorage : IStorage, IStorageStatistics, IDisposable
             {
                 Interlocked.Increment(ref requests);
                 throw new StorageException("A request to OneLake failed: " + e.GetType().Name + ".", null, e);
+            }
+            catch (TaskCanceledException e) when (!cancellation.IsCancellationRequested)
+            {
+                // The last attempt timed out: a failed request, as IStorage says, and not a cancellation.
+                Interlocked.Increment(ref requests);
+                throw new StorageException("A request to OneLake timed out.", null, e);
             }
 
             Interlocked.Increment(ref requests);

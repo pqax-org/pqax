@@ -1,6 +1,6 @@
 # pqax
 
-The command line of PQAX. It checks a PQAX file against the rules of the format, shows what a PQAX file holds, and collects a footprint. It is a thin layer over the [Pqax](../Pqax/README.md) and [Pqax.Collector](../Pqax.Collector/README.md) libraries: everything it does, the libraries do too.
+The command line of PQAX. It checks a PQAX file against the rules of the format, shows what a PQAX file holds, and collects a footprint. It is a thin layer over the [Pqax](https://github.com/pqax-org/pqax/blob/main/src/dotnet/Pqax/README.md) and [Pqax.Collector](https://github.com/pqax-org/pqax/blob/main/src/dotnet/Pqax.Collector/README.md) libraries: everything it does, the libraries do too.
 
 It is packed as a .NET tool, `Pqax.Cli`, with the command `pqax`. It needs .NET 8 or later. The package is not published yet.
 
@@ -39,7 +39,7 @@ part.rowCount: commits.engine has 5 values, and the manifest states 6 rows of co
 part.rowCount.array.pqax: invalid, 1 issue in 743 checks
 ```
 
-The codes are those of the [rules of the conformance kit](../../../conformance/rules.md). An issue line starts with the code, followed by a colon. The last line starts with the file name.
+The codes are those of the [rules of the conformance kit](https://github.com/pqax-org/pqax/blob/main/conformance/rules.md). An issue line starts with the code, followed by a colon. The last line starts with the file name.
 
 `info`:
 
@@ -73,14 +73,14 @@ pqax collect --local <folder> --output <file.pqax> [--item <name.Kind>]... [opti
 pqax collect --workspace <name or id> --item <name.Kind> [--item ...] --output <file.pqax> [--tenant <id>] [--browser] [options]
 ```
 
-`--local` reads a folder with the layout of a OneLake workspace, `<item>.<Kind>/Tables/[<schema>/]<table>`, such as `conformance/fixtures/lakehouse`. Without `--item`, it collects every lakehouse, warehouse, mirrored database, and SQL database of the folder. `--workspace` reads OneLake after a sign-in with a device code, which the command prints, or in the browser with `--browser`; the token stays in memory. The device code is the default because a browser window can open where nobody sees it. The command runs the [collector](../Pqax.Collector/README.md) with the checkpoint reader of [Pqax.Collector.ParquetNet](../Pqax.Collector.ParquetNet/README.md), writes the file, and validates it.
+`--local` reads a folder with the layout of a OneLake workspace, `<item>.<Kind>/Tables/[<schema>/]<table>`, such as `conformance/fixtures/lakehouse`. Without `--item`, it collects every lakehouse, warehouse, mirrored database, and SQL database of the folder. `--workspace` reads OneLake after a sign-in with a device code, which the command prints, or in the browser with `--browser`; the token stays in memory. The device code is the default because a browser window can open where nobody sees it. The command runs the [collector](https://github.com/pqax-org/pqax/blob/main/src/dotnet/Pqax.Collector/README.md) with the checkpoint reader of [Pqax.Collector.ParquetNet](https://github.com/pqax-org/pqax/blob/main/src/dotnet/Pqax.Collector.ParquetNet/README.md), writes the file, and validates it.
 
 | Option | Default | Meaning |
 |---|---|---|
 | `--depth summary\|files\|rowGroups\|columnChunks` | `columnChunks` | The detail kept for each table |
 | `--level 1\|2` | 2 | 1 reads the Delta logs, 2 also the Parquet footers |
 | `--max-footers <n>` | 0 | The footers read for each table, 0 for all |
-| `--max-commits <n>` | 30 | The recent commits read for the history of each table |
+| `--max-commits <n>` | 30 | The commit files read for the history of each table. The commits that the state needs are read anyway, so a table reads the greater of the limit and those. |
 | `--parallelism <n>` | 16 | The storage requests at the same time |
 
 It prints one line for each table that is done, with counts and never a name, then a last line:

@@ -88,7 +88,9 @@ public sealed class PqaxCollector
         for (int i = 0; i < tables.Count; i++)
         {
             TableLocation table = tables[i] ?? throw new ArgumentException("A table location is null.", nameof(tables));
-            string key = table.SourceKind + "\u0001" + table.SourceName;
+
+            // Two lakehouses of the same name in two workspaces are two sources: the location tells them apart.
+            string key = table.SourceKind + "\u0001" + table.SourceName + "\u0001" + (table.SourceLocation == null ? "\u0000" : "\u0002" + table.SourceLocation);
             if (!sourceIndex.TryGetValue(key, out int index))
             {
                 index = sources.Count;

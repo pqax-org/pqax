@@ -177,8 +177,16 @@ public class StorageTests
     private const string Token = "test-token-not-a-secret";
     private static readonly Uri Endpoint = new("https://onelake.test");
 
-    private static OneLakeStorage OneLake(FakeOneLake handler, int retries = 0, Func<CancellationToken, Task<string>>? tokens = null) =>
-        new(Workspace, tokens ?? (_ => Task.FromResult(Token)), new OneLakeStorageOptions { Endpoint = Endpoint, HttpClient = new HttpClient(handler), MaxRetries = retries });
+    private static OneLakeStorage OneLake(FakeOneLake handler, int retries = 0, Func<CancellationToken, Task<string>>? tokens = null, TimeSpan? timeout = null)
+    {
+        var http = new HttpClient(handler);
+        if (timeout != null)
+        {
+            http.Timeout = timeout.Value;
+        }
+
+        return new(Workspace, tokens ?? (_ => Task.FromResult(Token)), new OneLakeStorageOptions { Endpoint = Endpoint, HttpClient = http, MaxRetries = retries });
+    }
 
     [Fact]
     public async Task Collecting_through_a_fake_onelake_endpoint_gives_the_footprint_of_the_folder()
@@ -194,8 +202,21 @@ public class StorageTests
         Collected local = await Fixture.CollectAsync();
         using PqaxDocument a = Fixture.Open(remote.Data);
         using PqaxDocument b = Fixture.Open(local.Data);
-        Assert.Empty(Fixture.RawDifferences(a, b));
+        Assert.Empty(Fixture.RawDifferences(a, b, Fixture.IsLocation));
         Fixture.AssertValid(remote.Data);
+
+        // Only the locations differ: the URIs of the workspace with the host of the endpoint, and the paths on disk.
+        foreach (DumpTable dump in Fixture.Tables)
+        {
+            TableRow table = Fixture.TableOf(a, dump);
+            SourceRow? source = a.Summary.Sources.FindById(table.Source);
+            Assert.NotNull(source);
+            Assert.Equal("abfss://Test Workspace@onelake.test/" + dump.ItemFolder, source.Location);
+            Assert.Null(source.Identifiers);
+            Assert.Equal("abfss://Test Workspace@onelake.test/" + dump.TablePath, table.Location);
+        }
+
+        Fixture.AssertLocalLocations(b);
 
         List<HttpCall> calls = [.. handler.Calls];
         Assert.NotEmpty(calls);
@@ -320,6 +341,82 @@ public class StorageTests
         using OneLakeStorage noRetry = OneLake(new FakeOneLake(Fixture.Folder, Workspace) { Override = _ => new HttpResponseMessage(HttpStatusCode.ServiceUnavailable) });
         var error = await Assert.ThrowsAsync<StorageException>(() => noRetry.ReadRangeAsync(path, 0, 10, CancellationToken.None));
         Assert.Equal(503, error.StatusCode);
+    }
+
+    /// <summary>An exchange that ends without an answer: a timeout, a broken connection, or a body that breaks on its way.</summary>
+    private static Func<HttpRequestMessage, CancellationToken, Task<HttpResponseMessage?>> Breaking(string failure) => failure switch
+    {
+        "timeout" => FakeOneLake.Hang,
+        "broken connection" => (_, _) => Task.FromException<HttpResponseMessage?>(new HttpRequestException("The connection was reset.")),
+        _ => (request, _) => Task.FromResult<HttpResponseMessage?>(
+            new HttpResponseMessage(request.Headers.Range == null ? HttpStatusCode.OK : HttpStatusCode.PartialContent) { Content = new BrokenContent() }),
+    };
+
+    public static TheoryData<string> BrokenExchanges => new() { "timeout", "broken connection", "broken body" };
+
+    [Theory]
+    [MemberData(nameof(BrokenExchanges))]
+    public async Task A_request_left_without_an_answer_on_its_last_attempt_is_a_storage_exception_with_no_status(string failure)
+    {
+        var handler = new FakeOneLake(Fixture.Folder, Workspace) { Answer = Breaking(failure) };
+        using OneLakeStorage storage = OneLake(handler, timeout: TimeSpan.FromMilliseconds(500));
+        var reading = await Assert.ThrowsAsync<StorageException>(() => storage.ReadRangeAsync(Fixture.DataFiles()[0], 0, 10, CancellationToken.None));
+        var listing = await Assert.ThrowsAsync<StorageException>(() => storage.ListAsync(LogFolder, CancellationToken.None));
+        foreach (StorageException error in new[] { reading, listing })
+        {
+            Assert.Null(error.StatusCode);
+            Assert.False(error.IsAccessDenied);
+            Assert.False(error.IsNotFound);
+            Assert.NotNull(error.InnerException);
+            Assert.DoesNotContain(Token, error.Message, StringComparison.Ordinal);
+            Assert.DoesNotContain(Table.Item, error.Message, StringComparison.Ordinal);
+        }
+
+        Assert.Equal(2, handler.Calls.Count);
+        Assert.Equal(2, storage.RequestCount);
+    }
+
+    [Fact]
+    public async Task A_timeout_is_retried_and_a_timeout_on_the_last_attempt_is_a_storage_exception()
+    {
+        var handler = new FakeOneLake(Fixture.Folder, Workspace) { Answer = FakeOneLake.Hang };
+        using OneLakeStorage storage = OneLake(handler, retries: 1, timeout: TimeSpan.FromMilliseconds(300));
+        var error = await Assert.ThrowsAsync<StorageException>(() => storage.ReadRangeAsync(Fixture.DataFiles()[0], 0, 10, CancellationToken.None));
+        Assert.Null(error.StatusCode);
+        Assert.IsAssignableFrom<OperationCanceledException>(error.InnerException);
+        Assert.Equal(2, handler.Calls.Count);
+        Assert.Equal(2, storage.RequestCount);
+    }
+
+    [Fact]
+    public async Task A_body_that_stalls_after_the_headers_ends_at_the_timeout_or_at_a_cancellation()
+    {
+        static FakeOneLake Stalling() => new(Fixture.Folder, Workspace)
+        {
+            Answer = (_, _) => Task.FromResult<HttpResponseMessage?>(new HttpResponseMessage(HttpStatusCode.PartialContent) { Content = new StalledContent() }),
+        };
+
+        using OneLakeStorage storage = OneLake(Stalling(), timeout: TimeSpan.FromMilliseconds(300));
+        Task<byte[]> timedOut = storage.ReadRangeAsync(Fixture.DataFiles()[0], 0, 10, CancellationToken.None);
+        Assert.Same(timedOut, await Task.WhenAny(timedOut, Task.Delay(TimeSpan.FromSeconds(5))));
+        StorageException error = await Assert.ThrowsAsync<StorageException>(() => timedOut);
+        Assert.Null(error.StatusCode);
+
+        using OneLakeStorage patient = OneLake(Stalling(), timeout: TimeSpan.FromMinutes(5));
+        using var cancel = new CancellationTokenSource(TimeSpan.FromMilliseconds(200));
+        Task<byte[]> cancelled = patient.ReadRangeAsync(Fixture.DataFiles()[0], 0, 10, cancel.Token);
+        Assert.Same(cancelled, await Task.WhenAny(cancelled, Task.Delay(TimeSpan.FromSeconds(5))));
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => cancelled);
+    }
+
+    [Fact]
+    public async Task A_cancellation_by_the_caller_stays_a_cancellation_and_is_not_retried()
+    {
+        var handler = new FakeOneLake(Fixture.Folder, Workspace) { Answer = FakeOneLake.Hang };
+        using OneLakeStorage storage = OneLake(handler, retries: 2);
+        using var cancel = new CancellationTokenSource(TimeSpan.FromMilliseconds(200));
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => storage.ReadRangeAsync(Fixture.DataFiles()[0], 0, 10, cancel.Token));
+        Assert.Single(handler.Calls);
     }
 
     [Fact]

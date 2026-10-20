@@ -47,6 +47,11 @@ public static class TableDiscovery
     /// under <c>Tables</c> is a table when it holds <c>_delta_log</c>, and a schema otherwise. One request for
     /// <c>Tables</c> and one for each folder under it.
     /// </summary>
+    /// <remarks>
+    /// On a <see cref="OneLakeStorage"/> or a <see cref="LocalStorage"/>, each table gets the location of its folder, and
+    /// the location and the identifiers of its source: the ABFSS URI of the item on OneLake, with <c>workspaceId</c> and
+    /// <c>itemId</c> for what the caller gave as ids, and full paths on disk. Another storage gives no location.
+    /// </remarks>
     /// <param name="storage">The storage, whose root is a workspace.</param>
     /// <param name="item">The item folder, such as <c>Sales.Lakehouse</c>, or the id of an item.</param>
     /// <param name="cancellation">Cancels the requests.</param>
@@ -68,6 +73,11 @@ public static class TableDiscovery
         string kind = kindIndex >= 0 ? Kinds[kindIndex][1] : SourceKinds.OneLakeItem;
         string name = kindIndex >= 0 ? item.Substring(0, item.Length - Kinds[kindIndex][0].Length) : item;
         string tablesPath = item + "/Tables";
+
+        // The locations start from the item as the caller gave it, so that a table location extends the source location.
+        var located = storage as ILocatedStorage;
+        string? sourceLocation = located?.LocationOf(item);
+        IReadOnlyDictionary<string, string>? identifiers = located?.IdentifiersOf(item);
         var tables = new List<TableLocation>();
         foreach (StorageEntry entry in await storage.ListAsync(tablesPath, cancellation).ConfigureAwait(false))
         {
@@ -92,7 +102,8 @@ public static class TableDiscovery
 
             if (isTable)
             {
-                tables.Add(new TableLocation(kind, name, null, entry.Name, entry.Path));
+                string? location = located?.LocationOf(tablesPath + "/" + entry.Name);
+                tables.Add(new TableLocation(kind, name, null, entry.Name, entry.Path, location, sourceLocation, identifiers));
                 continue;
             }
 
@@ -100,7 +111,8 @@ public static class TableDiscovery
             {
                 if (child.IsDirectory)
                 {
-                    tables.Add(new TableLocation(kind, name, new[] { entry.Name }, child.Name, child.Path));
+                    string? location = located?.LocationOf(tablesPath + "/" + entry.Name + "/" + child.Name);
+                    tables.Add(new TableLocation(kind, name, new[] { entry.Name }, child.Name, child.Path, location, sourceLocation, identifiers));
                 }
             }
         }

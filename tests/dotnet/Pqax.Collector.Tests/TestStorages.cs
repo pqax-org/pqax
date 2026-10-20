@@ -13,6 +13,7 @@ public sealed record StorageRequest(string Kind, string Path, long Offset, int L
 /// <summary>
 /// A storage over another one that records every request, and can replace the content of a file, make a request fail,
 /// or cancel a token after a number of requests. It does not implement IStorageStatistics, so the collector counts.
+/// It is not one of the storages that the discovery knows, so it gives tables and sources with no location.
 /// </summary>
 public sealed class TestStorage(IStorage inner) : IStorage
 {
@@ -21,6 +22,12 @@ public sealed class TestStorage(IStorage inner) : IStorage
 
     /// <summary>The content to serve for a file instead of the real one, or null to read the real file.</summary>
     public Func<string, byte[]?>? Content { get; init; }
+
+    /// <summary>
+    /// The bytes to serve for a range, given the path, the offset, and the length, instead of the real ones, or null to
+    /// go on. For a file too large to build, as <see cref="VirtualFileStorage.Slice"/> serves.
+    /// </summary>
+    public Func<string, long, int, byte[]?>? Range { get; init; }
 
     /// <summary>The exception that a request throws: given "list" or "read" and the path. Null to let it through.</summary>
     public Func<string, string, Exception?>? Fail { get; init; }
@@ -71,6 +78,11 @@ public sealed class TestStorage(IStorage inner) : IStorage
     public async Task<byte[]> ReadRangeAsync(string path, long offset, int length, CancellationToken cancellation)
     {
         Arrive("read", path, offset, length, cancellation);
+        if (Range?.Invoke(path, offset, length) is byte[] range)
+        {
+            return range;
+        }
+
         if (Content?.Invoke(path) is byte[] content)
         {
             if (offset >= content.Length)
@@ -99,9 +111,15 @@ public sealed class VirtualFileStorage(long size, byte[] tail) : IStorage
     public Task<byte[]> ReadRangeAsync(string path, long offset, int length, CancellationToken cancellation)
     {
         Reads.Add((offset, length));
+        return Task.FromResult(Slice(size, tail, offset, length));
+    }
+
+    /// <summary>A range of a file of any size that is all zeros except its last bytes, cut at the end of the file.</summary>
+    public static byte[] Slice(long size, byte[] tail, long offset, int length)
+    {
         if (offset >= size)
         {
-            return Task.FromResult(Array.Empty<byte>());
+            return [];
         }
 
         var buffer = new byte[(int)Math.Min(length, size - offset)];
@@ -112,7 +130,7 @@ public sealed class VirtualFileStorage(long size, byte[] tail) : IStorage
             buffer[i] = position >= tailStart ? tail[position - tailStart] : (byte)0;
         }
 
-        return Task.FromResult(buffer);
+        return buffer;
     }
 }
 
@@ -137,7 +155,21 @@ public sealed class FakeOneLake(string folder, string workspace) : HttpMessageHa
     /// <summary>Whether a read ignores the range and returns the whole file with 200, as some servers do.</summary>
     public bool IgnoreRange { get; init; }
 
-    protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+    /// <summary>
+    /// An answer that replaces the normal one and can take its time or fail as the network does: it gets the token that
+    /// the client cancels at its timeout, and the exception of its task is the one that the client sees. It comes before
+    /// <see cref="Override"/>. Null, or a null answer, to go on.
+    /// </summary>
+    public Func<HttpRequestMessage, CancellationToken, Task<HttpResponseMessage?>>? Answer { get; init; }
+
+    /// <summary>An answer that never comes: it waits until the client gives up, at its timeout or when its caller cancels.</summary>
+    public static async Task<HttpResponseMessage?> Hang(HttpRequestMessage request, CancellationToken cancellation)
+    {
+        await Task.Delay(Timeout.Infinite, cancellation);
+        return null;
+    }
+
+    protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
     {
         Uri uri = request.RequestUri!;
         Calls.Enqueue(new HttpCall(
@@ -147,26 +179,37 @@ public sealed class FakeOneLake(string folder, string workspace) : HttpMessageHa
             request.Headers.Authorization?.ToString(),
             request.Headers.TryGetValues("x-ms-version", out IEnumerable<string>? versions) ? versions.FirstOrDefault() : null,
             request.Headers.Range?.ToString()));
+        if (Answer != null && await Answer(request, cancellationToken) is HttpResponseMessage answered)
+        {
+            return answered;
+        }
+
+        return Serve(request);
+    }
+
+    private HttpResponseMessage Serve(HttpRequestMessage request)
+    {
+        Uri uri = request.RequestUri!;
         if (Override?.Invoke(request) is HttpResponseMessage replaced)
         {
-            return Task.FromResult(replaced);
+            return replaced;
         }
 
         if (request.Method != HttpMethod.Get)
         {
-            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.MethodNotAllowed));
+            return new HttpResponseMessage(HttpStatusCode.MethodNotAllowed);
         }
 
         string[] segments = uri.AbsolutePath.Trim('/').Split('/').Select(Uri.UnescapeDataString).ToArray();
         if (segments.Length == 0 || segments[0] != workspace)
         {
-            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.NotFound));
+            return new HttpResponseMessage(HttpStatusCode.NotFound);
         }
 
         Dictionary<string, string> query = Query(uri);
-        return Task.FromResult(segments.Length == 1 && query.GetValueOrDefault("resource") == "filesystem"
+        return segments.Length == 1 && query.GetValueOrDefault("resource") == "filesystem"
             ? List(query)
-            : Read(string.Join("/", segments.Skip(1)), request.Headers.Range));
+            : Read(string.Join("/", segments.Skip(1)), request.Headers.Range);
     }
 
     private static Dictionary<string, string> Query(Uri uri) =>
@@ -246,6 +289,34 @@ public sealed class FakeOneLake(string folder, string workspace) : HttpMessageHa
 
     private static HttpResponseMessage Json(HttpStatusCode status, JsonNode body) =>
         new(status) { Content = new StringContent(body.ToJsonString(), Encoding.UTF8, "application/json") };
+}
+
+/// <summary>The body of an answer that breaks while it comes in, as when the connection drops after the headers.</summary>
+public sealed class BrokenContent : HttpContent
+{
+    protected override Task SerializeToStreamAsync(Stream stream, TransportContext? context) =>
+        Task.FromException(new IOException("The connection was closed while the answer came in."));
+
+    protected override bool TryComputeLength(out long length)
+    {
+        length = 0;
+        return false;
+    }
+}
+
+/// <summary>The body of an answer that stops coming after the headers, until the reader cancels its read.</summary>
+public sealed class StalledContent : HttpContent
+{
+    protected override Task SerializeToStreamAsync(Stream stream, TransportContext? context) => Task.Delay(Timeout.Infinite);
+
+    protected override Task SerializeToStreamAsync(Stream stream, TransportContext? context, CancellationToken cancellationToken) =>
+        Task.Delay(Timeout.Infinite, cancellationToken);
+
+    protected override bool TryComputeLength(out long length)
+    {
+        length = 0;
+        return false;
+    }
 }
 
 /// <summary>A progress that keeps every report, in the order received, on the thread that reports.</summary>

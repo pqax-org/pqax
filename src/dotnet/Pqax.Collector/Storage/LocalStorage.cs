@@ -10,7 +10,11 @@ namespace Pqax.Collector;
 /// A folder on disk with the layout of a OneLake workspace: <c>&lt;item&gt;.&lt;Kind&gt;/Tables/[&lt;schema&gt;/]&lt;table&gt;/...</c>,
 /// as <c>conformance/fixtures/lakehouse</c>. It reads only, and it counts its requests and bytes as a remote storage would.
 /// </summary>
-public sealed class LocalStorage : IStorage, IStorageStatistics
+/// <remarks>
+/// The discovery records the full path of an item folder as the location of its source, and the full path of a table
+/// folder as the location of the table, with the separators of the platform.
+/// </remarks>
+public sealed class LocalStorage : IStorage, IStorageStatistics, ILocatedStorage
 {
     private static readonly IReadOnlyList<StorageEntry> NoEntries = new StorageEntry[0];
 
@@ -145,6 +149,12 @@ public sealed class LocalStorage : IStorage, IStorageStatistics
             throw new StorageException("A local file could not be read: " + e.GetType().Name + ".", null, e);
         }
     }
+
+    /// <summary>The full path of a folder of the storage, with the separators of the platform.</summary>
+    string ILocatedStorage.LocationOf(string path) => Resolve(path);
+
+    /// <summary>A folder on disk has no identifiers.</summary>
+    IReadOnlyDictionary<string, string>? ILocatedStorage.IdentifiersOf(string item) => null;
 
     private static string Normalize(string path)
     {

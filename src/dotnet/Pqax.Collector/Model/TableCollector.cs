@@ -559,17 +559,9 @@ internal sealed class TableCollector
         {
             throw;
         }
-        catch (ParquetFooterException e)
-        {
-            return new CollectedIssue(e.Code, e.Message, collected.Path);
-        }
-        catch (StorageException e)
-        {
-            return new CollectedIssue(e.IsAccessDenied ? IssueCodes.AccessDenied : IssueCodes.FooterNotRead, "The footer could not be read: " + e.Message, collected.Path);
-        }
         catch (Exception e)
         {
-            return new CollectedIssue(IssueCodes.FooterNotRead, "The footer could not be read: " + e.GetType().Name + ": " + e.Message, collected.Path);
+            return FooterFailure(e, collected.Path);
         }
 
         if (footer.RowGroups.Any(g => g.Columns.Any(c => !c.HasMetadata)))
@@ -580,6 +572,27 @@ internal sealed class TableCollector
         aggregate.Absorb(index, file, collected, footer);
         return null;
     }
+
+    /// <summary>
+    /// The issue of a footer read that failed. This is the one place that maps a failure to a code, as the table in the
+    /// README does. Whatever the code, the footer counts as not read: the file keeps what the log says, and
+    /// <c>footerCount</c> and the totals of level 2 leave it out.
+    /// </summary>
+    /// <remarks>
+    /// A <see cref="StorageException"/> with status 401 or 403 gives <see cref="IssueCodes.AccessDenied"/>. Any other
+    /// storage failure gives <see cref="IssueCodes.FooterNotRead"/>: 404, another status after the retries, a timeout,
+    /// a broken connection, an error of a local file. A footer that the reader refuses gives the code of its
+    /// <see cref="ParquetFooterException"/>: <see cref="IssueCodes.FooterInvalid"/>, also for a file shorter than the log
+    /// says and for 416, <see cref="IssueCodes.FooterEncrypted"/>, or <see cref="IssueCodes.FooterTooLarge"/>. Any other
+    /// exception gives <see cref="IssueCodes.FooterNotRead"/>.
+    /// </remarks>
+    private static CollectedIssue FooterFailure(Exception failure, string path) => failure switch
+    {
+        StorageException storage when storage.IsAccessDenied => new CollectedIssue(IssueCodes.AccessDenied, "The footer could not be read: " + storage.Message, path),
+        StorageException storage => new CollectedIssue(IssueCodes.FooterNotRead, "The footer could not be read: " + storage.Message, path),
+        ParquetFooterException footer => new CollectedIssue(footer.Code, footer.Message, path),
+        _ => new CollectedIssue(IssueCodes.FooterNotRead, "The footer could not be read: " + failure.GetType().Name + ": " + failure.Message, path),
+    };
 
     private void Totals(CollectedTable table, List<LiveFile> files, CollectedFile[] collected, FooterAggregate aggregate)
     {

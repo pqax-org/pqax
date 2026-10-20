@@ -25,9 +25,20 @@ public sealed class CollectorOptions
     public int MaxFootersPerTable { get; set; }
 
     /// <summary>
-    /// The most recent commits read for the history of each table, which give the operations and the commits. Each one
-    /// costs a request. The commits that the state of the table needs are read anyway. The default is 30.
+    /// The commit files read for each table, which give its operations and its commits. Each one costs a request. The
+    /// collector reads every commit that the state of the table needs: those after the checkpoint, or all of them when
+    /// the state comes from the JSON commits alone. Then it reads older ones, the most recent first, until the commit
+    /// files read reach the limit or the log has no older one. So a table reads the greater of the limit and the commits
+    /// that the state needs, within the commits that the log keeps. 0 reads only the commits that the state needs. The
+    /// default is 30.
     /// </summary>
+    /// <remarks>
+    /// <c>commitsRead</c> is the number of commit files read. The <c>commits</c> of the table, kept from the
+    /// <see cref="DetailDepth.Files"/> depth, hold every one of them, and the operations and <c>oldestCommitAt</c> cover
+    /// them all. A file whose read fails counts toward the limit, since it cost a request, and gets an issue instead of a
+    /// place in <c>commitsRead</c> and in the commits. For example, with a limit of 30, a checkpoint at version 100, and version 145 the latest, the collector
+    /// reads the 45 commits 101 to 145 and no older one; with a limit of 50 it also reads 100 to 96.
+    /// </remarks>
     public int MaxCommitsPerTable { get; set; } = 30;
 
     /// <summary>The storage requests in flight at the same time, for the whole collection. The default is 16.</summary>

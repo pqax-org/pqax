@@ -133,8 +133,10 @@ internal sealed class DeltaLogReader
             complete = false;
         }
 
-        // Replay the commits that the state needs, in order.
+        // Replay the commits that the state needs, in order: every one is read, whatever the limit. They are the commits
+        // after the checkpoint, or all of them when the state comes from the JSON commits alone.
         var history = new List<CommitRecord>();
+        int filesRead = 0;
         long expected = replayFrom;
         foreach (KeyValuePair<long, StorageEntry> commit in listing.Commits)
         {
@@ -150,6 +152,7 @@ internal sealed class DeltaLogReader
             }
 
             expected = commit.Key + 1;
+            filesRead++;
             List<DeltaAction>? actions = await ReadCommitAsync(commit.Value, issues, cancellation).ConfigureAwait(false);
             if (actions == null)
             {
@@ -173,21 +176,24 @@ internal sealed class DeltaLogReader
             history.Add(new CommitRecord(commit.Key, info, commit.Value.LastModified));
         }
 
-        // Read older commits for the history only, the most recent first, up to the limit.
-        if (history.Count < maxCommits)
+        // Then older commits for the history only, the most recent first, until the commit files read reach the limit or
+        // the log has no older one. A file whose read fails counts too, since it cost a request; it has an issue instead
+        // of a place in the history.
+        if (filesRead < maxCommits)
         {
             foreach (KeyValuePair<long, StorageEntry> commit in listing.Commits.Reverse())
             {
+                if (filesRead >= maxCommits)
+                {
+                    break;
+                }
+
                 if (commit.Key >= replayFrom)
                 {
                     continue;
                 }
 
-                if (history.Count >= maxCommits)
-                {
-                    break;
-                }
-
+                filesRead++;
                 List<DeltaAction>? actions = await ReadCommitAsync(commit.Value, issues, cancellation).ConfigureAwait(false);
                 if (actions != null)
                 {
@@ -196,9 +202,9 @@ internal sealed class DeltaLogReader
             }
         }
 
+        // Every commit read stays in the history, also when the state needed more commits than the limit.
         history.Sort((a, b) => a.Version.CompareTo(b.Version));
-        int skip = Math.Max(0, history.Count - maxCommits);
-        log.History.AddRange(history.Skip(skip));
+        log.History.AddRange(history);
 
         state.Finish(log);
         if (state.StatsErrors > 0)

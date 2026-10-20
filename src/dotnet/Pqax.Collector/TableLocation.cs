@@ -4,6 +4,11 @@ using System.Collections.Generic;
 namespace Pqax.Collector;
 
 /// <summary>A table to collect: where it is in the storage, and the source and names that the footprint records.</summary>
+/// <remarks>
+/// The tables with the same source kind, source name, and source location share one source in the footprint, which
+/// takes its identifiers from the first of them. <see cref="TableDiscovery"/> fills the locations and the identifiers
+/// for <see cref="LocalStorage"/> and <see cref="OneLakeStorage"/>, as the README of the collector tells.
+/// </remarks>
 public sealed class TableLocation
 {
     private static readonly IReadOnlyList<string> NoNamespace = new string[0];
@@ -15,7 +20,17 @@ public sealed class TableLocation
     /// <param name="name">The table name.</param>
     /// <param name="path">The folder of the table in the storage, the one that holds <c>_delta_log</c>.</param>
     /// <param name="location">The root location to record for the table, such as its URL. Null to record none.</param>
-    public TableLocation(string sourceKind, string sourceName, IReadOnlyList<string>? @namespace, string name, string path, string? location = null)
+    /// <param name="sourceLocation">The base location to record for the source, such as the URL of the lakehouse. Null to record none.</param>
+    /// <param name="sourceIdentifiers">The identifiers that the platform assigns to the source, such as <c>workspaceId</c> and <c>itemId</c>. Null to record none. The location keeps a copy.</param>
+    public TableLocation(
+        string sourceKind,
+        string sourceName,
+        IReadOnlyList<string>? @namespace,
+        string name,
+        string path,
+        string? location = null,
+        string? sourceLocation = null,
+        IReadOnlyDictionary<string, string>? sourceIdentifiers = null)
     {
         SourceKind = sourceKind ?? throw new ArgumentNullException(nameof(sourceKind));
         SourceName = sourceName ?? throw new ArgumentNullException(nameof(sourceName));
@@ -23,6 +38,17 @@ public sealed class TableLocation
         Name = name ?? throw new ArgumentNullException(nameof(name));
         Path = (path ?? throw new ArgumentNullException(nameof(path))).Trim('/');
         Location = location;
+        SourceLocation = sourceLocation;
+        if (sourceIdentifiers != null)
+        {
+            var identifiers = new SortedDictionary<string, string>(StringComparer.Ordinal);
+            foreach (KeyValuePair<string, string> identifier in sourceIdentifiers)
+            {
+                identifiers[identifier.Key] = identifier.Value ?? throw new ArgumentException("An identifier has no value.", nameof(sourceIdentifiers));
+            }
+
+            SourceIdentifiers = identifiers;
+        }
     }
 
     /// <summary>The kind of the source, such as <see cref="SourceKinds.OneLakeLakehouse"/>.</summary>
@@ -42,6 +68,12 @@ public sealed class TableLocation
 
     /// <summary>The root location that the footprint records for the table. Null to record none.</summary>
     public string? Location { get; }
+
+    /// <summary>The base location that the footprint records for the source of the table. Null to record none.</summary>
+    public string? SourceLocation { get; }
+
+    /// <summary>The identifiers that the footprint records for the source of the table, sorted by key. Null to record none.</summary>
+    public IReadOnlyDictionary<string, string>? SourceIdentifiers { get; }
 
     /// <inheritdoc/>
     public override string ToString() => Path;

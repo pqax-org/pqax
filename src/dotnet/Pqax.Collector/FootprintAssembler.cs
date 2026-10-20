@@ -17,7 +17,14 @@ internal static class FootprintAssembler
         var sourceIds = new long[sources.Count];
         for (int i = 0; i < sources.Count; i++)
         {
-            sourceIds[i] = builder.AddSource(new SourceRow { Kind = sources[i].SourceKind, Name = sources[i].SourceName });
+            TableLocation source = sources[i];
+            sourceIds[i] = builder.AddSource(new SourceRow
+            {
+                Kind = source.SourceKind,
+                Name = source.SourceName,
+                Location = source.SourceLocation,
+                Identifiers = source.SourceIdentifiers,
+            });
         }
 
         foreach (CollectedTable table in tables)

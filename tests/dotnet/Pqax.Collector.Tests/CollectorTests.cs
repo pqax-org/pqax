@@ -23,7 +23,7 @@ public class CollectorTests
     private static List<IssueRow> IssuesOf(PqaxDocument doc, TableRow table) => doc.Summary.Issues.Where(issue => issue.Table == table.Id).ToList();
 
     /// <summary>Asserts that a table of the dump was collected completely, at the Column chunks depth.</summary>
-    private static void AssertComplete(PqaxDocument doc, DumpTable dump)
+    internal static void AssertComplete(PqaxDocument doc, DumpTable dump)
     {
         TableRow table = Fixture.TableOf(doc, dump);
         Assert.Equal("Column chunks", table.DetailDepth);
@@ -450,18 +450,29 @@ public class CollectorTests
         Assert.Equal(a.Manifest.Collection.RequestCount, b.Manifest.Collection.RequestCount);
     }
 
-    [Fact]
-    public async Task A_small_commit_limit_keeps_the_state_complete()
+    [Theory]
+    [InlineData(1)]
+    [InlineData(0)]
+    public async Task A_small_commit_limit_keeps_the_state_complete(int limit)
     {
-        Collected result = await Fixture.CollectAsync(new CollectorOptions { MaxCommitsPerTable = 1 });
+        Collected result = await Fixture.CollectAsync(new CollectorOptions { MaxCommitsPerTable = limit });
         using PqaxDocument doc = Fixture.Open(result.Data);
         foreach (DumpTable dump in Fixture.Tables)
         {
             TableRow table = Fixture.TableOf(doc, dump);
             Assert.Equal(dump.Files.Count, table.FileCount);
-            Assert.True(doc.ReadCommits().Count(commit => commit.Table == table.Id) <= dump.Commits.Count);
+
+            // The commits that the state needs are read whatever the limit: those after the checkpoint, or all of them.
+            long? checkpoint = Dump.NullableLong(dump.Delta["checkpointVersion"]);
+            List<string> needed = dump.Commits.Select(commit => Dump.Long(commit["version"]))
+                .Where(version => checkpoint == null || version > checkpoint)
+                .Order().Select(version => version.ToString(CultureInfo.InvariantCulture)).ToList();
+            Assert.Equal(2, needed.Count);
+            Assert.Equal(2, table.CommitsRead);
+            Assert.Equal(needed, doc.ReadCommits().Where(commit => commit.Table == table.Id).Select(commit => commit.CommitId!).Order(StringComparer.Ordinal));
         }
 
+        Assert.Empty(doc.Summary.Issues);
         Fixture.AssertValid(result.Data);
     }
 
@@ -604,6 +615,16 @@ public class CollectorTests
             AssertComplete(doc, dump);
         }
 
+        // A location made by hand has no source location, so it does not share the source of the discovered table of
+        // the same kind and name, which has one.
+        Assert.Equal(3, doc.Summary.Sources.Count);
+        SourceRow? source = doc.Summary.Sources.FindById(missing.Source);
+        Assert.NotNull(source);
+        Assert.Equal(known.SourceKind, source.Kind);
+        Assert.Equal(known.SourceName, source.Name);
+        Assert.Null(source.Location);
+        Assert.Null(missing.Location);
+        Assert.NotEqual(Fixture.TableOf(doc, Checkpointed).Source, missing.Source);
         Fixture.AssertValid(data);
     }
 
@@ -641,16 +662,17 @@ public class CollectorTests
         Collected result = await Fixture.CollectAsync(storage: storage);
         using PqaxDocument doc = Fixture.Open(result.Data);
         TableRow table = Fixture.TableOf(doc, Checkpointed);
-        string[] expected = fault switch
+        string expected = fault switch
         {
-            "encrypted" => [IssueCodes.FooterEncrypted],
-            "length" or "short" => [IssueCodes.FooterInvalid],
-            "missing" => [IssueCodes.FooterNotRead],
-            _ => [IssueCodes.AccessDenied, IssueCodes.FooterNotRead],
+            "encrypted" => IssueCodes.FooterEncrypted,
+            "length" or "short" => IssueCodes.FooterInvalid,
+            "missing" => IssueCodes.FooterNotRead,
+            _ => IssueCodes.AccessDenied,
         };
         IssueRow issue = Assert.Single(IssuesOf(doc, table));
-        Assert.Contains(issue.Code, expected);
+        Assert.Equal(expected, issue.Code);
         Assert.False(string.IsNullOrEmpty(issue.Path));
+        Assert.Equal(FilesOf(doc, table).Single(file => file.FooterSize == null).Path, issue.Path);
         Assert.Equal(Checkpointed.Files.Count - 1, table.FooterCount);
         Assert.Equal(Checkpointed.Files.Count, table.FileCount);
         Assert.Equal(original.Length, FilesOf(doc, table).Single(file => file.FooterSize == null).FileSize);

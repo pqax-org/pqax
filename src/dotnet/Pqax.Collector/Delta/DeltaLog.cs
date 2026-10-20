@@ -48,6 +48,9 @@ internal sealed class DeltaLog
 
     public long? NonLiveFileSize { get; set; }
 
-    /// <summary>The commits read for the history, the most recent ones, in ascending order of version.</summary>
+    /// <summary>
+    /// Every commit read, in ascending order of version: those that the state needs, and the older ones read for the
+    /// history up to the limit. A commit whose read failed is not here.
+    /// </summary>
     public List<CommitRecord> History { get; } = new List<CommitRecord>();
 }

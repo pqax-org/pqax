@@ -6,7 +6,10 @@ namespace Pqax.Collector;
 /// </summary>
 public static class IssueCodes
 {
-    /// <summary>The storage denied access to a folder or a file.</summary>
+    /// <summary>
+    /// The storage denied access to a folder or a file: a <see cref="StorageException"/> with status 401 or 403. On the
+    /// footer of a data file, the issue has the path of the file and the footer counts as not read.
+    /// </summary>
     public const string AccessDenied = "AccessDenied";
 
     /// <summary>The table could not be read at all, for a reason that no other code covers.</summary>
@@ -41,7 +44,10 @@ public static class IssueCodes
     /// <summary>A data file is outside the table folder, so its footer was not read.</summary>
     public const string FileOutsideTable = "FileOutsideTable";
 
-    /// <summary>The footer of a data file could not be read: the read failed, or the table format gives no size.</summary>
+    /// <summary>
+    /// The footer of a data file could not be read: the read failed for another reason than a denied access, such as a
+    /// missing file, another status, or a timeout, or the table format gives no size.
+    /// </summary>
     public const string FooterNotRead = "FooterNotRead";
 
     /// <summary>The footer of a data file is encrypted.</summary>

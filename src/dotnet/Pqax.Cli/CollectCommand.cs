@@ -153,7 +153,7 @@ public static class CollectCommand
         writer.WriteLine("  --depth summary|files|rowGroups|columnChunks   The detail kept for each table. Default columnChunks.");
         writer.WriteLine("  --level 1|2                                   1 reads the Delta logs, 2 also the Parquet footers. Default 2.");
         writer.WriteLine("  --max-footers <n>                             Footers read for each table, 0 for all. Default 0.");
-        writer.WriteLine("  --max-commits <n>                             Recent commits read for the history of each table. Default 30.");
+        writer.WriteLine("  --max-commits <n>                             Commit files read for the history of each table; the commits the state needs are read anyway. Default 30.");
         writer.WriteLine("  --parallelism <n>                             Storage requests at the same time. Default 16.");
         writer.WriteLine("  --verbose                                     Print every OneLake request and its status code to the error output.");
         writer.WriteLine();

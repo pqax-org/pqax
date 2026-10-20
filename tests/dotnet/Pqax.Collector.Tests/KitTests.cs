@@ -47,7 +47,9 @@ public class KitTests(DefaultCollection collection) : IClassFixture<DefaultColle
             Assert.True(expected.RowCount(table) == actual.RowCount(table), $"{table}: {actual.RowCount(table)} rows, expected {expected.RowCount(table)}");
         }
 
-        Assert.Empty(Fixture.RawDifferences(actual, expected));
+        // The samples have no location; a collection from LocalStorage records the full paths of the folders.
+        Assert.Empty(Fixture.RawDifferences(actual, expected, Fixture.IsLocation));
+        Fixture.AssertLocalLocations(actual);
         Fixture.AssertValid(result.Data);
     }
 

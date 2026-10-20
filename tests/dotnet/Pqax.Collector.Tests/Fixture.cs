@@ -15,6 +15,9 @@ public static class Fixture
 
     public static string Folder => Path.Combine(Root, "conformance", "fixtures", "lakehouse");
 
+    /// <summary>The full path on disk of a path of the fixture storage, which has forward slashes.</summary>
+    public static string LocalPath(string path) => Path.Combine(Folder, path.Replace('/', Path.DirectorySeparatorChar));
+
     public static string DumpFolder => Path.Combine(Root, "conformance", "fixtures", "probe-dump");
 
     public static string Samples => Path.Combine(Root, "conformance", "samples");
@@ -134,7 +137,30 @@ public static class Fixture
     public static TableRow TableOf(PqaxDocument doc, DumpTable dump) =>
         doc.Summary.Tables.Single(table => table.Name == dump.Name && (table.Namespace ?? []).SequenceEqual(dump.Namespace));
 
+    /// <summary>
+    /// Asserts the locations of a collection of the fixture through <see cref="LocalStorage"/>: the full path of the item
+    /// folder for each source and of the table folder for each table, and no identifiers.
+    /// </summary>
+    public static void AssertLocalLocations(PqaxDocument doc)
+    {
+        foreach (DumpTable dump in Tables)
+        {
+            TableRow table = TableOf(doc, dump);
+            SourceRow? source = doc.Summary.Sources.FindById(table.Source);
+            Assert.NotNull(source);
+            Assert.Equal(LocalPath(dump.ItemFolder), source.Location);
+            Assert.Null(source.Identifiers);
+            Assert.Equal(LocalPath(dump.TablePath), table.Location);
+        }
+    }
+
     // ---- comparing two files ----
+
+    /// <summary>
+    /// Whether a field is the location of a source or a table. The samples of the kit have none, and a collection records
+    /// one that depends on where it ran: a full path on disk, or the URI of the workspace.
+    /// </summary>
+    public static bool IsLocation(string table, string field) => field == "location" && table is "sources" or "tables";
 
     /// <summary>The tables that a manifest states, in the order in which they first appear.</summary>
     public static IReadOnlyList<string> StatedTables(PqaxDocument doc)
