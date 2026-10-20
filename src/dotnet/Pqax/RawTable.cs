@@ -5,7 +5,7 @@ namespace Pqax;
 
 /// <summary>
 /// A table read as JSON values: every field, including the ones that this version of the format does not know.
-/// It is what <see cref="PqaxDocument.ReadRaw(string)"/> returns.
+/// It is what <see cref="PqaxDocument.ReadRaw(string)"/> returns, read again on each call.
 /// </summary>
 public sealed class RawTable
 {
@@ -19,7 +19,7 @@ public sealed class RawTable
     /// <summary>The name of the table in the file.</summary>
     public string Name { get; }
 
-    /// <summary>The number of rows.</summary>
+    /// <summary>The number of rows: the sum over the parts of the length of the longest array of the table in each part.</summary>
     public int Count { get; }
 
     /// <summary>

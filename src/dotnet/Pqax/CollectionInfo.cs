@@ -25,7 +25,7 @@ public sealed class CollectionInfo : IEquatable<CollectionInfo>
     /// <summary>When the collection started.</summary>
     public DateTimeOffset? StartedAt { get; set; }
 
-    /// <summary>When the collection completed.</summary>
+    /// <summary>When the collection completed. <see cref="FootprintBuilder"/> also gives this date to the zip entries that it writes.</summary>
     public DateTimeOffset? CompletedAt { get; set; }
 
     /// <summary>The highest collection level requested, from 1 to 4. Required.</summary>

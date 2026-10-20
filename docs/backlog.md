@@ -16,6 +16,12 @@ Each item has a stage: **Before publishing** means before the first NuGet, npm, 
 | Check the 2^53 limit of integers and the required fields in the writer | The validators check them, the writer does not | Before 1.0 |
 | An option to check the CRC of the zip entries | A damaged file is caught by the JSON parser today, not by the CRC | Later |
 | Review the XML documentation and the README once more against the first users: DAX Studio, Bravo, Tabular Editor | First impressions of the package | Before publishing |
+| A net462 target beside netstandard2.0, so that a .NET Framework host compiles against the `System.Text.Json` assembly that the package installs there | The review of 20 October 2026 found that the netstandard2.0 build fails with `FileLoadException` on .NET Framework until the host adds binding redirects. Proposed, for the maintainer to accept. | Before publishing |
+| `TryOpenEmbedded`, to test a VPAX file for a footprint without catching `embedded.partMissing` | Most VPAX files have no footprint yet, and a tool that opens many of them would test each one | Before 1.0 |
+| `string?` elements in `PartitionRow.Values`, which holds nulls by design | A nullable-aware caller gets no warning today | Before 1.0 |
+| Stored entries on .NET Framework, where `ZipArchive` deflates the entries written with `NoCompression` | A stored part is read in place, a deflated one is inflated into memory | Later |
+| A serializable `PqaxFormatException` | An exception that crosses an AppDomain on .NET Framework | Later |
+| Parallel reads of two detail tables of one document, which share one lock today | Two threads that read two tables wait for each other | Later |
 
 ## 2. VPAX integration
 

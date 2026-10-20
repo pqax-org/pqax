@@ -296,6 +296,19 @@ public class ReaderTests
     }
 
     [Fact]
+    public void A_failed_open_of_a_package_by_path_leaves_the_file_closed()
+    {
+        using TemporaryFile file = Kit.Temporary(Kit.PackageWithoutFootprint(), ".vpax");
+        Assert.Throws<ArgumentNullException>(() => PqaxDocument.OpenEmbedded(file.Path, null!));
+        Assert.Equal("embedded.partMissing", CodeOf(() => PqaxDocument.OpenEmbedded(file.Path).Dispose()));
+
+        // No handle is left on the file: it can be opened for exclusive access at once.
+        using (new FileStream(file.Path, FileMode.Open, FileAccess.ReadWrite, FileShare.None))
+        {
+        }
+    }
+
+    [Fact]
     public void A_file_that_is_not_a_zip_archive_is_refused()
     {
         using var stream = new MemoryStream(Encoding.UTF8.GetBytes("not a zip archive"));

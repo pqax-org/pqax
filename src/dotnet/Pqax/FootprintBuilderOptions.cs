@@ -30,6 +30,10 @@ public sealed class FootprintBuilderOptions
         }
     }
 
-    /// <summary>The deflate level of every entry. The default is <see cref="CompressionLevel.Optimal"/>.</summary>
+    /// <summary>
+    /// The deflate level of every entry. The default is <see cref="CompressionLevel.Optimal"/>.
+    /// <see cref="CompressionLevel.NoCompression"/> stores the entries on .NET 8 and later; on .NET Framework, they are
+    /// deflated without compression.
+    /// </summary>
     public CompressionLevel CompressionLevel { get; set; } = CompressionLevel.Optimal;
 }

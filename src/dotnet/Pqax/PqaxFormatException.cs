@@ -9,6 +9,10 @@ namespace Pqax;
 /// <c>embedded.partMissing</c> when a VPAX file has no part with the name of the footprint; and for an archive that
 /// this reader cannot open, <c>container.zip64</c>, <c>container.method</c>, or <c>container.encrypted</c>.
 /// </summary>
+/// <remarks>
+/// <see cref="PqaxDocument"/> and <see cref="FootprintBuilder.From(PqaxDocument)"/> throw it. <see cref="PqaxValidator"/>
+/// never does: it reports the same codes as issues.
+/// </remarks>
 public sealed class PqaxFormatException : Exception
 {
     /// <summary>Creates the exception with the code of the rule and a message.</summary>

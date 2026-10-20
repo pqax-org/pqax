@@ -6,17 +6,38 @@ using System.Text.Json;
 namespace Pqax;
 
 /// <summary>
-/// An open PQAX file. Opening reads the central directory of the zip, the manifest, and the summary. A detail table is
-/// read from its parts only when it is asked for, and then kept. A PQAX file embedded in a VPAX file opens in place
-/// when the part is stored, and from memory when it is deflated.
+/// An open PQAX file. Opening reads the central directory of the zip, <c>manifest.json</c>, and <c>summary.json</c>,
+/// and nothing else. A detail table is read from its parts on the first call of its Read method, and then kept. A PQAX
+/// file embedded in a VPAX file opens in place when the part is stored, and from memory when it is deflated.
 /// </summary>
 /// <remarks>
-/// The reader is tolerant: it skips a byte order mark, reads a missing field as null, ignores what it does not know,
-/// and reads a value that does not have the type of the model as null. A reference to a row that the file does not
-/// have keeps its number, and <see cref="PqaxTable{TRow}.FindById(long)"/> finds no row for it. The reader refuses a
-/// file only when it has no <c>manifest.json</c>, when the format is not <c>pqax</c>, when it does not know the first
-/// number of the format version, and when a part that it reads is not valid JSON. It then throws
-/// <see cref="PqaxFormatException"/>. The methods are safe to call from several threads.
+/// <para>
+/// The reader is more tolerant than <see cref="PqaxValidator"/>. It skips a byte order mark. A field that a part leaves
+/// out is null in the rows of that part, and so is a value whose JSON type is not the type of the model, such as a
+/// string in an integer field; <c>1.0</c> in an integer field reads as 1. A table has, in each part, the rows of its
+/// longest array, whatever number the manifest states. A reference to a row that the file does not have keeps its
+/// number, and <see cref="PqaxTable{TRow}.FindById(long)"/> finds no row for it. What this version does not know is
+/// kept: a field in <see cref="PqaxTable{TRow}.ExtraFields"/>, a table in <see cref="ReadRaw(string)"/>, a member of
+/// the manifest, of the collection, or of a nested object in its <c>Extensions</c>. An entry that the manifest does not
+/// list, a member of a part descriptor, and a member of a table that is not an array are ignored. A
+/// <c>summary.json</c> that the manifest does not list or the archive does not have gives empty summary tables.
+/// </para>
+/// <para>
+/// The open throws <see cref="PqaxFormatException"/> only for these codes: <c>container.manifestMissing</c> when the
+/// file is not a zip archive or has no <c>manifest.json</c>; <c>manifest.format</c> when the format is not
+/// <c>pqax</c>; <c>manifest.versionUnknown</c> when the first number of the format version is not 0;
+/// <c>json.invalid</c> when <c>manifest.json</c> or <c>summary.json</c> is damaged or is not valid JSON; and
+/// <c>container.zip64</c>, <c>container.encrypted</c>, or <c>container.method</c> when the archive, or an entry that it
+/// reads, needs ZIP64, is encrypted, or uses a compression other than deflate. <c>OpenEmbedded</c> adds
+/// <c>embedded.partMissing</c> when the package has no part with the name of the footprint, and
+/// <c>container.manifestMissing</c> when the package is not a zip archive or its part cannot be inflated. A detail part
+/// that is missing (<c>manifest.partMissing</c>) or that cannot be read fails only the read of its table.
+/// </para>
+/// <para>
+/// Every member is safe to call from several threads, and the reads of one document are serialized on one lock. The
+/// I/O is synchronous. <see cref="Dispose"/> closes the file or the stream; the manifest, the summary, and the detail
+/// tables already read stay usable.
+/// </para>
 /// </remarks>
 public sealed class PqaxDocument : IDisposable
 {
@@ -58,10 +79,13 @@ public sealed class PqaxDocument : IDisposable
         Summary = ReadSummary();
     }
 
-    /// <summary>The content of <c>manifest.json</c>.</summary>
+    /// <summary>The content of <c>manifest.json</c>, read when the document opens. It stays usable after <see cref="Dispose"/>.</summary>
     public Manifest Manifest { get; }
 
-    /// <summary>Every summary table, read when the document opens.</summary>
+    /// <summary>
+    /// The fifteen summary tables, read from <c>summary.json</c> when the document opens. A table that the file does not
+    /// have is empty. They stay usable after <see cref="Dispose"/>.
+    /// </summary>
     public Summary Summary { get; }
 
     /// <summary>For a document opened with <c>OpenEmbedded</c>, the name of the part of the package that holds it, such as <c>Footprint.pqax</c>. Null for a PQAX file of its own.</summary>
@@ -73,21 +97,35 @@ public sealed class PqaxDocument : IDisposable
     /// </summary>
     public string? EmbeddedCompression { get; }
 
-    /// <summary>Opens a PQAX file.</summary>
+    /// <summary>
+    /// Opens a PQAX file and reads its central directory, <c>manifest.json</c>, and <c>summary.json</c>. The file is
+    /// opened for reading, shared with other readers, and stays open until the document is disposed.
+    /// </summary>
     /// <param name="path">The path of the file.</param>
-    /// <returns>The document, which keeps the file open until it is disposed.</returns>
-    /// <exception cref="PqaxFormatException">The file is not a PQAX file that this library reads.</exception>
+    /// <returns>The document.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="path"/> is null.</exception>
+    /// <exception cref="IOException">The file cannot be opened or read, such as <see cref="FileNotFoundException"/> when it does not exist.</exception>
+    /// <exception cref="UnauthorizedAccessException">The caller may not read the file.</exception>
+    /// <exception cref="PqaxFormatException">The file is not a PQAX file that this library reads. The remarks of the class list the codes.</exception>
     public static PqaxDocument Open(string path)
     {
         Stream stream = OpenFile(path);
         return Open(stream, false);
     }
 
-    /// <summary>Opens a PQAX file from a stream. The parts are read on demand, so the stream must stay readable; a stream that cannot seek is copied into memory first.</summary>
-    /// <param name="stream">The stream, from its start.</param>
+    /// <summary>
+    /// Opens a PQAX file from a stream and reads its central directory, <c>manifest.json</c>, and <c>summary.json</c>.
+    /// The detail parts are read from the stream when they are asked for, so the document keeps the stream and moves its
+    /// position: do not use the stream elsewhere while the document is open. A stream that cannot seek is copied into
+    /// memory first, and then closed at once unless <paramref name="leaveOpen"/> is true.
+    /// </summary>
+    /// <param name="stream">A readable stream. A stream that can seek is read from its first byte, whatever its position.</param>
     /// <param name="leaveOpen">True to leave the stream open when the document is disposed.</param>
     /// <returns>The document.</returns>
-    /// <exception cref="PqaxFormatException">The stream does not hold a PQAX file that this library reads.</exception>
+    /// <exception cref="ArgumentNullException"><paramref name="stream"/> is null.</exception>
+    /// <exception cref="NotSupportedException">The stream cannot read.</exception>
+    /// <exception cref="IOException">The stream cannot be read.</exception>
+    /// <exception cref="PqaxFormatException">The stream does not hold a PQAX file that this library reads. The remarks of the class list the codes.</exception>
     public static PqaxDocument Open(Stream stream, bool leaveOpen = false)
     {
         Stream source = Archive.Seekable(stream, leaveOpen, out Stream? owned);
@@ -103,26 +141,56 @@ public sealed class PqaxDocument : IDisposable
         }
     }
 
-    /// <summary>Opens the PQAX file that a VPAX file embeds as one of its parts.</summary>
+    /// <summary>
+    /// Opens the PQAX file that a VPAX file embeds as one of its parts, and reads its central directory, manifest, and
+    /// summary. A stored part is read in place, and the VPAX file stays open, shared with other readers, until the
+    /// document is disposed. A deflated part is inflated into memory, and the VPAX file is closed before this method returns.
+    /// </summary>
     /// <param name="vpaxPath">The path of the VPAX file.</param>
-    /// <param name="partName">The name of the part, <c>Footprint.pqax</c> by default.</param>
-    /// <returns>The document.</returns>
-    /// <exception cref="PqaxFormatException">The package has no part with that name (<c>embedded.partMissing</c>), or the part is not a PQAX file that this library reads.</exception>
+    /// <param name="partName">
+    /// The name of the part, <c>Footprint.pqax</c> by default. A leading slash is ignored, and when no entry has that
+    /// name, an entry whose name differs from it only in case is taken.
+    /// </param>
+    /// <returns>The document. <see cref="EmbeddedPart"/> and <see cref="EmbeddedCompression"/> say which part it is and how it is read.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="vpaxPath"/> or <paramref name="partName"/> is null.</exception>
+    /// <exception cref="IOException">The file cannot be opened or read, such as <see cref="FileNotFoundException"/> when it does not exist.</exception>
+    /// <exception cref="UnauthorizedAccessException">The caller may not read the file.</exception>
+    /// <exception cref="PqaxFormatException">
+    /// The package has no part with that name (<c>embedded.partMissing</c>), the package or its part cannot be read, or
+    /// the part is not a PQAX file that this library reads. The remarks of the class list the codes.
+    /// </exception>
     public static PqaxDocument OpenEmbedded(string vpaxPath, string partName = FootprintPartName)
     {
+        if (partName == null)
+        {
+            throw new ArgumentNullException(nameof(partName));
+        }
+
         Stream stream = OpenFile(vpaxPath);
         return OpenEmbedded(stream, partName, false);
     }
 
     /// <summary>
-    /// Opens the PQAX file that a VPAX file embeds as one of its parts. A stored part is read in place, from the
-    /// stream of the VPAX file. A deflated part is inflated into memory first.
+    /// Opens the PQAX file that a VPAX file embeds as one of its parts, and reads its central directory, manifest, and
+    /// summary. A stored part is read in place, from the stream of the VPAX file, so the document keeps the stream and
+    /// moves its position: do not use the stream elsewhere while the document is open. A deflated part is inflated into
+    /// memory, and the stream is then no longer used; it is closed at once unless <paramref name="leaveOpen"/> is true.
+    /// A stream that cannot seek is copied into memory first.
     /// </summary>
-    /// <param name="vpaxStream">The stream of the VPAX file, from its start.</param>
-    /// <param name="partName">The name of the part, <c>Footprint.pqax</c> by default.</param>
+    /// <param name="vpaxStream">A readable stream of the VPAX file. A stream that can seek is read from its first byte, whatever its position.</param>
+    /// <param name="partName">
+    /// The name of the part, <c>Footprint.pqax</c> by default. A leading slash is ignored, and when no entry has that
+    /// name, an entry whose name differs from it only in case is taken.
+    /// </param>
     /// <param name="leaveOpen">True to leave the stream open when the document is disposed.</param>
-    /// <returns>The document.</returns>
-    /// <exception cref="PqaxFormatException">The package has no part with that name (<c>embedded.partMissing</c>), or the part is not a PQAX file that this library reads.</exception>
+    /// <returns>The document. <see cref="EmbeddedPart"/> and <see cref="EmbeddedCompression"/> say which part it is and how it is read.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="vpaxStream"/> or <paramref name="partName"/> is null.</exception>
+    /// <exception cref="NotSupportedException">The stream cannot read.</exception>
+    /// <exception cref="IOException">The stream cannot be read.</exception>
+    /// <exception cref="PqaxFormatException">
+    /// The package has no part with that name (<c>embedded.partMissing</c>), the package or its part cannot be read, or
+    /// the part is not a PQAX file that this library reads. The remarks of the class list the codes.
+    /// </exception>
     public static PqaxDocument OpenEmbedded(Stream vpaxStream, string partName = FootprintPartName, bool leaveOpen = false)
     {
         if (partName == null)
@@ -152,9 +220,14 @@ public sealed class PqaxDocument : IDisposable
         }
     }
 
-    /// <summary>The number of rows of a table, from the manifest: the sum over the parts that hold it. Zero for a table that the file does not have.</summary>
+    /// <summary>
+    /// The number of rows of a table, from the manifest: the sum over the parts that list it, at most
+    /// <see cref="int.MaxValue"/>. Zero for a table that the file does not have. Nothing is read, so it also works after
+    /// <see cref="Dispose"/>.
+    /// </summary>
     /// <param name="tableName">The name of the table in the file, such as <c>columnChunks</c>.</param>
-    /// <returns>The number of rows.</returns>
+    /// <returns>The number of rows that the manifest states. A file that contradicts its manifest reads with the rows of its arrays instead.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="tableName"/> is null.</exception>
     public int RowCount(string tableName)
     {
         if (tableName == null)
@@ -174,43 +247,98 @@ public sealed class PqaxDocument : IDisposable
         return (int)Math.Min(total, int.MaxValue);
     }
 
-    /// <summary>The <c>partitions</c> table, from all its parts. Empty when the file has none.</summary>
-    /// <returns>The table, read on the first call and kept.</returns>
-    /// <exception cref="PqaxFormatException">A part of the table is missing from the archive (<c>manifest.partMissing</c>), cannot be read, or is not valid JSON.</exception>
+    /// <summary>
+    /// The <c>partitions</c> table: the rows of all its parts, in the order of the manifest. Read on the first call, and
+    /// then kept. Empty when the file has none.
+    /// </summary>
+    /// <returns>The table. Later calls return the same instance.</returns>
+    /// <exception cref="PqaxFormatException">
+    /// A part of the table is missing from the archive (<c>manifest.partMissing</c>), or cannot be read: <c>json.invalid</c>,
+    /// or a <c>container</c> code for an entry that this library cannot read. A read that fails is not kept: the next call reads again.
+    /// </exception>
+    /// <exception cref="ObjectDisposedException">The document is disposed, and the table was not read before.</exception>
+    /// <exception cref="IOException">The file or the stream cannot be read.</exception>
     public PqaxTable<PartitionRow> ReadPartitions() => ReadDetail(ref partitions, Schemas.Partitions);
 
-    /// <summary>The <c>files</c> table, from all its parts. Empty when the file has none.</summary>
-    /// <returns>The table, read on the first call and kept.</returns>
-    /// <exception cref="PqaxFormatException">A part of the table is missing from the archive (<c>manifest.partMissing</c>), cannot be read, or is not valid JSON.</exception>
+    /// <summary>
+    /// The <c>files</c> table: the rows of all its parts, in the order of the manifest. Read on the first call, and
+    /// then kept. Empty when the file has none.
+    /// </summary>
+    /// <returns>The table. Later calls return the same instance.</returns>
+    /// <exception cref="PqaxFormatException">
+    /// A part of the table is missing from the archive (<c>manifest.partMissing</c>), or cannot be read: <c>json.invalid</c>,
+    /// or a <c>container</c> code for an entry that this library cannot read. A read that fails is not kept: the next call reads again.
+    /// </exception>
+    /// <exception cref="ObjectDisposedException">The document is disposed, and the table was not read before.</exception>
+    /// <exception cref="IOException">The file or the stream cannot be read.</exception>
     public PqaxTable<FileRow> ReadFiles() => ReadDetail(ref files, Schemas.Files);
 
-    /// <summary>The <c>rowGroups</c> table, from all its parts. Empty when the file has none.</summary>
-    /// <returns>The table, read on the first call and kept.</returns>
-    /// <exception cref="PqaxFormatException">A part of the table is missing from the archive (<c>manifest.partMissing</c>), cannot be read, or is not valid JSON.</exception>
+    /// <summary>
+    /// The <c>rowGroups</c> table: the rows of all its parts, in the order of the manifest. Read on the first call, and
+    /// then kept. Empty when the file has none.
+    /// </summary>
+    /// <returns>The table. Later calls return the same instance.</returns>
+    /// <exception cref="PqaxFormatException">
+    /// A part of the table is missing from the archive (<c>manifest.partMissing</c>), or cannot be read: <c>json.invalid</c>,
+    /// or a <c>container</c> code for an entry that this library cannot read. A read that fails is not kept: the next call reads again.
+    /// </exception>
+    /// <exception cref="ObjectDisposedException">The document is disposed, and the table was not read before.</exception>
+    /// <exception cref="IOException">The file or the stream cannot be read.</exception>
     public PqaxTable<RowGroupRow> ReadRowGroups() => ReadDetail(ref rowGroups, Schemas.RowGroups);
 
-    /// <summary>The <c>columnChunks</c> table, from all its parts. Empty when the file has none.</summary>
-    /// <returns>The table, read on the first call and kept.</returns>
-    /// <exception cref="PqaxFormatException">A part of the table is missing from the archive (<c>manifest.partMissing</c>), cannot be read, or is not valid JSON.</exception>
+    /// <summary>
+    /// The <c>columnChunks</c> table: the rows of all its parts, in the order of the manifest. Read on the first call, and
+    /// then kept. Empty when the file has none.
+    /// </summary>
+    /// <returns>The table. Later calls return the same instance.</returns>
+    /// <exception cref="PqaxFormatException">
+    /// A part of the table is missing from the archive (<c>manifest.partMissing</c>), or cannot be read: <c>json.invalid</c>,
+    /// or a <c>container</c> code for an entry that this library cannot read. A read that fails is not kept: the next call reads again.
+    /// </exception>
+    /// <exception cref="ObjectDisposedException">The document is disposed, and the table was not read before.</exception>
+    /// <exception cref="IOException">The file or the stream cannot be read.</exception>
     public PqaxTable<ColumnChunkRow> ReadColumnChunks() => ReadDetail(ref columnChunks, Schemas.ColumnChunks);
 
-    /// <summary>The <c>deleteFiles</c> table, from all its parts. Empty when the file has none.</summary>
-    /// <returns>The table, read on the first call and kept.</returns>
-    /// <exception cref="PqaxFormatException">A part of the table is missing from the archive (<c>manifest.partMissing</c>), cannot be read, or is not valid JSON.</exception>
+    /// <summary>
+    /// The <c>deleteFiles</c> table: the rows of all its parts, in the order of the manifest. Read on the first call, and
+    /// then kept. Empty when the file has none.
+    /// </summary>
+    /// <returns>The table. Later calls return the same instance.</returns>
+    /// <exception cref="PqaxFormatException">
+    /// A part of the table is missing from the archive (<c>manifest.partMissing</c>), or cannot be read: <c>json.invalid</c>,
+    /// or a <c>container</c> code for an entry that this library cannot read. A read that fails is not kept: the next call reads again.
+    /// </exception>
+    /// <exception cref="ObjectDisposedException">The document is disposed, and the table was not read before.</exception>
+    /// <exception cref="IOException">The file or the stream cannot be read.</exception>
     public PqaxTable<DeleteFileRow> ReadDeleteFiles() => ReadDetail(ref deleteFiles, Schemas.DeleteFiles);
 
-    /// <summary>The <c>commits</c> table, from all its parts. Empty when the file has none.</summary>
-    /// <returns>The table, read on the first call and kept.</returns>
-    /// <exception cref="PqaxFormatException">A part of the table is missing from the archive (<c>manifest.partMissing</c>), cannot be read, or is not valid JSON.</exception>
+    /// <summary>
+    /// The <c>commits</c> table: the rows of all its parts, in the order of the manifest. Read on the first call, and
+    /// then kept. Empty when the file has none.
+    /// </summary>
+    /// <returns>The table. Later calls return the same instance.</returns>
+    /// <exception cref="PqaxFormatException">
+    /// A part of the table is missing from the archive (<c>manifest.partMissing</c>), or cannot be read: <c>json.invalid</c>,
+    /// or a <c>container</c> code for an entry that this library cannot read. A read that fails is not kept: the next call reads again.
+    /// </exception>
+    /// <exception cref="ObjectDisposedException">The document is disposed, and the table was not read before.</exception>
+    /// <exception cref="IOException">The file or the stream cannot be read.</exception>
     public PqaxTable<CommitRow> ReadCommits() => ReadDetail(ref commits, Schemas.Commits);
 
     /// <summary>
     /// Any table, summary or detail, known or not, with every field as JSON values, from all the parts that the
-    /// manifest lists for it. The result is not kept: each call reads the parts again. Empty when the file has none.
+    /// manifest lists for it, or from <c>summary.json</c> when it holds a table that the manifest does not list. Not
+    /// kept: each call reads the parts again. Empty when the file has none.
     /// </summary>
-    /// <exception cref="PqaxFormatException">A part of the table is missing from the archive (<c>manifest.partMissing</c>), cannot be read, or is not valid JSON.</exception>
-    /// <param name="tableName">The name of the table in the file.</param>
-    /// <returns>The table.</returns>
+    /// <param name="tableName">The name of the table in the file, such as <c>files</c>.</param>
+    /// <returns>A new table.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="tableName"/> is null.</exception>
+    /// <exception cref="PqaxFormatException">
+    /// A part of the table is missing from the archive (<c>manifest.partMissing</c>), or cannot be read: <c>json.invalid</c>,
+    /// or a <c>container</c> code for an entry that this library cannot read.
+    /// </exception>
+    /// <exception cref="ObjectDisposedException">The document is disposed.</exception>
+    /// <exception cref="IOException">The file or the stream cannot be read.</exception>
     public RawTable ReadRaw(string tableName)
     {
         if (tableName == null)
@@ -233,7 +361,12 @@ public sealed class PqaxDocument : IDisposable
         }
     }
 
-    /// <summary>Closes the file or the stream, unless the document was opened with <c>leaveOpen</c>.</summary>
+    /// <summary>
+    /// Closes the file or the stream, unless the document was opened with <c>leaveOpen</c>. <see cref="Manifest"/>,
+    /// <see cref="Summary"/>, <see cref="RowCount(string)"/>, and the detail tables already read stay usable. A Read method
+    /// for a table not read yet, and <see cref="ReadRaw(string)"/>, then throw <see cref="ObjectDisposedException"/>. A
+    /// second call does nothing.
+    /// </summary>
     public void Dispose()
     {
         lock (sync)

@@ -10,6 +10,11 @@ namespace Pqax;
 /// A table of a PQAX file: its rows, typed, and the fields that this version of the format does not know.
 /// The rows of all the parts of the table are concatenated in the order of the manifest.
 /// </summary>
+/// <remarks>
+/// The list of rows does not change once the table is read, and it stays usable after the document is disposed. The
+/// rows themselves are mutable objects, without locks. Reading the table from several threads is safe,
+/// <see cref="FindById(long)"/> included.
+/// </remarks>
 /// <typeparam name="TRow">The row type, such as <see cref="ColumnRow"/>.</typeparam>
 public sealed class PqaxTable<TRow> : IReadOnlyList<TRow>
     where TRow : class
@@ -37,18 +42,21 @@ public sealed class PqaxTable<TRow> : IReadOnlyList<TRow>
     /// <summary>
     /// The fields of the table that are not in the object model of this version, by name, in the order of the file.
     /// Each list has one value for each row, and a value is null when the row has none or the JSON value is null.
+    /// Empty when the table has no such field.
     /// </summary>
     public IReadOnlyDictionary<string, IReadOnlyList<JsonElement?>> ExtraFields { get; }
 
     /// <summary>The row at a position.</summary>
     /// <param name="index">The position of the row, from 0.</param>
     /// <returns>The row.</returns>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="index"/> is below 0, or not below <see cref="Count"/>.</exception>
     public TRow this[int index] => Rows[index];
 
     /// <summary>
     /// The row whose <c>id</c> is <paramref name="id"/>, or null when the table has none or has no ids. This is how a
     /// reference is resolved: a reference to a row that the file does not have gives null. When two rows have the same
-    /// id, the first one is returned. The index is built on the first call.
+    /// id, the first one is returned. The index is built on the first call, from the ids that the rows have then, and
+    /// each later call is a lookup.
     /// </summary>
     /// <param name="id">The id to look for.</param>
     /// <returns>The row, or null.</returns>

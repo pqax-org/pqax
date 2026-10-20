@@ -32,7 +32,7 @@ public sealed class Manifest
     /// <summary>The version of the format, such as <c>0.1</c>.</summary>
     public string FormatVersion { get; }
 
-    /// <summary>How and when the footprint was collected. Empty when the manifest has no collection.</summary>
+    /// <summary>How and when the footprint was collected. Every property is null when the manifest has no collection object.</summary>
     public CollectionInfo Collection { get; }
 
     /// <summary>Set when names were obfuscated, as in VPAX.</summary>
@@ -44,7 +44,11 @@ public sealed class Manifest
     /// <summary>The version of the library that obfuscated the names.</summary>
     public string? ObfuscatorLibVersion { get; }
 
-    /// <summary>The parts of the file, in the order of the manifest. The first one is <c>summary.json</c>.</summary>
+    /// <summary>
+    /// The parts of the file, in the order of the manifest; in a valid file, <c>summary.json</c> comes first. A part
+    /// without a name is left out, and so is, from <see cref="PartInfo.Tables"/>, a number of rows that is not an
+    /// integer from 0 to <see cref="int.MaxValue"/>.
+    /// </summary>
     public IReadOnlyList<PartInfo> Parts { get; }
 
     /// <summary>The members of the manifest that this version of the format does not know, in the order of the file.</summary>

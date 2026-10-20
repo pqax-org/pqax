@@ -14,11 +14,27 @@ namespace Pqax;
 /// caller uses that id in the references of other rows.
 /// </summary>
 /// <remarks>
-/// The file has <c>manifest.json</c> first, then <c>summary.json</c>, then one or more parts for each detail table, with
-/// at most <see cref="FootprintBuilderOptions.RowsPerPart"/> rows in a part. JSON is compact UTF-8 without a byte order
-/// mark, a field with no value in any row of a part is left out, and an empty table is left out. The Add methods and
-/// <see cref="Write(Stream)"/> are safe to call from several threads. Write refuses a table with a repeated id or an id
-/// that is not positive. Apart from the ids, the builder does not validate what it writes: <see cref="PqaxValidator"/> does.
+/// <para>
+/// The file has <c>manifest.json</c> first, then <c>summary.json</c>, always, then the parts of each detail table, with
+/// at most <see cref="FootprintBuilderOptions.RowsPerPart"/> rows in a part: <c>files.json</c>, or
+/// <c>columnChunks.1.json</c>, <c>columnChunks.2.json</c>, and so on. The JSON is compact UTF-8 without a byte order
+/// mark, and non-ASCII text is written as is. A field with no value in any row of a part is left out, and so is an empty
+/// table; <c>summary.json</c> is <c>{}</c> when the footprint has no summary rows. A timestamp is written in UTC with
+/// milliseconds, as <c>2026-10-05T08:15:30.000Z</c>, and the ticks below the millisecond are dropped. The entries are
+/// deflated at <see cref="FootprintBuilderOptions.CompressionLevel"/>, without ZIP64, and carry the date of
+/// <see cref="CollectionInfo.CompletedAt"/>, or of <see cref="CollectionInfo.StartedAt"/> when it is null, or else
+/// 1 January 1980. The same footprint therefore gives the same bytes on the same .NET runtime.
+/// </para>
+/// <para>
+/// The builder keeps the row instances that the Add methods receive, so a property set after Add, such as the
+/// clustering columns of a table once its columns have ids, is written. Write refuses a table with a repeated id or an
+/// id that is not positive. Apart from the ids, the builder does not validate what it writes: <see cref="PqaxValidator"/> does.
+/// </para>
+/// <para>
+/// The Add methods and the Write methods are safe to call from several threads, and they are serialized on one lock.
+/// Do not change a row while a Write runs. Write does not change the builder, so it can run more than once. The I/O is
+/// synchronous, and there is nothing to dispose.
+/// </para>
 /// </remarks>
 public sealed class FootprintBuilder
 {
@@ -65,12 +81,13 @@ public sealed class FootprintBuilder
 
     /// <summary>Creates a builder for a footprint collected as <paramref name="collection"/> says.</summary>
     /// <param name="collection">How and when the footprint was collected. It is written as the collection of the manifest when the file is written, so later changes to it count.</param>
+    /// <exception cref="ArgumentNullException"><paramref name="collection"/> is null.</exception>
     public FootprintBuilder(CollectionInfo collection)
     {
         Collection = collection ?? throw new ArgumentNullException(nameof(collection));
     }
 
-    /// <summary>How and when the footprint was collected.</summary>
+    /// <summary>How and when the footprint was collected: the instance that the constructor received.</summary>
     public CollectionInfo Collection { get; }
 
     /// <summary>How the file is written: the rows in a detail part and the compression level.</summary>
@@ -90,8 +107,12 @@ public sealed class FootprintBuilder
     /// does not know, the members of the manifest that it does not know, and the collection. A tool that rewrites a
     /// file, such as an obfuscator, starts here. The rows are copies, so later changes to the document do not count.
     /// </summary>
-    /// <param name="document">The document to copy. Its detail tables are read.</param>
+    /// <param name="document">The document to copy. Its detail tables, and the tables that this version does not know, are read now.</param>
     /// <returns>The builder.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="document"/> is null.</exception>
+    /// <exception cref="PqaxFormatException">A part of the document is missing from its archive (<c>manifest.partMissing</c>) or cannot be read.</exception>
+    /// <exception cref="ObjectDisposedException">The document is disposed, and a table to copy is not in memory.</exception>
+    /// <exception cref="IOException">The file or the stream of the document cannot be read.</exception>
     public static FootprintBuilder From(PqaxDocument document)
     {
         if (document == null)
@@ -151,111 +172,138 @@ public sealed class FootprintBuilder
     /// <summary>Adds a row to <c>sources</c>. A row keeps the id that it brings; a row whose id is 0 gets the next free id.</summary>
     /// <param name="row">The row. When its <see cref="SourceRow.Id"/> is 0, it is set.</param>
     /// <returns>The id of the row.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="row"/> is null.</exception>
     public long AddSource(SourceRow row) => Add(sources, row);
 
     /// <summary>Adds a row to <c>tables</c>. A row keeps the id that it brings; a row whose id is 0 gets the next free id.</summary>
     /// <param name="row">The row. When its <see cref="TableRow.Id"/> is 0, it is set.</param>
     /// <returns>The id of the row.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="row"/> is null.</exception>
     public long AddTable(TableRow row) => Add(tables, row);
 
     /// <summary>Adds a row to <c>columns</c>. A row keeps the id that it brings; a row whose id is 0 gets the next free id.</summary>
     /// <param name="row">The row. When its <see cref="ColumnRow.Id"/> is 0, it is set.</param>
     /// <returns>The id of the row.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="row"/> is null.</exception>
     public long AddColumn(ColumnRow row) => Add(columns, row);
 
     /// <summary>Adds a row to <c>partitionSpecs</c>. A row keeps the id that it brings; a row whose id is 0 gets the next free id.</summary>
     /// <param name="row">The row. When its <see cref="PartitionSpecRow.Id"/> is 0, it is set.</param>
     /// <returns>The id of the row.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="row"/> is null.</exception>
     public long AddPartitionSpec(PartitionSpecRow row) => Add(partitionSpecs, row);
 
     /// <summary>Adds a row to <c>partitionFields</c>, which has no ids.</summary>
     /// <param name="row">The row.</param>
     /// <returns>The position of the row in its table, from 0.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="row"/> is null.</exception>
     public long AddPartitionField(PartitionFieldRow row) => Add(partitionFields, row);
 
     /// <summary>Adds a row to <c>sortOrders</c>. A row keeps the id that it brings; a row whose id is 0 gets the next free id.</summary>
     /// <param name="row">The row. When its <see cref="SortOrderRow.Id"/> is 0, it is set.</param>
     /// <returns>The id of the row.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="row"/> is null.</exception>
     public long AddSortOrder(SortOrderRow row) => Add(sortOrders, row);
 
     /// <summary>Adds a row to <c>sortFields</c>, which has no ids.</summary>
     /// <param name="row">The row.</param>
     /// <returns>The position of the row in its table, from 0.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="row"/> is null.</exception>
     public long AddSortField(SortFieldRow row) => Add(sortFields, row);
 
     /// <summary>Adds a row to <c>physicalSchemas</c>. A row keeps the id that it brings; a row whose id is 0 gets the next free id.</summary>
     /// <param name="row">The row. When its <see cref="PhysicalSchemaRow.Id"/> is 0, it is set.</param>
     /// <returns>The id of the row.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="row"/> is null.</exception>
     public long AddPhysicalSchema(PhysicalSchemaRow row) => Add(physicalSchemas, row);
 
     /// <summary>Adds a row to <c>physicalColumns</c>. A row keeps the id that it brings; a row whose id is 0 gets the next free id.</summary>
     /// <param name="row">The row. When its <see cref="PhysicalColumnRow.Id"/> is 0, it is set.</param>
     /// <returns>The id of the row.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="row"/> is null.</exception>
     public long AddPhysicalColumn(PhysicalColumnRow row) => Add(physicalColumns, row);
 
     /// <summary>Adds a row to <c>writers</c>. A row keeps the id that it brings; a row whose id is 0 gets the next free id.</summary>
     /// <param name="row">The row. When its <see cref="WriterRow.Id"/> is 0, it is set.</param>
     /// <returns>The id of the row.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="row"/> is null.</exception>
     public long AddWriter(WriterRow row) => Add(writers, row);
 
     /// <summary>Adds a row to <c>operations</c>, which has no ids.</summary>
     /// <param name="row">The row.</param>
     /// <returns>The position of the row in its table, from 0.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="row"/> is null.</exception>
     public long AddOperation(OperationRow row) => Add(operations, row);
 
     /// <summary>Adds a row to <c>issues</c>, which has no ids.</summary>
     /// <param name="row">The row.</param>
     /// <returns>The position of the row in its table, from 0.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="row"/> is null.</exception>
     public long AddIssue(IssueRow row) => Add(issues, row);
 
     /// <summary>Adds a row to <c>modelBindings</c>. A row keeps the id that it brings; a row whose id is 0 gets the next free id.</summary>
     /// <param name="row">The row. When its <see cref="ModelBindingRow.Id"/> is 0, it is set.</param>
     /// <returns>The id of the row.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="row"/> is null.</exception>
     public long AddModelBinding(ModelBindingRow row) => Add(modelBindings, row);
 
     /// <summary>Adds a row to <c>tableBindings</c>. A row keeps the id that it brings; a row whose id is 0 gets the next free id.</summary>
     /// <param name="row">The row. When its <see cref="TableBindingRow.Id"/> is 0, it is set.</param>
     /// <returns>The id of the row.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="row"/> is null.</exception>
     public long AddTableBinding(TableBindingRow row) => Add(tableBindings, row);
 
     /// <summary>Adds a row to <c>columnBindings</c>, which has no ids.</summary>
     /// <param name="row">The row.</param>
     /// <returns>The position of the row in its table, from 0.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="row"/> is null.</exception>
     public long AddColumnBinding(ColumnBindingRow row) => Add(columnBindings, row);
 
     /// <summary>Adds a row to <c>partitions</c>. A row keeps the id that it brings; a row whose id is 0 gets the next free id.</summary>
     /// <param name="row">The row. When its <see cref="PartitionRow.Id"/> is 0, it is set.</param>
     /// <returns>The id of the row.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="row"/> is null.</exception>
     public long AddPartition(PartitionRow row) => Add(partitions, row);
 
     /// <summary>Adds a row to <c>files</c>. A row keeps the id that it brings; a row whose id is 0 gets the next free id.</summary>
     /// <param name="row">The row. When its <see cref="FileRow.Id"/> is 0, it is set.</param>
     /// <returns>The id of the row.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="row"/> is null.</exception>
     public long AddFile(FileRow row) => Add(files, row);
 
     /// <summary>Adds a row to <c>rowGroups</c>. A row keeps the id that it brings; a row whose id is 0 gets the next free id.</summary>
     /// <param name="row">The row. When its <see cref="RowGroupRow.Id"/> is 0, it is set.</param>
     /// <returns>The id of the row.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="row"/> is null.</exception>
     public long AddRowGroup(RowGroupRow row) => Add(rowGroups, row);
 
     /// <summary>Adds a row to <c>columnChunks</c>, which has no ids.</summary>
     /// <param name="row">The row.</param>
     /// <returns>The position of the row in its table, from 0.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="row"/> is null.</exception>
     public long AddColumnChunk(ColumnChunkRow row) => Add(columnChunks, row);
 
     /// <summary>Adds a row to <c>deleteFiles</c>. A row keeps the id that it brings; a row whose id is 0 gets the next free id.</summary>
     /// <param name="row">The row. When its <see cref="DeleteFileRow.Id"/> is 0, it is set.</param>
     /// <returns>The id of the row.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="row"/> is null.</exception>
     public long AddDeleteFile(DeleteFileRow row) => Add(deleteFiles, row);
 
     /// <summary>Adds a row to <c>commits</c>, which has no ids.</summary>
     /// <param name="row">The row.</param>
     /// <returns>The position of the row in its table, from 0.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="row"/> is null.</exception>
     public long AddCommit(CommitRow row) => Add(commits, row);
 
-    /// <summary>Writes the PQAX file to a stream. The stream is left open.</summary>
+    /// <summary>
+    /// Writes the PQAX file to a stream, and leaves the stream open. On a stream that cannot seek, the entries get data
+    /// descriptors after their data, which zip readers, this one included, also read.
+    /// </summary>
     /// <param name="stream">A writable stream.</param>
+    /// <exception cref="ArgumentNullException"><paramref name="stream"/> is null.</exception>
+    /// <exception cref="ArgumentException">The stream cannot write.</exception>
     /// <exception cref="InvalidOperationException">A table has the same id in two rows, or an id that is not positive. The message names the table and the id. Nothing is written.</exception>
+    /// <exception cref="IOException">The stream cannot be written.</exception>
     public void Write(Stream stream)
     {
         if (stream == null)
@@ -270,9 +318,15 @@ public sealed class FootprintBuilder
         }
     }
 
-    /// <summary>Writes the PQAX file to a path, replacing a file that is there.</summary>
+    /// <summary>
+    /// Writes the PQAX file to a path, replacing a file that is there. A write that fails after the file is created
+    /// leaves the partial file.
+    /// </summary>
     /// <param name="path">The path of the file.</param>
+    /// <exception cref="ArgumentNullException"><paramref name="path"/> is null.</exception>
     /// <exception cref="InvalidOperationException">A table has the same id in two rows, or an id that is not positive. The message names the table and the id. No file is created.</exception>
+    /// <exception cref="IOException">The file cannot be created or written, such as <see cref="DirectoryNotFoundException"/> when its folder does not exist.</exception>
+    /// <exception cref="UnauthorizedAccessException">The caller may not write the file.</exception>
     public void Write(string path)
     {
         if (path == null)
