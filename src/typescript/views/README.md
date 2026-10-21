@@ -283,4 +283,4 @@ npm run serve           # serves .artifacts/site at http://127.0.0.1:8080/, and 
 
 The tests import the package as `@pqax/views` and the reader as `@pqax/pqax`, both mapped to their TypeScript sources, so the tests need no build. They read the files of the conformance kit through the module that the configuration of the reader makes. The tests whose name ends with `.browser.test.ts` render the views and run in the browsers only.
 
-The Pages workflow builds the two packages, runs `scripts/site.mjs`, and deploys the result: `site/` with the packages under `tools/lib/`.
+The site pqax.tools, in the repository pqax-org/pqax.tools, installs the two packages from npm and deploys them with its own workflow; the page at pqax.org/tools/ redirects there.

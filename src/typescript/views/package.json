@@ -34,7 +34,6 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
     "test:browsers": "vitest run --config vitest.browser.config.ts",
-    "site": "node scripts/site.mjs",
     "serve": "node scripts/serve.mjs",
     "prepublishOnly": "npm run build && npm test"
   },
