@@ -2,10 +2,10 @@
 // field that the file leaves out, a table that it does not have, a value of the wrong type, and a 0.1 file. A value that
 // cannot be computed is null, and a stack component whose field is missing is marked absent.
 import type {
-  Distribution, FilesTable, Manifest, PqaxDocument, Summary, TablesTable,
+  DetailTables, Distribution, FilesTable, Manifest, PartitionsTable, PqaxDocument, Summary, TablesTable,
 } from "@pqax/pqax";
 
-/** What the view model reads: the manifest, the summary tables, and the `files` detail table when it was read. */
+/** What the view model reads: the manifest, the summary tables, and the `files` and `partitions` detail tables when they were read. */
 export interface FootprintData {
   /** The manifest. Only `formatVersion` and `collection` are read. */
   readonly manifest?: Partial<Manifest> | null;
@@ -13,6 +13,8 @@ export interface FootprintData {
   readonly summary: Summary;
   /** The `files` detail table, when the file has it and it was read. */
   readonly files?: FilesTable | null;
+  /** The `partitions` detail table, when the file has it and it was read. */
+  readonly partitions?: PartitionsTable | null;
   /** For a footprint read from a VPAX file, the part that holds it. */
   readonly embeddedPart?: string | null;
   /** Problems met while reading, such as a detail part that could not be read. */
@@ -23,27 +25,34 @@ export interface FootprintData {
 export interface ReadOptions {
   /** Whether to read the `files` detail table when the file has it. Default true. */
   readonly files?: boolean;
+  /** Whether to read the `partitions` detail table when the file has it. Default true. */
+  readonly partitions?: boolean;
 }
 
 /**
  * Reads what the view model needs from an open document: the summary, already read when the file opened, and the
- * `files` detail table when the manifest lists rows for it. A `files` table that cannot be read is left out, with a
- * warning, so that the views still show what the summary has.
+ * `files` and `partitions` detail tables when the manifest lists rows for them. A detail table that cannot be read is
+ * left out, with a warning, so that the views still show what the summary has.
  * @param doc A document from `openPqax` or `openEmbedded`.
- * @param options Whether to read the files.
+ * @param options Whether to read the files and the partitions.
  */
 export async function readFootprint(doc: PqaxDocument, options: ReadOptions = {}): Promise<FootprintData> {
   const warnings: string[] = [];
-  let files: FilesTable | null = null;
-  if (options.files !== false && doc.rowCount("files") > 0) {
+  const read = async <K extends "files" | "partitions">(name: K, wanted: boolean | undefined): Promise<DetailTables[K] | null> => {
+    if (wanted === false || doc.rowCount(name) <= 0) {
+      return null;
+    }
     try {
-      files = await doc.readTable("files");
+      return await doc.readTable(name);
     } catch (error) {
       const code = (error as { code?: unknown }).code;
-      warnings.push(`The files table could not be read${typeof code === "string" ? ` (${code})` : ""}. The views use the totals of the summary.`);
+      warnings.push(`The ${name} table could not be read${typeof code === "string" ? ` (${code})` : ""}. The views use the totals of the summary.`);
+      return null;
     }
-  }
-  return { manifest: doc.manifest, summary: doc.summary, files, embeddedPart: doc.embeddedPart, warnings };
+  };
+  const files = await read("files", options.files);
+  const partitions = await read("partitions", options.partitions);
+  return { manifest: doc.manifest, summary: doc.summary, files, partitions, embeddedPart: doc.embeddedPart, warnings };
 }
 
 // ---- the output ----
@@ -104,10 +113,12 @@ export interface CollectionTotals {
   readonly fileSize: number | null;
   /** The sum of `tables.rowCount`. */
   readonly rowCount: number | null;
-  /** The sum of the stacks: data files, non-live files, and metadata. */
+  /** The sum of the stacks: data files, the files the tables no longer use, and metadata. */
   readonly footprint: number;
   /** The sum of the waste of the stacks. */
   readonly waste: number;
+  /** The sum of the overhead of the stacks: metadata and footers. */
+  readonly overhead: number;
 }
 
 /** A source: a lakehouse, warehouse, catalog, or folder. */
@@ -125,7 +136,13 @@ export interface SourceModel {
 }
 
 /** The components of a storage stack, in the order the stack draws them. */
-export const STACK_COMPONENTS = ["live", "nonLive", "deleted", "metadata", "footers", "stale"] as const;
+export const STACK_COMPONENTS = ["live", "nonLive", "unreferenced", "deleted", "stale", "metadata", "footers"] as const;
+
+/** The components that make the waste: the space that holds no live data. */
+export const WASTE_COMPONENTS = ["nonLive", "unreferenced", "deleted", "stale"] as const;
+
+/** The components that make the overhead: the metadata of the table format and the footers of the data files. */
+export const OVERHEAD_COMPONENTS = ["metadata", "footers"] as const;
 
 /** The key of a component of a storage stack. */
 export type StackComponentKey = (typeof STACK_COMPONENTS)[number];
@@ -136,7 +153,7 @@ export interface StackComponent {
   readonly key: StackComponentKey;
   /** Its bytes. 0 when absent. */
   readonly bytes: number;
-  /** Its share of the stack total, null when the total is 0. */
+  /** Its share of the data of the stack, the live data and the waste, null when that is 0. */
   readonly share: number | null;
   /** Whether the file lacks the field it needs, so that the bytes are unknown and drawn as 0. */
   readonly absent: boolean;
@@ -146,14 +163,26 @@ export interface StackComponent {
 
 /** The storage stack of a table: where its bytes go. */
 export interface StackModel {
-  /** The six components, in the order of {@link STACK_COMPONENTS}. */
+  /** The seven components, in the order of {@link STACK_COMPONENTS}. */
   readonly components: readonly StackComponent[];
-  /** Their sum: `fileSize + nonLiveFileSize + metadataSize` when the live bytes are not clipped at 0. */
+  /** The live data and the waste. The shares are of this sum. */
+  readonly data: number;
+  /** Everything: the data and the overhead. When the live bytes are not clipped at 0, it is `fileSize + metadataSize` plus the files that the table no longer uses. */
   readonly total: number;
-  /** Everything but the live bytes. */
+  /** The space that holds no live data: non-live files, unreferenced files, deleted rows, stale columns. */
   readonly waste: number;
-  /** `waste / total`, null when the total is 0. */
+  /** The metadata and the footers, outside the waste. */
+  readonly overhead: number;
+  /** `waste / data`, null when the data is 0. */
   readonly wasteShare: number | null;
+  /** `overhead / data`, null when the data is 0. */
+  readonly overheadShare: number | null;
+  /**
+   * Whether a listing of the storage gave the unreferenced files. Then the non-live component holds only what can still
+   * be stored, the smaller of `nonLiveFileSize` and `unreferencedFileSize`, and the unreferenced component the rest of
+   * `unreferencedFileSize`. Otherwise the non-live component is `nonLiveFileSize`, an upper bound.
+   */
+  readonly listed: boolean;
 }
 
 /** The file sizes of a table, for the strip. */
@@ -178,8 +207,10 @@ export interface FileSizesModel {
   readonly sizes: readonly number[] | null;
   /** The V-Order share, null when the file cannot say. */
   readonly vOrder: VOrderModel | null;
-  /** The files smaller than the threshold of the options. */
+  /** The files smaller than `smallFileSize` of the options, 128 MiB by default. */
   readonly smallFiles: SmallFilesModel;
+  /** The files smaller than `tinyFileSize` of the options, 8 MiB by default. */
+  readonly tinyFiles: SmallFilesModel;
 }
 
 /** How many files of a table are V-Ordered. */
@@ -214,8 +245,12 @@ export interface MaintenanceModel {
   readonly commitsRead: number | null;
   /** `oldestCommitAt`: the oldest of the commits read. */
   readonly oldestCommitAt: string | null;
-  /** Commits per day between `oldestCommitAt` and the collection, with a span of one day at least. */
+  /** The newest commit read: `snapshotTimestamp`, else the latest `lastAt` of the operations, else `lastModifiedAt`. */
+  readonly lastCommitAt: string | null;
+  /** Commits per day between `oldestCommitAt` and {@link MaintenanceModel.lastCommitAt}, with a span of one day at least. */
   readonly commitsPerDay: number | null;
+  /** Whole days from {@link MaintenanceModel.lastCommitAt} to the end of the collection, at least 0. */
+  readonly daysSinceLastCommit: number | null;
   /** Whether a `VACUUM` operation appears. Null when the file has no `operations` table. */
   readonly hasVacuum: boolean | null;
   /** The time of the most recent `VACUUM`. */
@@ -282,6 +317,22 @@ export interface TableModel {
   readonly compressedSize: number | null;
   /** `uncompressedSize`. */
   readonly uncompressedSize: number | null;
+  /** `nonLiveFileCount`: the files that left the table and that the log still tracks. */
+  readonly nonLiveFileCount: number | null;
+  /** `nonLiveFileSize`: their size, as the log gives it. */
+  readonly nonLiveFileSize: number | null;
+  /** `nonLiveOldestRemovedAt`, from format 0.2. */
+  readonly nonLiveOldestRemovedAt: string | null;
+  /** `nonLiveNewestRemovedAt`, from format 0.2. */
+  readonly nonLiveNewestRemovedAt: string | null;
+  /** `unreferencedFileCount`, from format 0.2: data files in the storage that the version does not reference. */
+  readonly unreferencedFileCount: number | null;
+  /** `unreferencedFileSize`, from format 0.2. */
+  readonly unreferencedFileSize: number | null;
+  /** `metadataFileCount`: the files of the table format, such as the Delta log. */
+  readonly metadataFileCount: number | null;
+  /** The partitions of the table. */
+  readonly partitions: PartitionsModel;
   /** The storage stack. */
   readonly stack: StackModel;
   /** The file sizes and the V-Order share. */
@@ -332,14 +383,31 @@ export interface ColumnModel {
   readonly filesWithoutColumnShare: number | null;
 }
 
+/** The partitions of a table. */
+export interface PartitionsModel {
+  /** `partitionCount`, else the rows of the `partitions` table for the table. Null when neither is known. */
+  readonly count: number | null;
+  /** The rows of the `partitions` table for the table: 0 when the footprint does not keep them. */
+  readonly kept: number;
+  /** The earliest `partitions.lastModifiedAt` of the table, from format 0.2. */
+  readonly oldestModifiedAt: string | null;
+  /** The latest `partitions.lastModifiedAt` of the table, from format 0.2. */
+  readonly newestModifiedAt: string | null;
+}
+
 /** Options of {@link buildModel}. */
 export interface ModelOptions {
   /** The size below which a file is small, in bytes. Default 128 MiB. */
   readonly smallFileSize?: number;
+  /** The size below which a file is very small, in bytes. Default 8 MiB. */
+  readonly tinyFileSize?: number;
 }
 
 /** The default of {@link ModelOptions.smallFileSize}: 128 MiB. */
 export const DEFAULT_SMALL_FILE_SIZE = 128 * 1024 * 1024;
+
+/** The default of {@link ModelOptions.tinyFileSize}: 8 MiB. */
+export const DEFAULT_TINY_FILE_SIZE = 8 * 1024 * 1024;
 
 const DAY_MS = 86_400_000;
 
@@ -504,45 +572,65 @@ export function smallShareAtLeast(dist: { count: number | null; minimum: number 
 }
 
 /**
- * Commits per day: the commits read, else `commitCount`, over the days from `oldestCommitAt` to the reference time, at
- * least one day. The reference is the end of the collection, else its start, else `snapshotTimestamp`. Null when a
- * value is missing.
+ * Commits per day: the commits read, else `commitCount`, over the days from `oldestCommitAt` to the newest commit read,
+ * at least one day. Null when a value is missing.
+ * @param commits The commits that the span holds.
+ * @param oldestCommitAt The oldest of them.
+ * @param newestCommitAt The newest of them, such as `snapshotTimestamp`.
  */
-export function commitsPerDay(commits: number | null, oldestCommitAt: string | null, reference: string | null): number | null {
+export function commitsPerDay(commits: number | null, oldestCommitAt: string | null, newestCommitAt: string | null): number | null {
   const oldest = time(oldestCommitAt);
-  const end = time(reference);
-  if (commits === null || oldest === null || end === null) {
+  const newest = time(newestCommitAt);
+  if (commits === null || oldest === null || newest === null) {
     return null;
   }
-  return commits / Math.max(1, (end - oldest) / DAY_MS);
+  return commits / Math.max(1, (newest - oldest) / DAY_MS);
 }
 
-/** A stack from its six inputs, as the README defines it. A null input is an absent component. */
+/** Whole days from a time to a later one, at least 0. Null when a time is missing or does not parse. */
+export function daysBetween(from: string | null, to: string | null): number | null {
+  const start = time(from);
+  const end = time(to);
+  return start === null || end === null ? null : Math.max(0, Math.floor((end - start) / DAY_MS));
+}
+
+/**
+ * A stack from its inputs, as the README defines it. A null input is an absent component. When the unreferenced files
+ * are known, the non-live component is the part of them that the log still tracks, at most: the smaller of the two
+ * sizes. The unreferenced component is the rest, the files that no non-live file accounts for.
+ */
 export function stackOf(input: {
   fileSize: number | null;
   deleted: number | null;
   footerSize: number | null;
   staleColumnSize: number | null;
   nonLiveFileSize: number | null;
+  unreferencedFileSize?: number | null;
   metadataSize: number | null;
   deletedSource?: "files" | "table";
 }): StackModel {
   const { fileSize, deleted, footerSize, staleColumnSize, nonLiveFileSize, metadataSize } = input;
+  const unreferencedFileSize = input.unreferencedFileSize ?? null;
   const live = fileSize === null ? null : Math.max(0, fileSize - (deleted ?? 0) - (footerSize ?? 0) - (staleColumnSize ?? 0));
+  const listed = unreferencedFileSize !== null;
+  const nonLive = listed && nonLiveFileSize !== null ? Math.min(nonLiveFileSize, unreferencedFileSize) : nonLiveFileSize;
+  const unreferenced = listed ? unreferencedFileSize - (nonLive ?? 0) : null;
   const values: Record<StackComponentKey, number | null> = {
-    live, nonLive: nonLiveFileSize, deleted, metadata: metadataSize, footers: footerSize, stale: staleColumnSize,
+    live, nonLive, unreferenced, deleted, stale: staleColumnSize, metadata: metadataSize, footers: footerSize,
   };
-  let total = 0;
-  for (const key of STACK_COMPONENTS) {
-    total += values[key] ?? 0;
-  }
+  const sum = (keys: readonly StackComponentKey[]) => keys.reduce((total, key) => total + (values[key] ?? 0), 0);
+  const waste = sum(WASTE_COMPONENTS);
+  const overhead = sum(OVERHEAD_COMPONENTS);
+  const data = (live ?? 0) + waste;
   const components = STACK_COMPONENTS.map((key): StackComponent => {
     const bytes = values[key] ?? 0;
-    const component: StackComponent = { key, bytes, share: total > 0 ? bytes / total : null, absent: values[key] === null };
+    const component: StackComponent = { key, bytes, share: data > 0 ? bytes / data : null, absent: values[key] === null };
     return key === "deleted" && input.deletedSource !== undefined && values[key] !== null ? { ...component, source: input.deletedSource } : component;
   });
-  const waste = total - (live ?? 0);
-  return { components, total, waste, wasteShare: total > 0 ? waste / total : null };
+  return {
+    components, data, total: data + overhead, waste, overhead,
+    wasteShare: data > 0 ? waste / data : null, overheadShare: data > 0 ? overhead / data : null, listed,
+  };
 }
 
 // ---- the model ----
@@ -600,6 +688,41 @@ function filesByTable(files: FilesTable | null | undefined): Map<number, FilesOf
   return result;
 }
 
+/** What the `partitions` table says about one table: the rows, and the range of `lastModifiedAt`. */
+interface PartitionsOfTable {
+  kept: number;
+  oldest: string | null;
+  newest: string | null;
+}
+
+function partitionsOf(partitions: PartitionsTable | null | undefined): Map<number, PartitionsOfTable> {
+  const result = new Map<number, PartitionsOfTable>();
+  for (let i = 0; i < lengthOf(partitions); i++) {
+    const table = num(partitions?.table, i);
+    if (!isId(table)) {
+      continue;
+    }
+    const entry = result.get(table) ?? { kept: 0, oldest: null, newest: null };
+    entry.kept++;
+    const modified = str(partitions?.lastModifiedAt, i);
+    if (time(modified) !== null) {
+      entry.newest = later(entry.newest, modified);
+      entry.oldest = entry.oldest === null || time(modified)! < time(entry.oldest)! ? modified : entry.oldest;
+    }
+    result.set(table, entry);
+  }
+  return result;
+}
+
+function partitionsModel(partitionCount: number | null, kept: PartitionsOfTable | undefined): PartitionsModel {
+  return {
+    count: partitionCount ?? (kept !== undefined ? kept.kept : null),
+    kept: kept?.kept ?? 0,
+    oldestModifiedAt: kept?.oldest ?? null,
+    newestModifiedAt: kept?.newest ?? null,
+  };
+}
+
 function tableLabel(tables: TablesTable, row: number, id: number | null): string {
   const name = str(tables.name, row);
   const parts = [...strings(tables.namespace, row), name ?? (id !== null ? `Table ${id}` : `Table at row ${row + 1}`)];
@@ -613,7 +736,9 @@ function tableLabel(tables: TablesTable, row: number, id: number | null): string
  * @param options The small file threshold.
  */
 export function buildModel(data: FootprintData, options: ModelOptions = {}): StorageModel {
-  const threshold = options.smallFileSize !== undefined && options.smallFileSize > 0 ? options.smallFileSize : DEFAULT_SMALL_FILE_SIZE;
+  const positive = (value: number | undefined, fallback: number) => (value !== undefined && Number.isFinite(value) && value > 0 ? value : fallback);
+  const threshold = positive(options.smallFileSize, DEFAULT_SMALL_FILE_SIZE);
+  const tinyThreshold = positive(options.tinyFileSize, DEFAULT_TINY_FILE_SIZE);
   const summary: Summary = data.summary ?? {};
   const collectionInfo = (data.manifest?.collection ?? null) as Partial<Manifest["collection"]> | null;
   const tables = summary.tables ?? ({ length: 0 } as TablesTable);
@@ -621,7 +746,8 @@ export function buildModel(data: FootprintData, options: ModelOptions = {}): Sto
   const sourcesTable = summary.sources ?? { length: 0 };
   const operations = summary.operations;
   const byTable = filesByTable(data.files);
-  const reference = typeof collectionInfo?.completedAt === "string" ? collectionInfo.completedAt
+  const partitionsByTable = partitionsOf(data.partitions);
+  const collectedAt = typeof collectionInfo?.completedAt === "string" ? collectionInfo.completedAt
     : typeof collectionInfo?.startedAt === "string" ? collectionInfo.startedAt : null;
 
   // Operations by table id.
@@ -678,6 +804,7 @@ export function buildModel(data: FootprintData, options: ModelOptions = {}): Sto
     const footerSize = size(tables.footerSize, row);
     const staleColumnSize = size(tables.staleColumnSize, row);
     const nonLiveFileSize = size(tables.nonLiveFileSize, row);
+    const unreferencedFileSize = size(tables.unreferencedFileSize, row);
     const metadataSize = size(tables.metadataSize, row);
     if (validId !== null) {
       fileCountById.set(validId, fileCount);
@@ -691,17 +818,19 @@ export function buildModel(data: FootprintData, options: ModelOptions = {}): Sto
       deleted = fromFiles.deleted;
       deletedSource = "files";
     }
-    const stack = stackOf({ fileSize, deleted, footerSize, staleColumnSize, nonLiveFileSize, metadataSize, deletedSource });
+    const stack = stackOf({ fileSize, deleted, footerSize, staleColumnSize, nonLiveFileSize, unreferencedFileSize, metadataSize, deletedSource });
 
     // The file sizes.
     let files: FileSizesModel;
     if (fromFiles !== undefined && fromFiles.sizes.length > 0) {
       const q = quartiles(fromFiles.sizes)!;
-      const small = fromFiles.sizes.filter((value) => value < threshold).length;
+      const below = (limit: number): SmallFilesModel => {
+        const count = fromFiles.sizes.filter((value) => value < limit).length;
+        return { threshold: limit, count, shareAtLeast: count / fromFiles.sizes.length };
+      };
       files = {
         source: "files", count: fromFiles.sizes.length, sum: fromFiles.sizes.reduce((a, b) => a + b, 0), ...q,
-        sizes: fromFiles.sizes, vOrder: null,
-        smallFiles: { threshold, count: small, shareAtLeast: small / fromFiles.sizes.length },
+        sizes: fromFiles.sizes, vOrder: null, smallFiles: below(threshold), tinyFiles: below(tinyThreshold),
       };
     } else {
       const dist = distribution(tables.fileSizes, row);
@@ -714,6 +843,7 @@ export function buildModel(data: FootprintData, options: ModelOptions = {}): Sto
       files = {
         source: hasShape ? "table" : null, ...figures, sizes: null, vOrder: null,
         smallFiles: { threshold, count: null, shareAtLeast: smallShareAtLeast(figures, threshold) },
+        tinyFiles: { threshold: tinyThreshold, count: null, shareAtLeast: smallShareAtLeast(figures, tinyThreshold) },
       };
     }
     let vOrder: VOrderModel | null = null;
@@ -735,9 +865,11 @@ export function buildModel(data: FootprintData, options: ModelOptions = {}): Sto
     const hasOps = operations !== undefined;
     let lastVacuumAt: string | null = null;
     let lastOptimizeAt: string | null = null;
+    let lastOperationAt: string | null = null;
     let hasVacuum = false;
     let hasOptimize = false;
     for (const op of ops) {
+      lastOperationAt = later(lastOperationAt, op.lastAt);
       const name = op.name.toUpperCase();
       if (name.includes("VACUUM")) {
         hasVacuum = true;
@@ -751,9 +883,12 @@ export function buildModel(data: FootprintData, options: ModelOptions = {}): Sto
     const commitCount = size(tables.commitCount, row);
     const commitsRead = size(tables.commitsRead, row);
     const oldestCommitAt = str(tables.oldestCommitAt, row);
+    const lastCommitAt = [str(tables.snapshotTimestamp, row), lastOperationAt, str(tables.lastModifiedAt, row)]
+      .find((value) => time(value) !== null) ?? null;
     const maintenance: MaintenanceModel = {
-      commitCount, commitsRead, oldestCommitAt,
-      commitsPerDay: commitsPerDay(commitsRead ?? commitCount, oldestCommitAt, reference ?? str(tables.snapshotTimestamp, row)),
+      commitCount, commitsRead, oldestCommitAt, lastCommitAt,
+      commitsPerDay: commitsPerDay(commitsRead ?? commitCount, oldestCommitAt, lastCommitAt),
+      daysSinceLastCommit: daysBetween(lastCommitAt, collectedAt),
       hasVacuum: hasOps ? hasVacuum : null, lastVacuumAt,
       hasOptimize: hasOps ? hasOptimize : null, lastOptimizeAt,
       operations: ops.map((op) => op.name),
@@ -791,6 +926,11 @@ export function buildModel(data: FootprintData, options: ModelOptions = {}): Sto
       key, id: validId, row, label: tableLabel(tables, row, validId), name: str(tables.name, row), sourceKey,
       format: str(tables.format, row), detailDepth: str(tables.detailDepth, row), collectedLevel: num(tables.collectedLevel, row),
       fileCount, fileSize, rowCount, deletedRowCount, compressedSize, uncompressedSize,
+      nonLiveFileCount: size(tables.nonLiveFileCount, row), nonLiveFileSize,
+      nonLiveOldestRemovedAt: str(tables.nonLiveOldestRemovedAt, row), nonLiveNewestRemovedAt: str(tables.nonLiveNewestRemovedAt, row),
+      unreferencedFileCount: size(tables.unreferencedFileCount, row), unreferencedFileSize,
+      metadataFileCount: size(tables.metadataFileCount, row),
+      partitions: partitionsModel(size(tables.partitionCount, row), validId !== null ? partitionsByTable.get(validId) : undefined),
       stack, files, maintenance, measures, columnKeys: [],
     });
   }
@@ -881,6 +1021,7 @@ export function buildModel(data: FootprintData, options: ModelOptions = {}): Sto
       rowCount: sumKnown(tablesWithColumns.map((t) => t.rowCount)),
       footprint: tablesWithColumns.reduce((sum, t) => sum + t.stack.total, 0),
       waste: tablesWithColumns.reduce((sum, t) => sum + t.stack.waste, 0),
+      overhead: tablesWithColumns.reduce((sum, t) => sum + t.stack.overhead, 0),
     },
     depths,
   };

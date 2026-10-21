@@ -1,22 +1,27 @@
 // The view model of @pqax/views: readFootprint and buildModel on every valid sample of the conformance kit, the figures
 // of the model against hand computations from the tables that the reader returns, the tree of the treemap, the
 // tolerance of the model to fields, tables, and parts that are missing or wrong, the pure helpers with their edge cases,
-// and the synthetic footprint of 1,000 columns and 5,000 files. It runs in Node and in the browsers.
+// and the synthetic footprint of 1,000 columns and 5,000 files. The stack splits the data, the live bytes and the
+// waste, from the overhead of the metadata and the footers; with the unreferenced files of format 0.2 the non-live
+// component keeps only what can still be stored. It runs in Node and in the browsers.
 import { describe, expect, it, vi } from "vitest";
-import { type FilesTable, type PqaxDocument, type Summary, openEmbedded, openPqax } from "@pqax/pqax";
+import { type FilesTable, type PartitionsTable, type PqaxDocument, type Summary, openEmbedded, openPqax } from "@pqax/pqax";
 import {
-  DEFAULT_SMALL_FILE_SIZE, STACK_COMPONENTS, type FootprintData, type StorageModel, type TableModel, type TreeNode,
-  buildModel, columnTree, commitsPerDay, deletedEstimate, findPath, quartiles, ratio, readFootprint, smallShareAtLeast,
-  sortTables, stackOf,
+  DEFAULT_SMALL_FILE_SIZE, DEFAULT_TINY_FILE_SIZE, OVERHEAD_COMPONENTS, STACK_COMPONENTS, WASTE_COMPONENTS,
+  type FootprintData, type StorageModel, type TableModel, type TreeNode, buildModel, columnTree, commitsPerDay,
+  daysBetween, deletedEstimate, findPath, quartiles, ratio, readFootprint, smallShareAtLeast, sortTables, stackOf,
 } from "@pqax/views";
 import { type Expected, SAMPLES, bytesOf, expectedByName, join, rewriteZip } from "../typescript/kit";
 import {
-  COMPLETED_AT, EARLY_TABLE_FIELDS, type Synthetic, distributionOf, syntheticFootprint,
+  COMPLETED_AT, EARLY_TABLE_FIELDS, FORMAT_02_TABLE_FIELDS, type Synthetic, distributionOf, syntheticFootprint,
 } from "./synthetic";
 
 const EXPECTED = expectedByName();
 const ALL = Object.values(EXPECTED).map((expected) => expected.file).sort();
+/** The samples of format 0.2: every sample but format-0.1.pqax. */
+const FORMAT_02 = ALL.filter((file) => file !== "format-0.1.pqax");
 const DAY_MS = 86_400_000;
+const MIB = 1024 * 1024;
 
 async function open(file: string): Promise<PqaxDocument> {
   const bytes = bytesOf(join(SAMPLES, file));
@@ -68,20 +73,32 @@ function expectInvariants(model: StorageModel): void {
   expect(totals.rowCount).toBe(sumKnown(model.tables.map((t) => t.rowCount)));
   expectClose(totals.footprint, model.tables.reduce((sum, t) => sum + t.stack.total, 0));
   expectClose(totals.waste, model.tables.reduce((sum, t) => sum + t.stack.waste, 0));
-  expectClose(totals.waste, totals.footprint - model.tables.reduce((sum, t) => sum + component(t, "live").bytes, 0), 1e-6);
+  expectClose(totals.overhead, model.tables.reduce((sum, t) => sum + t.stack.overhead, 0));
+  expectClose(totals.waste, totals.footprint - totals.overhead - model.tables.reduce((sum, t) => sum + component(t, "live").bytes, 0), 1e-6);
 
   for (const table of model.tables) {
     const { stack } = table;
     expect(stack.components.map((c) => c.key)).toEqual([...STACK_COMPONENTS]);
+    const sumOf = (keys: readonly string[]) => keys.reduce((sum, k) => sum + component(table, k).bytes, 0);
     expectClose(stack.total, stack.components.reduce((sum, c) => sum + c.bytes, 0));
     const live = component(table, "live");
-    expectClose(stack.waste, stack.total - live.bytes, 1e-9);
-    if (stack.total > 0) {
-      expectClose(stack.components.reduce((sum, c) => sum + c.share!, 0), 1);
-      expectClose(stack.wasteShare, stack.waste / stack.total);
+    // The waste is the four components between the live data and the overhead; the overhead, metadata and footers.
+    expectClose(stack.waste, sumOf(WASTE_COMPONENTS), 1e-9);
+    expectClose(stack.overhead, sumOf(OVERHEAD_COMPONENTS), 1e-9);
+    expectClose(stack.data, live.bytes + stack.waste, 1e-9);
+    expectClose(stack.total, stack.data + stack.overhead, 1e-9);
+    if (stack.data > 0) {
+      // The shares are of the data: those of the live data and the waste sum to 1, the overhead goes beyond.
+      for (const c of stack.components) {
+        expectClose(c.share, c.bytes / stack.data);
+      }
+      expectClose(["live", ...WASTE_COMPONENTS].reduce((sum, k) => sum + component(table, k).share!, 0), 1);
+      expectClose(stack.wasteShare, stack.waste / stack.data);
+      expectClose(stack.overheadShare, stack.overhead / stack.data);
     } else {
       expect(stack.components.every((c) => c.share === null)).toBe(true);
       expect(stack.wasteShare).toBeNull();
+      expect(stack.overheadShare).toBeNull();
     }
     for (const c of stack.components) {
       expect(c.bytes).toBeGreaterThanOrEqual(0);
@@ -89,11 +106,37 @@ function expectInvariants(model: StorageModel): void {
         expect(c.bytes).toBe(0);
       }
     }
+    // The overlap rule: with the unreferenced files, the non-live component is at most what the storage holds.
+    const nonLive = component(table, "nonLive");
+    const unreferenced = component(table, "unreferenced");
+    expect(stack.listed).toBe(table.unreferencedFileSize !== null);
+    expect(nonLive.absent).toBe(table.nonLiveFileSize === null);
+    expect(unreferenced.absent).toBe(!stack.listed);
+    if (stack.listed) {
+      expect(nonLive.bytes).toBe(table.nonLiveFileSize === null ? 0 : Math.min(table.nonLiveFileSize, table.unreferencedFileSize!));
+      expectClose(nonLive.bytes + unreferenced.bytes, table.unreferencedFileSize!);
+    } else {
+      expect(nonLive.bytes).toBe(table.nonLiveFileSize ?? 0);
+    }
     const unclipped = table.fileSize === null ? null
       : table.fileSize - component(table, "deleted").bytes - component(table, "footers").bytes - component(table, "stale").bytes;
     if (unclipped !== null && unclipped >= 0) {
       expectClose(live.bytes, unclipped);
-      expectClose(stack.total, table.fileSize! + component(table, "nonLive").bytes + component(table, "metadata").bytes);
+      const stored = stack.listed ? table.unreferencedFileSize! : nonLive.bytes;
+      expectClose(stack.total, table.fileSize! + stored + component(table, "metadata").bytes);
+    }
+    const m = table.maintenance;
+    if (m.commitsPerDay !== null) {
+      expect(m.lastCommitAt).not.toBeNull();
+      expect(m.commitsPerDay).toBeGreaterThanOrEqual(0);
+    }
+    if (m.daysSinceLastCommit !== null) {
+      expect(Number.isInteger(m.daysSinceLastCommit)).toBe(true);
+      expect(m.daysSinceLastCommit).toBeGreaterThanOrEqual(0);
+    }
+    expect(table.partitions.kept).toBeGreaterThanOrEqual(0);
+    if (table.partitions.oldestModifiedAt !== null) {
+      expect(Date.parse(table.partitions.oldestModifiedAt)).toBeLessThanOrEqual(Date.parse(table.partitions.newestModifiedAt!));
     }
 
     const files = table.files;
@@ -116,10 +159,20 @@ function expectInvariants(model: StorageModel): void {
       expect(files.vOrder.share).toBeGreaterThanOrEqual(0);
       expect(files.vOrder.share).toBeLessThanOrEqual(1);
     }
-    const share = files.smallFiles.shareAtLeast;
-    if (share !== null) {
-      expect(share).toBeGreaterThanOrEqual(0);
-      expect(share).toBeLessThanOrEqual(1);
+    for (const below of [files.tinyFiles, files.smallFiles]) {
+      const share = below.shareAtLeast;
+      if (share !== null) {
+        expect(share).toBeGreaterThanOrEqual(0);
+        expect(share).toBeLessThanOrEqual(1);
+      }
+      expect(below.count === null).toBe(files.source !== "files");
+    }
+    // Below the smaller threshold, never more files than below the larger one.
+    if (files.tinyFiles.threshold <= files.smallFiles.threshold && files.tinyFiles.shareAtLeast !== null) {
+      expect(files.tinyFiles.shareAtLeast).toBeLessThanOrEqual(files.smallFiles.shareAtLeast!);
+      if (files.source === "files") {
+        expect(files.tinyFiles.count!).toBeLessThanOrEqual(files.smallFiles.count!);
+      }
     }
     expect(table.columnKeys).toEqual(model.columns.filter((c) => c.tableKey === table.key).map((c) => c.key));
   }
@@ -204,18 +257,40 @@ describe("the samples of the kit", () => {
     expectTree(columnTree(model));
   });
 
-  it.each(ALL)("%s gives stacks whose total is fileSize + nonLiveFileSize + metadataSize", async (file) => {
+  it.each(FORMAT_02)("%s gives stacks whose total is fileSize + unreferencedFileSize + metadataSize", async (file) => {
     const { doc, model } = await modelOf(file);
     const tables = doc.summary.tables!;
     model.tables.forEach((table, row) => {
-      const total = tables.fileSize![row]! + tables.nonLiveFileSize![row]! + tables.metadataSize![row]!;
+      const total = tables.fileSize![row]! + tables.unreferencedFileSize![row]! + tables.metadataSize![row]!;
+      const overhead = tables.footerSize![row]! + tables.metadataSize![row]!;
+      expect(table.stack.listed).toBe(true);
       expectClose(table.stack.total, total);
-      expectClose(table.stack.waste, total - component(table, "live").bytes);
+      expectClose(table.stack.overhead, overhead);
+      expectClose(table.stack.data, total - overhead);
+      expectClose(table.stack.waste, total - overhead - component(table, "live").bytes);
       expect(component(table, "footers").bytes).toBe(tables.footerSize![row]);
       expect(component(table, "metadata").bytes).toBe(tables.metadataSize![row]);
-      expect(component(table, "nonLive").bytes).toBe(tables.nonLiveFileSize![row]);
+      const nonLive = Math.min(tables.nonLiveFileSize![row]!, tables.unreferencedFileSize![row]!);
+      expect(component(table, "nonLive").bytes).toBe(nonLive);
+      expect(component(table, "unreferenced").bytes).toBe(tables.unreferencedFileSize![row]! - nonLive);
       expect(component(table, "stale").bytes).toBe(0);
       expect(table.stack.components.some((c) => c.absent)).toBe(false);
+    });
+  });
+
+  it("format-0.1.pqax gives stacks whose total is fileSize + nonLiveFileSize + metadataSize, without unreferenced files", async () => {
+    const { doc, model } = await modelOf("format-0.1.pqax");
+    const tables = doc.summary.tables!;
+    expect(tables.unreferencedFileSize).toBeUndefined();
+    model.tables.forEach((table, row) => {
+      const total = tables.fileSize![row]! + tables.nonLiveFileSize![row]! + tables.metadataSize![row]!;
+      expect(table.stack.listed).toBe(false);
+      expectClose(table.stack.total, total);
+      expect(component(table, "nonLive").bytes).toBe(tables.nonLiveFileSize![row]);
+      expect(component(table, "unreferenced")).toMatchObject({ bytes: 0, absent: true });
+      expect(table.stack.components.filter((c) => c.absent).map((c) => c.key)).toEqual(["unreferenced"]);
+      expect(table.unreferencedFileCount).toBeNull();
+      expect(table.unreferencedFileSize).toBeNull();
     });
   });
 
@@ -270,7 +345,7 @@ describe("the samples of the kit", () => {
     });
   });
 
-  it.each(ALL)("%s flags the operations and computes the commits per day against the end of the collection", async (file) => {
+  it.each(ALL)("%s flags the operations, computes the commits per day up to the snapshot, and the days since it", async (file) => {
     const { doc, model } = await modelOf(file);
     const ops = doc.summary.operations!;
     const tables = doc.summary.tables!;
@@ -285,9 +360,14 @@ describe("the samples of the kit", () => {
       expect(m.commitCount).toBe(tables.commitCount![row]);
       expect(m.commitsRead).toBe(tables.commitsRead![row]);
       expect(m.oldestCommitAt).toBe(tables.oldestCommitAt![row]);
-      const days = (reference - Date.parse(tables.oldestCommitAt![row]!)) / DAY_MS;
-      expect(days).toBeGreaterThan(1);
-      expectClose(m.commitsPerDay, tables.commitsRead![row]! / days);
+      expect(m.lastCommitAt).toBe(tables.snapshotTimestamp![row]);
+      // The commits read span less than a day before the snapshot: the span is one day.
+      const span = (Date.parse(tables.snapshotTimestamp![row]!) - Date.parse(tables.oldestCommitAt![row]!)) / DAY_MS;
+      expect(span).toBeLessThan(1);
+      expect(m.commitsPerDay).toBe(tables.commitsRead![row]);
+      const days = Math.floor((reference - Date.parse(tables.snapshotTimestamp![row]!)) / DAY_MS);
+      expect(days).toBeGreaterThan(1000);
+      expect(m.daysSinceLastCommit).toBe(days);
     });
     expect(model.tables[0]!.maintenance.lastOptimizeAt).toBe("2023-11-14T22:14:50.000Z");
     expect(model.tables[1]!.maintenance.lastOptimizeAt).toBeNull();
@@ -315,25 +395,115 @@ describe("the figures of sample.pqax against hand computations", () => {
   it("builds the stacks of both tables", async () => {
     const { model } = await modelOf("sample.pqax");
     const [sales, orders] = model.tables;
-    // sales: one file of 47,820 bytes and 5,000 rows has 25 deleted rows.
+    // sales: one file of 47,820 bytes and 5,000 rows has 25 deleted rows. The log tracks one removed file of 12,345
+    // bytes, and the storage holds one unreferenced file of 737 bytes: the non-live component is at most 737 bytes.
     const deleted = (47820 * 25) / 5000;
     expect(sales!.key).toBe("t:1");
     expect(sales!.label).toBe("sales");
     expect(sales!.sourceKey).toBe("s:1");
     expect(sales!.stack.components.map((c) => [c.key, c.bytes])).toEqual([
-      ["live", 159121 - deleted - 3847], ["nonLive", 12345], ["deleted", deleted], ["metadata", 12469], ["footers", 3847], ["stale", 0],
+      ["live", 159121 - deleted - 3847], ["nonLive", 737], ["unreferenced", 0], ["deleted", deleted], ["stale", 0],
+      ["metadata", 12469], ["footers", 3847],
     ]);
-    expect(sales!.stack.total).toBeCloseTo(183935, 9);
-    expect(sales!.stack.waste).toBeCloseTo(12345 + deleted + 12469 + 3847, 9);
+    expect(sales!.stack.listed).toBe(true);
+    expect(sales!.stack.data).toBeCloseTo(159121 - 3847 + 737, 9);
+    expect(sales!.stack.total).toBeCloseTo(159121 + 737 + 12469, 9);
+    expect(sales!.stack.waste).toBeCloseTo(737 + deleted, 9);
+    expect(sales!.stack.overhead).toBe(12469 + 3847);
+    expect(sales!.stack.wasteShare).toBeCloseTo((737 + deleted) / (159121 - 3847 + 737), 12);
+    expect(sales!.stack.overheadShare).toBeCloseTo((12469 + 3847) / (159121 - 3847 + 737), 12);
+    expect(component(sales!, "metadata").share).toBeCloseTo(12469 / (159121 - 3847 + 737), 12);
     expect(orders!.key).toBe("t:2");
     expect(orders!.label).toBe("dbo.orders");
     expect(orders!.stack.components.map((c) => [c.key, c.bytes])).toEqual([
-      ["live", 39884 - 1254], ["nonLive", 0], ["deleted", 0], ["metadata", 1372], ["footers", 1254], ["stale", 0],
+      ["live", 39884 - 1254], ["nonLive", 0], ["unreferenced", 0], ["deleted", 0], ["stale", 0], ["metadata", 1372], ["footers", 1254],
     ]);
+    expect(orders!.stack.data).toBe(39884 - 1254);
     expect(orders!.stack.total).toBe(41256);
-    expect(orders!.stack.waste).toBe(2626);
-    expect(model.collection.totals.footprint).toBeCloseTo(183935 + 41256, 9);
+    expect(orders!.stack.waste).toBe(0);
+    expect(orders!.stack.wasteShare).toBe(0);
+    expect(orders!.stack.overhead).toBe(2626);
+    expect(component(orders!, "live").share).toBe(1);
+    expect(model.collection.totals.footprint).toBeCloseTo(172327 + 41256, 9);
+    expect(model.collection.totals.waste).toBeCloseTo(737 + deleted, 9);
+    expect(model.collection.totals.overhead).toBe(16316 + 2626);
     expect(sortTables(model.tables).map((t) => t.key)).toEqual(["t:1", "t:2"]);
+  });
+
+  it("builds the stacks of format-0.1.pqax from the non-live files that the log tracks", async () => {
+    const { model } = await modelOf("format-0.1.pqax");
+    const [sales, orders] = model.tables;
+    const deleted = (47820 * 25) / 5000;
+    expect(sales!.stack.components.map((c) => [c.key, c.bytes, c.absent])).toEqual([
+      ["live", 159121 - deleted - 3847, false], ["nonLive", 12345, false], ["unreferenced", 0, true], ["deleted", deleted, false],
+      ["stale", 0, false], ["metadata", 12469, false], ["footers", 3847, false],
+    ]);
+    expect(sales!.stack.listed).toBe(false);
+    expect(component(sales!, "unreferenced").share).toBe(0);
+    expect(sales!.stack.total).toBeCloseTo(183935, 9);
+    expect(sales!.stack.waste).toBeCloseTo(12345 + deleted, 9);
+    expect(orders!.stack.total).toBe(41256);
+  });
+
+  it("reads the fields of format 0.2 and the partitions of both tables", async () => {
+    const { model } = await modelOf("sample.pqax");
+    const [sales, orders] = model.tables;
+    expect(sales).toMatchObject({
+      nonLiveFileCount: 1, nonLiveFileSize: 12345, nonLiveOldestRemovedAt: "2023-11-14T22:14:10.000Z",
+      nonLiveNewestRemovedAt: "2023-11-14T22:14:10.000Z", unreferencedFileCount: 1, unreferencedFileSize: 737, metadataFileCount: 6,
+    });
+    expect(sales!.partitions).toEqual({ count: 2, kept: 2, oldestModifiedAt: "2023-11-14T22:15:00.000Z", newestModifiedAt: "2023-11-14T22:15:10.000Z" });
+    expect(orders).toMatchObject({
+      nonLiveFileCount: 0, nonLiveFileSize: 0, nonLiveOldestRemovedAt: null, nonLiveNewestRemovedAt: null,
+      unreferencedFileCount: 0, unreferencedFileSize: 0, metadataFileCount: 2,
+    });
+    expect(orders!.partitions).toEqual({ count: null, kept: 0, oldestModifiedAt: null, newestModifiedAt: null });
+  });
+
+  it("reads null for the fields of format 0.2 in format-0.1.pqax, and keeps the partitions without their times", async () => {
+    const { data, model } = await modelOf("format-0.1.pqax");
+    expect(data.partitions!.length).toBe(2);
+    expect(data.partitions!.lastModifiedAt).toBeUndefined();
+    const [sales] = model.tables;
+    expect(sales).toMatchObject({
+      nonLiveFileCount: 1, nonLiveFileSize: 12345, nonLiveOldestRemovedAt: null, nonLiveNewestRemovedAt: null,
+      unreferencedFileCount: null, unreferencedFileSize: null, metadataFileCount: 6,
+    });
+    expect(sales!.partitions).toEqual({ count: 2, kept: 2, oldestModifiedAt: null, newestModifiedAt: null });
+  });
+
+  it("counts the partitions from partitionCount, else from the rows of the partitions table", async () => {
+    const summaryOnly = (await modelOf("summary-only.pqax")).model;
+    expect(summaryOnly.tables.map((t) => t.partitions)).toEqual([
+      { count: 2, kept: 0, oldestModifiedAt: null, newestModifiedAt: null },
+      { count: null, kept: 0, oldestModifiedAt: null, newestModifiedAt: null },
+    ]);
+    const { data } = await modelOf("sample.pqax");
+    const { partitionCount: _p, ...tables } = data.summary.tables!;
+    const model = buildModel({ ...data, summary: { ...data.summary, tables } });
+    expect(model.tables.map((t) => [t.partitions.count, t.partitions.kept])).toEqual([[2, 2], [null, 0]]);
+    // The average partition size still comes from partitionSizes.
+    expect(model.tables[0]!.measures.averagePartitionSize).toBe(159121 / 2);
+    // A partitions table whose rows say more than partitionCount: partitionCount wins, the rows are kept.
+    const more = { ...data.partitions!, length: 3, id: [1, 2, 3], table: [1, 1, 1], lastModifiedAt: ["2023-11-14T22:15:00.000Z", null, "not a date"] } as PartitionsTable;
+    const kept = buildModel({ ...data, partitions: more }).tables[0]!.partitions;
+    expect(kept).toEqual({ count: 2, kept: 3, oldestModifiedAt: "2023-11-14T22:15:00.000Z", newestModifiedAt: "2023-11-14T22:15:00.000Z" });
+  });
+
+  it("reads the partitions only when readFootprint is told to", async () => {
+    const doc = await open("sample.pqax");
+    const data = await readFootprint(doc, { partitions: false });
+    expect(data.partitions).toBeNull();
+    expect(data.files!.length).toBe(5);
+    expect(data.warnings).toEqual([]);
+    const model = buildModel(data);
+    expect(model.tables[0]!.partitions).toEqual({ count: 2, kept: 0, oldestModifiedAt: null, newestModifiedAt: null });
+    expect(model.hasFiles).toBe(true);
+    const both = await readFootprint(doc, { files: false, partitions: false });
+    expect([both.files, both.partitions]).toEqual([null, null]);
+    const read = await readFootprint(doc);
+    expect(read.partitions!.length).toBe(2);
+    expect(read.partitions!.lastModifiedAt).toEqual(["2023-11-14T22:15:00.000Z", "2023-11-14T22:15:10.000Z"]);
   });
 
   it("gives the measures of section 9 for both tables", async () => {
@@ -434,6 +604,37 @@ describe("the figures of sample.pqax against hand computations", () => {
     expect(buildModel(data, { smallFileSize: 0 }).tables[0]!.files.smallFiles.threshold).toBe(DEFAULT_SMALL_FILE_SIZE);
   });
 
+  it("counts the tiny files below the second threshold of the options, from the files and from the quartiles", async () => {
+    const { data, model } = await modelOf("sample.pqax");
+    expect(DEFAULT_TINY_FILE_SIZE).toBe(8 * MIB);
+    expect(DEFAULT_SMALL_FILE_SIZE).toBe(128 * MIB);
+    expect(model.tables[0]!.files.tinyFiles).toEqual({ threshold: DEFAULT_TINY_FILE_SIZE, count: 3, shareAtLeast: 1 });
+    // The sizes of sales are 28,252, 47,820, and 83,049; of orders 1,781 and 38,103.
+    const both = buildModel(data, { tinyFileSize: 30000, smallFileSize: 50000 });
+    expect(both.tables.map((t) => [t.files.tinyFiles, t.files.smallFiles])).toEqual([
+      [{ threshold: 30000, count: 1, shareAtLeast: 1 / 3 }, { threshold: 50000, count: 2, shareAtLeast: 2 / 3 }],
+      [{ threshold: 30000, count: 1, shareAtLeast: 1 / 2 }, { threshold: 50000, count: 2, shareAtLeast: 1 }],
+    ]);
+    // The option of one threshold leaves the other at its default.
+    const tinyOnly = buildModel(data, { tinyFileSize: 30000 }).tables[0]!.files;
+    expect([tinyOnly.tinyFiles.threshold, tinyOnly.smallFiles.threshold]).toEqual([30000, DEFAULT_SMALL_FILE_SIZE]);
+    const smallOnly = buildModel(data, { smallFileSize: 50000 }).tables[0]!.files;
+    expect([smallOnly.tinyFiles.threshold, smallOnly.smallFiles.threshold]).toEqual([DEFAULT_TINY_FILE_SIZE, 50000]);
+    // Without the files, the bounds from the quartiles: sales has its first quartile below 30,000 and its median below
+    // 50,000; orders, its first quartile below 30,000 and its maximum below 50,000.
+    const summaryOnly = buildModel((await modelOf("summary-only.pqax")).data, { tinyFileSize: 30000, smallFileSize: 50000 });
+    expect(summaryOnly.tables.map((t) => [t.files.tinyFiles, t.files.smallFiles])).toEqual([
+      [{ threshold: 30000, count: null, shareAtLeast: 0.25 }, { threshold: 50000, count: null, shareAtLeast: 0.5 }],
+      [{ threshold: 30000, count: null, shareAtLeast: 0.25 }, { threshold: 50000, count: null, shareAtLeast: 1 }],
+    ]);
+    expect(summaryOnly.tables[0]!.files.tinyFiles.count).toBeNull();
+    for (const tinyFileSize of [0, -1, Number.NaN, Infinity]) {
+      expect(buildModel(data, { tinyFileSize }).tables[0]!.files.tinyFiles.threshold).toBe(DEFAULT_TINY_FILE_SIZE);
+    }
+    // Below 1,781 bytes, no file.
+    expect(buildModel(data, { tinyFileSize: 1781 }).tables[1]!.files.tinyFiles).toEqual({ threshold: 1781, count: 0, shareAtLeast: 0 });
+  });
+
   it("estimates the deleted bytes of summary-only.pqax at the table level", async () => {
     const { model } = await modelOf("summary-only.pqax");
     const deleted = component(model.tables[0]!, "deleted");
@@ -484,7 +685,7 @@ describe("the tolerance of the model", () => {
       expect(model.sources).toEqual([]);
       expect(model.hasFiles).toBe(false);
       expect(model.collection).toMatchObject({ formatVersion: null, collector: null, level: null, embeddedPart: null });
-      expect(model.collection.totals).toEqual({ sources: 0, tables: 0, columns: 0, files: null, fileSize: null, rowCount: null, footprint: 0, waste: 0 });
+      expect(model.collection.totals).toEqual({ sources: 0, tables: 0, columns: 0, files: null, fileSize: null, rowCount: null, footprint: 0, waste: 0, overhead: 0 });
       const tree = columnTree(model);
       expect(tree.children).toEqual([]);
       expect(tree.size).toBe(0);
@@ -500,8 +701,16 @@ describe("the tolerance of the model", () => {
     for (const table of model.tables) {
       expect(table.stack.components.every((c) => c.absent && c.bytes === 0)).toBe(true);
       expect(table.stack.total).toBe(0);
+      expect(table.stack.data).toBe(0);
+      expect(table.stack.listed).toBe(false);
       expect(table.stack.wasteShare).toBeNull();
+      expect(table.stack.overheadShare).toBeNull();
       expect(table.files.source).toBeNull();
+      expect(table.files.tinyFiles.shareAtLeast).toBeNull();
+      // Without snapshotTimestamp, the newest commit is the latest operation; without a collection, no days since.
+      expect(table.maintenance.lastCommitAt).toBe(table.id === 1 ? "2023-11-14T22:15:20.000Z" : "2023-11-14T22:18:20.000Z");
+      expect(table.maintenance.daysSinceLastCommit).toBeNull();
+      expect(table.partitions).toEqual({ count: null, kept: 0, oldestModifiedAt: null, newestModifiedAt: null });
       expect(table.files.vOrder).toBeNull();
       expect(table.files.smallFiles.shareAtLeast).toBeNull();
       expect(table.maintenance.commitsPerDay).toBeNull();
@@ -518,7 +727,12 @@ describe("the tolerance of the model", () => {
     const sales = model.tables[0]!;
     expect(["nonLive", "metadata", "footers"].map((k) => component(sales, k).absent)).toEqual([true, true, true]);
     expect(component(sales, "live").bytes).toBe(159121 - (159121 * 25) / 17000);
-    expect(sales.stack.total).toBeCloseTo(159121, 9);
+    // Without nonLiveFileSize, the unreferenced component is the whole of unreferencedFileSize.
+    expect(component(sales, "unreferenced")).toMatchObject({ bytes: 737, absent: false });
+    expect(sales.stack.listed).toBe(true);
+    expect(sales.stack.total).toBeCloseTo(159121 + 737, 9);
+    expect(sales.stack.overhead).toBe(0);
+    expect(sales.stack.overheadShare).toBe(0);
   });
 
   it("builds a model without the tables, the columns, the sources, or the operations", async () => {
@@ -589,7 +803,7 @@ describe("the tolerance of the model", () => {
     expect(model.collection.totals.tables).toBe(3);
   });
 
-  it("falls back on snapshotTimestamp when the manifest has no collection, with a span of one day at least", async () => {
+  it("computes the commits per day without the collection, with a span of one day at least, and no days since", async () => {
     const summary = await sampleSummary();
     for (const manifest of [{ formatVersion: "0.1" }, null, undefined]) {
       const model = buildModel({ summary, manifest });
@@ -600,16 +814,47 @@ describe("the tolerance of the model", () => {
       expect(model.tables[0]!.maintenance.commitsPerDay).toBe(4);
       // orders: 2 commits, the oldest 100 seconds before the snapshot.
       expect(model.tables[1]!.maintenance.commitsPerDay).toBe(2);
+      expect(model.tables.map((t) => t.maintenance.daysSinceLastCommit)).toEqual([null, null]);
+      expect(model.tables.map((t) => t.maintenance.lastCommitAt)).toEqual(summary.tables!.snapshotTimestamp);
     }
     expect(buildModel({ summary, manifest: { formatVersion: "0.1" } }).collection.formatVersion).toBe("0.1");
   });
 
-  it("takes startedAt as the reference when the collection has no completedAt", async () => {
+  it("counts the days since the last commit to startedAt when the collection has no completedAt", async () => {
     const summary = await sampleSummary();
-    const startedAt = "2023-11-24T22:14:50.000Z";
+    // Ten days and three minutes after the snapshot of sales, ten days after the snapshot of orders.
+    const startedAt = "2023-11-24T22:18:20.000Z";
     const model = buildModel({ summary, manifest: { collection: { level: 2, startedAt } } });
-    expect(model.tables[0]!.maintenance.commitsPerDay).toBe(4 / 10);
+    expect(model.tables.map((t) => t.maintenance.daysSinceLastCommit)).toEqual([10, 10]);
+    expect(model.tables[0]!.maintenance.commitsPerDay).toBe(4);
     expect(model.collection.startedAt).toBe(startedAt);
+    // A collection that ends before the last commit gives 0 days.
+    const early = buildModel({ summary, manifest: { collection: { completedAt: "2023-11-14T22:15:00.000Z" } } });
+    expect(early.tables.map((t) => t.maintenance.daysSinceLastCommit)).toEqual([0, 0]);
+  });
+
+  it("takes the newest commit from snapshotTimestamp, else the latest operation, else lastModifiedAt", () => {
+    const collection = { completedAt: "2026-10-05T00:00:00.000Z" };
+    const summary = {
+      tables: {
+        length: 5, id: [1, 2, 3, 4, 5], commitsRead: [20, 20, 20, 20, 20],
+        oldestCommitAt: ["2026-09-01T00:00:00.000Z", "2026-09-01T00:00:00.000Z", "2026-09-01T00:00:00.000Z", "2026-09-01T00:00:00.000Z", "2026-09-01T00:00:00.000Z"],
+        snapshotTimestamp: ["2026-09-21T00:00:00.000Z", null, "not a date", null, null],
+        lastModifiedAt: ["2026-09-30T00:00:00.000Z", "2026-09-30T00:00:00.000Z", "2026-09-11T00:00:00.000Z", "2026-09-11T00:00:00.000Z", null],
+      },
+      operations: {
+        length: 4, table: [1, 2, 2, 2], name: ["WRITE", "WRITE", "OPTIMIZE", "MERGE"],
+        lastAt: ["2026-10-01T00:00:00.000Z", "2026-09-06T00:00:00.000Z", "2026-09-26T00:00:00.000Z", null],
+      },
+    } as unknown as Summary;
+    const model = buildModel({ summary, manifest: { collection } as never });
+    expect(model.tables.map((t) => t.maintenance.lastCommitAt)).toEqual([
+      "2026-09-21T00:00:00.000Z", "2026-09-26T00:00:00.000Z", "2026-09-11T00:00:00.000Z", "2026-09-11T00:00:00.000Z", null,
+    ]);
+    // 20 commits over 20, 25, 10, and 10 days.
+    expect(model.tables.map((t) => t.maintenance.commitsPerDay)).toEqual([1, 0.8, 2, 2, null]);
+    expect(model.tables.map((t) => t.maintenance.daysSinceLastCommit)).toEqual([14, 9, 24, 24, null]);
+    expect(model.tables[1]!.maintenance.lastOptimizeAt).toBe("2026-09-26T00:00:00.000Z");
   });
 
   it("keys duplicated ids by their row and keeps the first source of an id", () => {
@@ -652,9 +897,14 @@ describe("the tolerance of the model", () => {
     };
     const data = await readFootprint(fake);
     expect(readTable).toHaveBeenCalledWith("files");
+    expect(readTable).toHaveBeenCalledWith("partitions");
     expect(data.files).toBeNull();
-    expect(data.warnings).toHaveLength(1);
+    expect(data.partitions).toBeNull();
+    // One warning for each detail table that could not be read.
+    expect(data.warnings).toHaveLength(2);
+    expect(data.warnings![0]).toContain("files");
     expect(data.warnings![0]).toContain("json.invalid");
+    expect(data.warnings![1]).toContain("partitions");
     const model = buildModel(data);
     expect(model.warnings).toEqual(data.warnings);
     expect(model.hasFiles).toBe(false);
@@ -662,8 +912,41 @@ describe("the tolerance of the model", () => {
 
     const plain: PqaxDocument = { ...fake, readTable: (() => Promise.reject(new Error("no code"))) as never };
     const second = await readFootprint(plain);
-    expect(second.warnings).toHaveLength(1);
-    expect(second.warnings![0]).not.toContain("(");
+    expect(second.warnings).toHaveLength(2);
+    expect(second.warnings!.every((w) => !w.includes("("))).toBe(true);
+    const onlyFiles = await readFootprint(plain, { partitions: false });
+    expect(onlyFiles.warnings).toHaveLength(1);
+  });
+
+  it("leaves out a partitions table whose part is broken, with a warning, and keeps the files", async () => {
+    const real = await open("sample.pqax");
+    const readTable = vi.fn((name: string) => (name === "partitions"
+      ? Promise.reject(Object.assign(new Error("broken part"), { code: "part.rowCount" }))
+      : real.readTable(name as "files")));
+    const fake: PqaxDocument = {
+      manifest: real.manifest, summary: real.summary, embeddedPart: null, embeddedCompression: null,
+      rowCount: (name) => real.rowCount(name), readTable: readTable as never, readRaw: (name) => real.readRaw(name),
+    };
+    const data = await readFootprint(fake);
+    expect(data.partitions).toBeNull();
+    expect(data.files!.length).toBe(5);
+    expect(data.warnings).toEqual(["The partitions table could not be read (part.rowCount). The views use the totals of the summary."]);
+    const model = buildModel(data);
+    expect(model.warnings).toEqual(data.warnings);
+    expect(model.hasFiles).toBe(true);
+    expect(model.tables[0]!.partitions).toEqual({ count: 2, kept: 0, oldestModifiedAt: null, newestModifiedAt: null });
+    expectInvariants(model);
+  });
+
+  it("leaves out the partitions of a real file whose partitions part does not parse", async () => {
+    const bytes = await rewriteZip(bytesOf(join(SAMPLES, "sample.pqax")), (name) => (name === "partitions.json" ? "{\"partitions\": [" : undefined));
+    const data = await readFootprint(await openPqax(bytes));
+    expect(data.partitions).toBeNull();
+    expect(data.files).not.toBeNull();
+    expect(data.warnings).toHaveLength(1);
+    expect(data.warnings![0]).toContain("partitions");
+    expect(data.warnings![0]).toContain("json.invalid");
+    expectInvariants(buildModel(data));
   });
 
   it("leaves out the files of a real file whose files part does not parse", async () => {
@@ -724,8 +1007,10 @@ describe("the helpers", () => {
     expect(smallShareAtLeast({ count: 3, minimum: null, firstQuartile: null, median: 5, thirdQuartile: null, maximum: null }, 11)).toBe(0.5);
   });
 
-  it("computes the commits per day over one day at least", () => {
+  it("computes the commits per day from the oldest commit to the newest, over one day at least", () => {
     const end = "2026-10-05T00:00:00.000Z";
+    expect(commitsPerDay(30, "2026-09-05T00:00:00.000Z", "2026-09-20T00:00:00.000Z")).toBe(2);
+    expect(commitsPerDay(10, "2026-10-04T23:00:00.000Z", "2026-10-05T23:00:00.000Z")).toBe(10);
     expect(commitsPerDay(10, "2026-09-25T00:00:00.000Z", end)).toBe(1);
     expect(commitsPerDay(10, "2026-10-04T12:00:00.000Z", end)).toBe(10);
     expect(commitsPerDay(10, end, end)).toBe(10);
@@ -737,6 +1022,19 @@ describe("the helpers", () => {
     expect(commitsPerDay(10, "yesterday", end)).toBeNull();
   });
 
+  it("counts the whole days between two times, 0 when the second comes first, null when one is missing", () => {
+    const from = "2026-10-01T12:00:00.000Z";
+    expect(daysBetween(from, "2026-10-05T12:00:00.000Z")).toBe(4);
+    expect(daysBetween(from, "2026-10-05T11:59:59.999Z")).toBe(3);
+    expect(daysBetween(from, from)).toBe(0);
+    expect(daysBetween(from, "2026-10-02T11:00:00.000Z")).toBe(0);
+    expect(daysBetween(from, "2026-09-01T00:00:00.000Z")).toBe(0);
+    expect(daysBetween(null, from)).toBeNull();
+    expect(daysBetween(from, null)).toBeNull();
+    expect(daysBetween("yesterday", from)).toBeNull();
+    expect(daysBetween(from, "")).toBeNull();
+  });
+
   it("divides only by a positive known number", () => {
     expect(ratio(1, 4)).toBe(0.25);
     expect(ratio(1, 0)).toBeNull();
@@ -746,23 +1044,113 @@ describe("the helpers", () => {
 
   it("builds a stack, clipping the live bytes at 0 and marking the null inputs absent", () => {
     const full = stackOf({ fileSize: 1000, deleted: 100, footerSize: 50, staleColumnSize: 25, nonLiveFileSize: 200, metadataSize: 30, deletedSource: "files" });
-    expect(full.components.map((c) => c.bytes)).toEqual([825, 200, 100, 30, 50, 25]);
+    expect(full.components.map((c) => c.key)).toEqual(["live", "nonLive", "unreferenced", "deleted", "stale", "metadata", "footers"]);
+    expect(full.components.map((c) => c.bytes)).toEqual([825, 200, 0, 100, 25, 30, 50]);
+    expect(full.components.map((c) => c.absent)).toEqual([false, false, true, false, false, false, false]);
+    expect(full.data).toBe(1150);
     expect(full.total).toBe(1230);
-    expect(full.waste).toBe(405);
-    expect(full.wasteShare).toBe(405 / 1230);
+    expect(full.waste).toBe(325);
+    expect(full.overhead).toBe(80);
+    expect(full.wasteShare).toBe(325 / 1150);
+    expect(full.overheadShare).toBe(80 / 1150);
+    expect(full.listed).toBe(false);
     expect(full.components.find((c) => c.key === "deleted")!.source).toBe("files");
     expect(full.components.find((c) => c.key === "live")!.source).toBeUndefined();
 
     const clipped = stackOf({ fileSize: 100, deleted: 80, footerSize: 30, staleColumnSize: 0, nonLiveFileSize: 0, metadataSize: 0 });
     expect(clipped.components[0]!.bytes).toBe(0);
+    expect(clipped.data).toBe(80);
     expect(clipped.total).toBe(110);
-    expect(clipped.waste).toBe(110);
+    expect(clipped.waste).toBe(80);
+    expect(clipped.wasteShare).toBe(1);
 
     const empty = stackOf({ fileSize: null, deleted: null, footerSize: null, staleColumnSize: null, nonLiveFileSize: null, metadataSize: null, deletedSource: "table" });
     expect(empty.components.every((c) => c.absent && c.bytes === 0 && c.share === null)).toBe(true);
     expect(empty.components.find((c) => c.key === "deleted")!.source).toBeUndefined();
-    expect(empty.total).toBe(0);
+    expect([empty.data, empty.total, empty.waste, empty.overhead]).toEqual([0, 0, 0, 0]);
     expect(empty.wasteShare).toBeNull();
+    expect(empty.overheadShare).toBeNull();
+
+    // Only overhead: no data, so no share, and the overhead counts in the total.
+    const overheadOnly = stackOf({ fileSize: 0, deleted: 0, footerSize: 0, staleColumnSize: 0, nonLiveFileSize: 0, metadataSize: 500 });
+    expect([overheadOnly.data, overheadOnly.total, overheadOnly.overhead]).toEqual([0, 500, 500]);
+    expect(overheadOnly.overheadShare).toBeNull();
+    expect(overheadOnly.components.every((c) => c.share === null)).toBe(true);
+  });
+
+  it("gives the shares of the data, with the overhead beyond 1", () => {
+    const stack = stackOf({ fileSize: 600, deleted: 100, footerSize: 100, staleColumnSize: 0, nonLiveFileSize: 300, unreferencedFileSize: 400, metadataSize: 700 });
+    // live 400, non-live 300, unreferenced 100, deleted 100: data 900; overhead 800.
+    expect(stack.components.map((c) => [c.key, c.bytes, c.share])).toEqual([
+      ["live", 400, 400 / 900], ["nonLive", 300, 300 / 900], ["unreferenced", 100, 100 / 900], ["deleted", 100, 100 / 900],
+      ["stale", 0, 0], ["metadata", 700, 700 / 900], ["footers", 100, 100 / 900],
+    ]);
+    expect(stack.data).toBe(900);
+    expect(stack.total).toBe(1700);
+    expect(stack.overheadShare).toBe(800 / 900);
+    expect(stack.overheadShare! + 1).toBeCloseTo(stack.total / stack.data, 12);
+    expect(stack.wasteShare).toBe(500 / 900);
+  });
+
+  describe("the overlap of the non-live and the unreferenced files", () => {
+    const base = { fileSize: 1000, deleted: 0, footerSize: 40, staleColumnSize: 0, metadataSize: 60 };
+    const parts = (nonLiveFileSize: number | null, unreferencedFileSize?: number | null) => {
+      const stack = stackOf({ ...base, nonLiveFileSize, unreferencedFileSize });
+      const get = (key: string) => stack.components.find((c) => c.key === key)!;
+      return { stack, nonLive: get("nonLive"), unreferenced: get("unreferenced") };
+    };
+
+    it("keeps all the non-live files and adds the rest when the unreferenced files are larger", () => {
+      const { stack, nonLive, unreferenced } = parts(200, 500);
+      expect([nonLive.bytes, unreferenced.bytes]).toEqual([200, 300]);
+      expect(stack.listed).toBe(true);
+      expect(stack.waste).toBe(500);
+      expect(stack.total).toBe(1000 + 500 + 60);
+    });
+
+    it("keeps only the unreferenced bytes as non-live when the unreferenced files are smaller", () => {
+      const { stack, nonLive, unreferenced } = parts(200, 50);
+      expect([nonLive.bytes, unreferenced.bytes]).toEqual([50, 0]);
+      expect([nonLive.absent, unreferenced.absent]).toEqual([false, false]);
+      expect(stack.total).toBe(1000 + 50 + 60);
+    });
+
+    it("gives all to the non-live files when the two sizes are equal", () => {
+      const { stack, nonLive, unreferenced } = parts(200, 200);
+      expect([nonLive.bytes, unreferenced.bytes]).toEqual([200, 0]);
+      expect(stack.total).toBe(1000 + 200 + 60);
+    });
+
+    it("gives nothing to either when the storage holds no unreferenced file", () => {
+      const { stack, nonLive, unreferenced } = parts(200, 0);
+      expect([nonLive.bytes, unreferenced.bytes]).toEqual([0, 0]);
+      expect([nonLive.absent, unreferenced.absent]).toEqual([false, false]);
+      expect(stack.listed).toBe(true);
+      expect(stack.waste).toBe(0);
+      expect(stack.total).toBe(1000 + 60);
+      const none = parts(0, 0);
+      expect([none.nonLive.bytes, none.unreferenced.bytes]).toEqual([0, 0]);
+    });
+
+    it("gives the whole of the unreferenced files to their component when nonLiveFileSize is missing", () => {
+      const { stack, nonLive, unreferenced } = parts(null, 300);
+      expect(nonLive).toMatchObject({ bytes: 0, absent: true });
+      expect(unreferenced).toMatchObject({ bytes: 300, absent: false });
+      expect(stack.listed).toBe(true);
+      expect(stack.total).toBe(1000 + 300 + 60);
+      const unlisted = parts(null, null);
+      expect([unlisted.nonLive.absent, unlisted.unreferenced.absent, unlisted.stack.listed]).toEqual([true, true, false]);
+    });
+
+    it("keeps nonLiveFileSize as an upper bound when unreferencedFileSize is missing", () => {
+      for (const missing of [null, undefined]) {
+        const { stack, nonLive, unreferenced } = parts(200, missing);
+        expect(nonLive).toMatchObject({ bytes: 200, absent: false });
+        expect(unreferenced).toMatchObject({ bytes: 0, absent: true, share: 0 });
+        expect(stack.listed).toBe(false);
+        expect(stack.total).toBe(1000 + 200 + 60);
+      }
+    });
   });
 
   it("sorts the tables by waste, by total, and by label, with ties by total, label, and row", () => {
@@ -781,6 +1169,28 @@ describe("the helpers", () => {
     expect(model.tables.map((t) => t.key)).toEqual(before);
     const wasteOrder = { ...summary, tables: { ...summary.tables!, nonLiveFileSize: [10, 0, 50, 0, 10] } } as Summary;
     expect(sortTables(buildModel({ summary: wasteOrder }).tables, "waste").map((t) => t.key)).toEqual(["t:3", "t:5", "t:1", "t:2", "t:4"]);
+  });
+
+  it("sorts by the waste without the overhead, which the metadata and the footers no longer join", () => {
+    // table_a has little waste and a large metadata; table_b more waste and no overhead; table_c the largest footers.
+    const summary = {
+      tables: {
+        length: 3, id: [1, 2, 3], name: ["table_a", "table_b", "table_c"], fileSize: [1000, 1000, 1000],
+        deletedRowCount: [0, 0, 0], rowCount: [10, 10, 10], staleColumnSize: [0, 0, 0],
+        nonLiveFileSize: [10, 100, 20], metadataSize: [5000, 0, 0], footerSize: [0, 0, 900],
+      },
+    } as unknown as Summary;
+    const model = buildModel({ summary });
+    expect(model.tables.map((t) => t.stack.waste)).toEqual([10, 100, 20]);
+    expect(model.tables.map((t) => t.stack.overhead)).toEqual([5000, 0, 900]);
+    // By the old waste, with the overhead, the order would be table_a, table_c, table_b.
+    const oldWaste = (t: TableModel) => t.stack.waste + t.stack.overhead;
+    expect([...model.tables].sort((a, b) => oldWaste(b) - oldWaste(a)).map((t) => t.key)).toEqual(["t:1", "t:3", "t:2"]);
+    expect(sortTables(model.tables, "waste").map((t) => t.key)).toEqual(["t:2", "t:3", "t:1"]);
+    expect(sortTables(model.tables, "total").map((t) => t.key)).toEqual(["t:1", "t:2", "t:3"]);
+    expect(model.collection.totals).toMatchObject({ waste: 130, overhead: 5900, footprint: 3000 + 130 + 5000 });
+    expect(model.tables[0]!.stack.wasteShare).toBe(10 / 1010);
+    expect(model.tables[0]!.stack.overheadShare).toBe(5000 / 1010);
   });
 });
 
@@ -809,6 +1219,86 @@ describe("the synthetic footprint", () => {
       const columns = table.columnRows.reduce((sum, i) => sum + (s.columns!.compressedSize![i] ?? 0), 0);
       expect(columns + table.staleColumnSize).toBe(s.tables!.compressedSize![row]);
     }
+  });
+
+  it("has a partitions table whose rows sum to the files of each partitioned table, in format 0.2", () => {
+    const s = data.summary;
+    const p = data.partitions!;
+    const files = data.files!;
+    expect(data.manifest!.formatVersion).toBe("0.2");
+    expect(p.length).toBe(synthetic.tables.reduce((sum, t) => sum + t.partitionRows.length, 0));
+    for (const [row, table] of synthetic.tables.entries()) {
+      expect(table.partitionRows.length).toBe(table.partitioned ? s.tables!.partitionCount![row] : 0);
+      if (!table.partitioned) {
+        continue;
+      }
+      expect(table.partitionRows.every((i) => p.table![i] === table.id && p.fileCount![i]! > 0)).toBe(true);
+      expect(table.partitionRows.reduce((sum, i) => sum + p.fileSize![i]!, 0)).toBe(s.tables!.fileSize![row]);
+      expect(table.partitionRows.reduce((sum, i) => sum + p.fileCount![i]!, 0)).toBe(table.fileRows.length);
+      expect(table.partitionRows.reduce((sum, i) => sum + p.rowCount![i]!, 0)).toBe(s.tables!.rowCount![row]);
+      // lastModifiedAt of a partition is the latest modifiedAt of its files, whose path names the partition.
+      table.partitionRows.forEach((i, k) => {
+        const mine = table.fileRows.filter((f) => files.path![f]!.startsWith(`part_col=${k}/`));
+        const latest = Math.max(...mine.map((f) => Date.parse(files.modifiedAt![f]!)));
+        expect(p.lastModifiedAt![i]).toBe(new Date(latest).toISOString());
+      });
+    }
+    // The unreferenced files meet every case of the overlap rule.
+    const cases = synthetic.tables.map((t) => Math.sign(t.unreferencedFileSize - t.nonLiveFileSize));
+    expect(cases).toContain(1);
+    expect(cases).toContain(-1);
+    expect(synthetic.tables.some((t) => t.unreferencedFileSize === t.nonLiveFileSize && t.nonLiveFileSize > 0)).toBe(true);
+    expect(synthetic.tables.some((t) => t.unreferencedFileSize === 0 && t.nonLiveFileSize > 0)).toBe(true);
+    expect(synthetic.tables.some((t) => t.unreferencedFileSize > 0 && t.nonLiveFileSize === 0)).toBe(true);
+  });
+
+  it("builds the stacks by the overlap rule, and the fields of 0.2 of every table", () => {
+    const model = buildModel(data);
+    const tables = data.summary.tables!;
+    for (const [row, info] of synthetic.tables.entries()) {
+      const table = model.tables[row]!;
+      const nonLive = Math.min(info.nonLiveFileSize, info.unreferencedFileSize);
+      expect(table.stack.listed).toBe(true);
+      expect(component(table, "nonLive").bytes).toBe(nonLive);
+      expect(component(table, "unreferenced").bytes).toBe(info.unreferencedFileSize - nonLive);
+      expect(table.unreferencedFileCount).toBe(tables.unreferencedFileCount![row]);
+      expect(table.unreferencedFileCount! > 0).toBe(info.unreferencedFileSize > 0);
+      expect(table.nonLiveOldestRemovedAt).toBe(tables.nonLiveOldestRemovedAt![row]);
+      expect(table.nonLiveNewestRemovedAt).toBe(tables.nonLiveNewestRemovedAt![row]);
+      expect(table.nonLiveNewestRemovedAt === null).toBe(table.nonLiveFileCount === 0);
+      if (table.nonLiveFileCount === 1) {
+        expect(table.nonLiveOldestRemovedAt).toBe(table.nonLiveNewestRemovedAt);
+      }
+      expect(table.metadataFileCount).toBe(tables.metadataFileCount![row]);
+      const times = info.partitionRows.map((i) => data.partitions!.lastModifiedAt![i]!).sort();
+      expect(table.partitions).toEqual({
+        count: info.partitioned ? info.partitionRows.length : null, kept: info.partitionRows.length,
+        oldestModifiedAt: times[0] ?? null, newestModifiedAt: times.at(-1) ?? null,
+      });
+    }
+    expect(model.tables.some((t) => component(t, "unreferenced").bytes > 0)).toBe(true);
+  });
+
+  it("gives a footprint of format 0.1 without the fields of 0.2, whose stacks take the non-live files of the log", () => {
+    const early = syntheticFootprint({ formatVersion: "0.1" });
+    expect(early.data.manifest!.formatVersion).toBe("0.1");
+    for (const field of FORMAT_02_TABLE_FIELDS) {
+      expect(early.data.summary.tables![field]).toBeUndefined();
+    }
+    expect(early.data.partitions!.lastModifiedAt).toBeUndefined();
+    const model = buildModel(early.data);
+    expectInvariants(model);
+    for (const [row, info] of early.tables.entries()) {
+      const table = model.tables[row]!;
+      expect(table.stack.listed).toBe(false);
+      expect(component(table, "nonLive").bytes).toBe(info.nonLiveFileSize);
+      expect(component(table, "unreferenced").absent).toBe(true);
+      expect([table.unreferencedFileSize, table.nonLiveOldestRemovedAt, table.partitions.newestModifiedAt]).toEqual([null, null, null]);
+      expect(table.partitions.kept).toBe(info.partitionRows.length);
+    }
+    // The same data, apart from the fields of 0.2.
+    expect(early.data.summary.tables!.fileSize).toEqual(data.summary.tables!.fileSize);
+    expect(syntheticFootprint({ withPartitions: false }).data.partitions).toBeNull();
   });
 
   it("builds its model in less than a second, with every invariant", () => {
@@ -847,8 +1337,11 @@ describe("the synthetic footprint", () => {
       if (info.vacuumed) {
         expect(table.maintenance.lastVacuumAt).not.toBeNull();
       }
-      const days = (reference - Date.parse(table.maintenance.oldestCommitAt!)) / DAY_MS;
+      // The snapshot is a day before the end of the collection: the span ends there.
+      expect(table.maintenance.lastCommitAt).toBe(data.summary.tables!.snapshotTimestamp![row]);
+      const days = (reference - DAY_MS - Date.parse(table.maintenance.oldestCommitAt!)) / DAY_MS;
       expectClose(table.maintenance.commitsPerDay, table.maintenance.commitsRead! / Math.max(1, days));
+      expect(table.maintenance.daysSinceLastCommit).toBe(1);
       const stale = component(table, "stale");
       expect(stale.bytes).toBe(info.staleColumnSize);
       expect(table.measures.staleColumnShare).toBe(info.staleColumnSize / table.compressedSize!);
@@ -898,9 +1391,29 @@ describe("the synthetic footprint", () => {
       expect(table.files.vOrder).toMatchObject({ files: other.files.vOrder!.files, share: other.files.vOrder!.share, source: "table", bytesShare: null });
       expect(component(table, "deleted").source).toBe("table");
       expect(table.files.smallFiles.count).toBeNull();
+      expect(table.files.tinyFiles.count).toBeNull();
       // The bound from the quartiles never exceeds the exact share from the files.
       expect(table.files.smallFiles.shareAtLeast!).toBeLessThanOrEqual(other.files.smallFiles.shareAtLeast! + 1e-12);
+      expect(table.files.tinyFiles.shareAtLeast!).toBeLessThanOrEqual(other.files.tinyFiles.shareAtLeast! + 1e-12);
     });
+  });
+
+  it("counts the tiny and the small files of every table against its sizes, for both options", () => {
+    for (const options of [{}, { tinyFileSize: 64 * 1024, smallFileSize: 4 * MIB }]) {
+      const model = buildModel(data, options);
+      for (const [row, info] of synthetic.tables.entries()) {
+        const sizes = info.fileRows.map((i) => data.files!.fileSize![i]!);
+        const f = model.tables[row]!.files;
+        for (const below of [f.tinyFiles, f.smallFiles]) {
+          const count = sizes.filter((size) => size < below.threshold).length;
+          expect(below).toEqual({ threshold: below.threshold, count, shareAtLeast: count / sizes.length });
+        }
+      }
+      const tiny = model.tables.map((t) => t.files.tinyFiles.threshold);
+      expect(new Set(tiny)).toEqual(new Set([(options as { tinyFileSize?: number }).tinyFileSize ?? DEFAULT_TINY_FILE_SIZE]));
+      expect(model.tables.some((t) => t.files.tinyFiles.count! > 0)).toBe(true);
+      expect(model.tables.some((t) => t.files.tinyFiles.count! < t.files.smallFiles.count!)).toBe(true);
+    }
   });
 
   it("marks absent what a collection at level 1 does not have", () => {
@@ -927,8 +1440,12 @@ describe("the synthetic footprint", () => {
     const model = buildModel(early);
     expectInvariants(model);
     for (const table of model.tables) {
-      expect(["nonLive", "metadata", "stale"].map((k) => component(table, k).absent)).toEqual([true, true, true]);
+      expect(["nonLive", "unreferenced", "metadata", "stale"].map((k) => component(table, k).absent)).toEqual([true, true, true, true]);
       expect(component(table, "footers").absent).toBe(false);
+      expect(table.stack.listed).toBe(false);
+      expect(table.stack.waste).toBe(component(table, "deleted").bytes);
+      expect(table.stack.overhead).toBe(component(table, "footers").bytes);
+      expect(table.metadataFileCount).toBeNull();
       expect(table.maintenance.commitsRead).toBeNull();
       expect(table.maintenance.commitsPerDay).toBeNull();
       expect(table.measures.nonLiveShare).toBeNull();
