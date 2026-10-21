@@ -2,7 +2,7 @@
 
 The packages of a release share its version number, as section 7.1 of the [contracts](docs/contracts.md) says.
 
-## 0.1.0 - unreleased
+## 0.1.0 - 2026-10-21
 
 The first release: format version 0.1, its conformance kit, and the reference implementations in C#, TypeScript, and Python.
 
