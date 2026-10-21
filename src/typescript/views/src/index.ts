@@ -11,3 +11,11 @@ export type {
 } from "./model.js";
 export { MISSING, formatBytes, formatCount, formatNumber, formatShare, formatTime } from "./format.js";
 export type { BaseOptions, ViewHandle, ViewTheme } from "./dom.js";
+export { renderTableStack } from "./stack.js";
+export type { StackMode, StackOptions } from "./stack.js";
+export { nullShareBin, renderColumnTreemap } from "./treemap.js";
+export type { TreemapOptions } from "./treemap.js";
+export { squarify } from "./squarify.js";
+export type { LayoutRect, WeightedItem } from "./squarify.js";
+export { renderFileStrip } from "./strip.js";
+export type { StripOptions } from "./strip.js";

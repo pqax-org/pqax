@@ -242,3 +242,182 @@
   border: 1px dashed var(--pqax-absent);
   border-radius: 2px;
 }
+
+/* ---- stack ---- */
+
+/* The storage stack per table: a head with the toggle and the legend, then one grid row per table with the label, the
+   bar, the marks of the missing components, and the value. Below 480 pixels the view sets data-narrow and the label
+   goes above the bar. The colors are the custom properties of styles.css; --pqax-stack-marks and --pqax-stack-value
+   are widths, set here and on the rows by the view. */
+
+.pqax-stack {
+  --pqax-stack-value: 5.5em;
+  --pqax-stack-marks: 0rem;
+}
+.pqax-stack[data-mode="shares"] { --pqax-stack-value: 7.5em; }
+
+.pqax-stack .pqax-stack-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 1.25rem;
+  margin-bottom: 0.6rem;
+}
+.pqax-stack .pqax-stack-head .pqax-toolbar { margin-bottom: 0; }
+
+.pqax-stack .pqax-legend .pqax-absent-mark { width: 0.75rem; height: 0.75rem; box-sizing: border-box; }
+
+.pqax-stack .pqax-rows { display: flex; flex-direction: column; gap: 2px; }
+
+.pqax-stack .pqax-row {
+  display: grid;
+  grid-template-columns: minmax(7rem, 30%) minmax(0, 1fr) var(--pqax-stack-marks) var(--pqax-stack-value);
+  grid-template-areas: "label bar marks value";
+  align-items: center;
+  column-gap: 0.6rem;
+  padding: 0.3rem 0.35rem;
+  border-radius: 4px;
+}
+.pqax-stack .pqax-rows[data-marks="0"] .pqax-row {
+  grid-template-columns: minmax(7rem, 30%) minmax(0, 1fr) var(--pqax-stack-value);
+  grid-template-areas: "label bar value";
+}
+.pqax-stack .pqax-rows[data-marks="0"] .pqax-marks { display: none; }
+.pqax-stack .pqax-row:hover { background: var(--pqax-grid); }
+
+.pqax-stack .pqax-label {
+  grid-area: label;
+  display: flex;
+  align-items: baseline;
+  gap: 0.4rem;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+}
+.pqax-stack .pqax-name { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; color: var(--pqax-ink); }
+.pqax-stack .pqax-source {
+  flex: 0 100 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--pqax-muted);
+  font-size: 0.75rem;
+}
+
+.pqax-stack .pqax-bar { grid-area: bar; display: flex; height: 0.875rem; min-width: 0; }
+.pqax-stack .pqax-segment {
+  flex: 0 1 auto;
+  min-width: 1px;
+  height: 100%;
+  background: var(--pqax-fill);
+}
+.pqax-stack .pqax-segment + .pqax-segment { margin-left: 2px; }
+.pqax-stack .pqax-segment[data-thin] { min-width: 0; margin-left: 0; }
+.pqax-stack .pqax-segment:first-child { border-top-left-radius: 4px; border-bottom-left-radius: 4px; }
+.pqax-stack .pqax-segment:last-child { border-top-right-radius: 4px; border-bottom-right-radius: 4px; }
+
+.pqax-stack .pqax-marks { grid-area: marks; display: flex; gap: 0.25rem; align-items: center; }
+.pqax-stack .pqax-absent {
+  flex: none;
+  box-sizing: border-box;
+  border-color: var(--pqax-fill, var(--pqax-absent));
+}
+
+.pqax-stack .pqax-value { grid-area: value; text-align: right; white-space: nowrap; color: var(--pqax-ink-2); }
+
+.pqax-stack[data-narrow] .pqax-row {
+  grid-template-columns: minmax(0, 1fr) var(--pqax-stack-marks) var(--pqax-stack-value);
+  grid-template-areas: "label label label" "bar marks value";
+  row-gap: 0.2rem;
+}
+.pqax-stack[data-narrow] .pqax-rows[data-marks="0"] .pqax-row {
+  grid-template-columns: minmax(0, 1fr) var(--pqax-stack-value);
+  grid-template-areas: "label label" "bar value";
+}
+
+/* ---- treemap ---- */
+
+/* The column treemap of the storage views. Every rule is scoped under .pqax-treemap and takes its colors from the
+   custom properties of styles.css: the fill of a tile from data-bin, through --pqax-fill and --pqax-fill-ink. */
+
+.pqax-treemap .pqax-breadcrumb {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.1rem 0.15rem;
+  margin-bottom: 0.5rem;
+}
+.pqax-treemap .pqax-breadcrumb[hidden],
+.pqax-treemap .pqax-legend[hidden] { display: none; }
+.pqax-treemap .pqax-breadcrumb button {
+  font: inherit;
+  padding: 0.1rem 0.35rem;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--pqax-ink-2);
+  cursor: pointer;
+}
+.pqax-treemap .pqax-breadcrumb button:hover { color: var(--pqax-ink); background: var(--pqax-grid); }
+.pqax-treemap .pqax-breadcrumb button[aria-current="page"] {
+  color: var(--pqax-ink);
+  font-weight: 600;
+  cursor: default;
+}
+.pqax-treemap .pqax-breadcrumb button[aria-current="page"]:hover { background: transparent; }
+.pqax-treemap .pqax-breadcrumb button:focus-visible { outline: 2px solid var(--pqax-focus); outline-offset: 0; }
+.pqax-treemap .pqax-breadcrumb-sep { color: var(--pqax-muted); }
+
+.pqax-treemap .pqax-treemap-plot svg { overflow: hidden; background: var(--pqax-gap); }
+
+.pqax-treemap .pqax-tile.pqax-item { cursor: pointer; }
+.pqax-treemap .pqax-tile > rect:first-child,
+.pqax-treemap .pqax-subtile > rect:first-child { fill: var(--pqax-fill); }
+.pqax-treemap .pqax-subtile > rect:first-child { stroke: var(--pqax-gap); stroke-width: 1px; }
+.pqax-treemap .pqax-tile:hover > rect:first-child { stroke: var(--pqax-ink-2); stroke-width: 1.5px; }
+.pqax-treemap .pqax-tile.pqax-absent > rect:first-child { stroke: var(--pqax-absent); stroke-width: 1px; stroke-dasharray: 3 2; }
+.pqax-treemap .pqax-tile.pqax-absent:hover > rect:first-child { stroke: var(--pqax-ink-2); stroke-dasharray: none; }
+
+.pqax-treemap .pqax-hatch { pointer-events: none; }
+.pqax-treemap .pqax-hatch-line { stroke: var(--pqax-absent); stroke-width: 1.5px; }
+
+.pqax-treemap .pqax-tile text { fill: var(--pqax-fill-ink); font-size: 12px; pointer-events: none; }
+.pqax-treemap .pqax-tile.pqax-nested > text { font-weight: 600; }
+.pqax-treemap .pqax-tile text.pqax-tile-value { font-size: 11px; opacity: 0.85; }
+.pqax-treemap .pqax-subtile text { font-size: 11px; }
+
+.pqax-treemap .pqax-legend { margin-top: 0.6rem; }
+.pqax-treemap .pqax-legend-title { font-weight: 600; color: var(--pqax-ink-2); }
+
+/* ---- strip ---- */
+
+/* The file sizes per table: one SVG with an axis of bytes on a log scale, one row per table with the range, the box of
+   the quartiles, the median, and the dots of the files, and a V-Order column on the right. The colors are the custom
+   properties of styles.css. */
+
+.pqax-strip .pqax-strip-chart { max-width: 100%; height: auto; }
+
+.pqax-strip .pqax-grid { stroke: var(--pqax-grid); stroke-width: 1px; }
+.pqax-strip .pqax-axis-line { stroke: var(--pqax-axis); stroke-width: 1px; }
+.pqax-strip text.pqax-tick { fill: var(--pqax-muted); font-size: 11px; }
+.pqax-strip text.pqax-vorder-head { fill: var(--pqax-ink-2); font-size: 11px; font-weight: 600; }
+
+.pqax-strip .pqax-threshold { stroke: var(--pqax-muted); stroke-width: 1px; stroke-dasharray: 4 3; }
+.pqax-strip text.pqax-threshold-label { fill: var(--pqax-muted); font-size: 11px; }
+
+.pqax-strip .pqax-hit { fill: transparent; pointer-events: all; }
+.pqax-strip .pqax-strip-row:hover > .pqax-hit { fill: var(--pqax-grid); fill-opacity: 0.6; }
+.pqax-strip .pqax-strip-row { cursor: default; }
+
+.pqax-strip text.pqax-label { fill: var(--pqax-ink); }
+
+.pqax-strip .pqax-range { stroke: var(--pqax-strip-range); stroke-width: 1.5px; stroke-linecap: round; }
+.pqax-strip .pqax-box { fill: var(--pqax-strip-box); }
+.pqax-strip .pqax-median { stroke: var(--pqax-strip-median); stroke-width: 2.5px; stroke-linecap: round; }
+.pqax-strip .pqax-dot { fill: var(--pqax-strip-dot); fill-opacity: 0.55; pointer-events: none; }
+
+.pqax-strip .pqax-vorder-track { fill: var(--pqax-vorder-track); }
+.pqax-strip .pqax-vorder-fill { fill: var(--pqax-vorder); }
+.pqax-strip text.pqax-vorder-value { fill: var(--pqax-ink-2); }
+
+.pqax-strip text.pqax-absent { fill: var(--pqax-absent); font-style: italic; }
