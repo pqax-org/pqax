@@ -30,6 +30,9 @@ public sealed class PartitionRow : IEquatable<PartitionRow>
     /// <summary>The rows marked as deleted in the files of the partition.</summary>
     public long? DeletedRowCount { get; set; }
 
+    /// <summary>When the most recent data file of the partition was written.</summary>
+    public DateTimeOffset? LastModifiedAt { get; set; }
+
     /// <summary>Whether the other row has the same values in every field.</summary>
     /// <param name="other">The row to compare with.</param>
     /// <returns>True when every field is equal.</returns>

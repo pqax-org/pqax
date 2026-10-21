@@ -105,6 +105,19 @@ public class FooterTests
         {
             Fixture.DumpFileOfSize(FileBytes(path).Length);
         }
+
+        // The one Parquet file without a footer in the dump is the file that no commit references, which the dump
+        // counts in unreferencedFileCount and unreferencedFileSize of its table (conformance/README.md).
+        string unreferenced = Assert.Single(Fixture.UnreferencedDataFiles());
+        Assert.Equal(Fixture.CheckpointTable.TablePath + "/Year=2024/part-0004.parquet", unreferenced);
+        Assert.Equal(737, FileBytes(unreferenced).Length);
+        Assert.Equal(Fixture.AllDataFiles().Count, files.Count + 1);
+        foreach (DumpTable table in Fixture.Tables)
+        {
+            List<string> extra = Fixture.UnreferencedDataFiles().Where(path => path.StartsWith(table.TablePath + "/", StringComparison.Ordinal)).ToList();
+            Assert.Equal(Dump.Long(table.Dump["unreferencedFileCount"]), extra.Count);
+            Assert.Equal(Dump.Long(table.Dump["unreferencedFileSize"]), extra.Sum(path => (long)FileBytes(path).Length));
+        }
     }
 
     [Theory]

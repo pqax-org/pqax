@@ -179,4 +179,66 @@ public class ValidatorTests
         ValidationResult result = PqaxValidator.ValidateEmbedded(stream);
         Assert.True(result.IsValid, string.Join(", ", result.Issues.Select(issue => issue.Code)));
     }
+
+    // ---- the fields of format 0.2 ----
+
+    [Theory]
+    [InlineData("sample.pqax", "0.2")]
+    [InlineData("format-0.1.pqax", "0.1")]
+    public void A_sample_of_format_0_2_and_one_of_format_0_1_are_valid(string file, string version)
+    {
+        string path = Path.Combine(Kit.Samples, file);
+        using (PqaxDocument doc = PqaxDocument.Open(path))
+        {
+            Assert.Equal(version, doc.Manifest.FormatVersion);
+        }
+
+        ValidationResult result = PqaxValidator.Validate(path);
+        Assert.Empty(result.Issues.Select(issue => $"{issue.Code}: {issue.Message}"));
+        Assert.True(result.IsValid);
+    }
+
+    [Theory]
+    [InlineData("json.type.unreferencedFileCount.pqax")]
+    [InlineData("json.timestamp.nonLiveOldestRemovedAt.pqax")]
+    [InlineData("json.timestamp.partitionLastModifiedAt.pqax")]
+    public void The_invalid_samples_of_the_fields_of_format_0_2_report_their_codes(string file)
+    {
+        Assert.Contains(file, Kit.InvalidCases().Select(pair => pair.Key));
+        HashSet<string> reported = Codes(PqaxValidator.Validate(Path.Combine(Kit.Invalid, file)));
+        Assert.All(Kit.InvalidCodes(file), code => Assert.Contains(code, reported));
+    }
+
+    [Theory]
+    [InlineData("summary.json", "tables", "unreferencedFileCount", "\"1\"", "json.type")]
+    [InlineData("summary.json", "tables", "unreferencedFileCount", "true", "json.type")]
+    [InlineData("summary.json", "tables", "unreferencedFileSize", "\"737\"", "json.type")]
+    [InlineData("summary.json", "tables", "unreferencedFileSize", "[737]", "json.type")]
+    [InlineData("summary.json", "tables", "nonLiveOldestRemovedAt", "1700000050000", "json.type")]
+    [InlineData("summary.json", "tables", "nonLiveNewestRemovedAt", "{\"at\":\"2023-11-14T22:14:10.000Z\"}", "json.type")]
+    [InlineData("partitions.json", "partitions", "lastModifiedAt", "1700000100000", "json.type")]
+    [InlineData("summary.json", "tables", "nonLiveOldestRemovedAt", "\"2023-11-14T22:14:10Z\"", "json.timestamp")]
+    [InlineData("summary.json", "tables", "nonLiveNewestRemovedAt", "\"2023-11-14 22:14:10.000\"", "json.timestamp")]
+    [InlineData("partitions.json", "partitions", "lastModifiedAt", "\"2023-11-14T22:15:00.000+00:00\"", "json.timestamp")]
+    public void A_wrong_value_in_a_field_of_format_0_2_is_reported_with_its_table_and_field(string part, string table, string field, string value, string code)
+    {
+        byte[] data = Kit.Rewrite(Kit.SampleBytes("sample.pqax"), (name, content) =>
+        {
+            if (name != part)
+            {
+                return content;
+            }
+
+            JsonNode json = Kit.Json(content);
+            json[table]![field]![0] = JsonNode.Parse(value);
+            return Kit.Bytes(json);
+        });
+        using var stream = new MemoryStream(data);
+        ValidationResult result = PqaxValidator.Validate(stream);
+        Assert.False(result.IsValid);
+        List<ValidationIssue> matching = result.Issues.Where(issue => issue.Code == code).ToList();
+        Assert.True(matching.Count > 0, string.Join(", ", result.Issues.Select(issue => issue.Code)));
+        Assert.True(matching.Any(issue => issue.Table == table && issue.Field == field && issue.Part == part),
+            string.Join("; ", matching.Select(issue => $"{issue.Part} {issue.Table} {issue.Field}")));
+    }
 }

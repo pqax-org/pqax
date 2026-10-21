@@ -130,3 +130,54 @@ def test_validating_twice_gives_the_same_result():
     assert [(issue.code, issue.message) for issue in first.issues] == \
            [(issue.code, issue.message) for issue in second.issues]
     assert first.checks == second.checks
+
+
+# ---- the fields of format 0.2 ----
+
+@pytest.mark.parametrize("name", ["sample.pqax", "format-0.1.pqax"])
+def test_a_sample_of_format_0_2_and_one_of_format_0_1_are_valid(name):
+    result = pqax.validate(str(SAMPLES / name))
+    assert [f"{issue.code}: {issue.message}" for issue in result.issues] == []
+    assert result.is_valid
+
+
+@pytest.mark.parametrize("name", ["json.type.unreferencedFileCount.pqax", "json.timestamp.nonLiveOldestRemovedAt.pqax",
+                                  "json.timestamp.partitionLastModifiedAt.pqax"])
+def test_the_invalid_samples_of_the_fields_of_format_0_2_report_their_codes(name):
+    assert name in CASES
+    result = pqax.validate(str(INVALID / name))
+    assert set(CASES[name]["codes"]) <= codes_of(result)
+
+
+WRONG_VALUES = [
+    ("summary.json", "tables", "unreferencedFileCount", "1", "json.type"),
+    ("summary.json", "tables", "unreferencedFileCount", True, "json.type"),
+    ("summary.json", "tables", "unreferencedFileSize", "737", "json.type"),
+    ("summary.json", "tables", "unreferencedFileSize", [737], "json.type"),
+    ("summary.json", "tables", "nonLiveOldestRemovedAt", 1700000050000, "json.type"),
+    ("summary.json", "tables", "nonLiveNewestRemovedAt", {"at": "2023-11-14T22:14:10.000Z"}, "json.type"),
+    ("partitions.json", "partitions", "lastModifiedAt", 1700000100000, "json.type"),
+    ("summary.json", "tables", "nonLiveOldestRemovedAt", "2023-11-14T22:14:10Z", "json.timestamp"),
+    ("summary.json", "tables", "nonLiveNewestRemovedAt", "2023-11-14 22:14:10.000", "json.timestamp"),
+    ("partitions.json", "partitions", "lastModifiedAt", "2023-11-14T22:15:00.000+00:00", "json.timestamp"),
+]
+
+
+@pytest.mark.parametrize("part,table,field,value,code", WRONG_VALUES,
+                         ids=[f"{field}-{code}-{index}" for index, (_, _, field, _, code) in enumerate(WRONG_VALUES)])
+def test_a_wrong_value_in_a_field_of_format_0_2_is_reported_with_its_table_and_field(tmp_path, part, table, field,
+                                                                                        value, code):
+    def change(name, data):
+        if name != part:
+            return None
+        content = json.loads(data)
+        content[table][field][0] = value
+        return compact(content)
+
+    target = tmp_path / "wrong.pqax"
+    rewrite_zip(SAMPLES / "sample.pqax", target, change)
+    result = pqax.validate(str(target))
+    assert not result.is_valid
+    matching = [issue for issue in result.issues if issue.code == code]
+    assert matching, [f"{issue.code}: {issue.message}" for issue in result.issues]
+    assert any(issue.table == table and issue.field == field and issue.part == part for issue in matching),         [(issue.part, issue.table, issue.field) for issue in matching]

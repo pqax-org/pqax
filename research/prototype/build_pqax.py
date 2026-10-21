@@ -3,8 +3,12 @@
 Usage: python build_pqax.py <output.pqax> <dump folder> [<dump folder> ...]
                             [--depth summary|files|rowGroups|columnChunks] [--rows-per-part N]
                             [--fill-footers] [--repeat N] [--layout columnar|rows|objects] [--dictionary]
+                            [--format-version 0.1|0.2]
 
 It needs only the Python standard library, which is the point: a PQAX file is a zip of JSON.
+
+--format-version 0.1 writes the file as format 0.1, without the fields that 0.2 added: the unreferenced files and
+the removal times of a table, and the last modification of a partition. The default is 0.2.
 
 The last four options exist to measure sizes and alternatives. A collector would not have them.
 --fill-footers gives the files whose footer was not read a copy of a footer that was read, with its
@@ -22,7 +26,8 @@ import os
 import random
 import zipfile
 
-FORMAT_VERSION = "0.1"
+FORMAT_VERSION = "0.2"
+FORMAT_VERSIONS = ["0.1", "0.2"]
 DEPTHS = {"summary": "Summary", "files": "Files", "rowGroups": "Row groups", "columnChunks": "Column chunks"}
 SUMMARY_TABLES = ["sources", "tables", "columns", "partitionSpecs", "partitionFields", "sortOrders", "sortFields",
                   "physicalSchemas", "physicalColumns", "writers", "operations", "issues",
@@ -119,10 +124,11 @@ class Table:
         return encoded
 
 
-def build(dump_tables, depth, fill_footers, repeat):
+def build(dump_tables, depth, fill_footers, repeat, version=FORMAT_VERSION):
     t = collections.defaultdict(Table)
     source_ids = {}
     level = list(DEPTHS).index(depth)
+    since_0_2 = version != "0.1"          # the fields that format 0.2 added
     rng = random.Random(42)
 
     for dump in dump_tables * repeat:
@@ -211,6 +217,9 @@ def build(dump_tables, depth, fill_footers, repeat):
                 totals["fileSize"] += file["size"]
                 totals["rowCount"] += rows or 0
                 totals["deletedRowCount"] += file.get("deletedRows") or 0
+                modified = iso(file.get("modificationTime"))
+                if since_0_2 and modified:
+                    totals["lastModifiedAt"] = max(filter(None, [totals.get("lastModifiedAt"), modified]))
 
             file_row = dict(id=len(t["files"].rows) + 1, table=table_id, path=file["path"], fileSize=file["size"],
                             modifiedAt=iso(file.get("modificationTime")), rowCount=rows,
@@ -334,6 +343,10 @@ def build(dump_tables, depth, fill_footers, repeat):
             partitionCount=len(partition_ids) if partition_columns else None,
             commitCount=delta.get("commitFileCount"), commitsRead=len(dump.get("commits", [])), oldestCommitAt=min(times, default=None),
             nonLiveFileCount=delta.get("removedFileCount"), nonLiveFileSize=delta.get("removedFileSize"),
+            unreferencedFileCount=dump.get("unreferencedFileCount") if since_0_2 else None,
+            unreferencedFileSize=dump.get("unreferencedFileSize") if since_0_2 else None,
+            nonLiveOldestRemovedAt=iso(delta.get("removedOldestTimestamp")) if since_0_2 else None,
+            nonLiveNewestRemovedAt=iso(delta.get("removedNewestTimestamp")) if since_0_2 else None,
             metadataFileCount=delta.get("logFileCount"), metadataSize=delta.get("logSize"),
             footerCount=len(read), rowGroupCount=len(groups) if read else None,
             compressedSize=sum(sum(g["compressed"]) for g in groups) if read else None,
@@ -345,7 +358,7 @@ def build(dump_tables, depth, fill_footers, repeat):
     return t
 
 
-def write(path, tables, depth, layout, dictionary, rows_per_part):
+def write(path, tables, depth, layout, dictionary, rows_per_part, version=FORMAT_VERSION):
     dump = lambda value: json.dumps(value, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
     plan = [("summary.json", [(name, tables[name].rows) for name in SUMMARY_TABLES if tables[name].rows])]
     for name in DETAIL_TABLES:
@@ -353,8 +366,8 @@ def write(path, tables, depth, layout, dictionary, rows_per_part):
         for start in range(0, len(rows), rows_per_part):
             part = f"{name}.json" if len(rows) <= rows_per_part else f"{name}.{start // rows_per_part + 1}.json"
             plan.append((part, [(name, rows[start:start + rows_per_part])]))
-    manifest = {"format": "pqax", "formatVersion": FORMAT_VERSION,
-                "collection": {"collectorApp": "pqax-prototype", "collectorAppVersion": FORMAT_VERSION, "level": 2,
+    manifest = {"format": "pqax", "formatVersion": version,
+                "collection": {"collectorApp": "pqax-prototype", "collectorAppVersion": version, "level": 2,
                                "includesDataValues": False, "includesPartitionValues": False},
                 "parts": [{"name": part, "tables": {name: len(rows) for name, rows in content}} for part, content in plan]}
     with zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED, compresslevel=9) as archive:
@@ -378,6 +391,7 @@ if __name__ == "__main__":
     parser.add_argument("--repeat", type=int, default=1)
     parser.add_argument("--layout", choices=["columnar", "rows", "objects"], default="columnar")
     parser.add_argument("--dictionary", action="store_true")
+    parser.add_argument("--format-version", choices=FORMAT_VERSIONS, default=FORMAT_VERSION)
     arguments = parser.parse_args()
 
     loaded = {}
@@ -386,5 +400,7 @@ if __name__ == "__main__":
             with open(file_path, encoding="utf-8") as handle:
                 table = json.load(handle)
             loaded[table["id"]] = table
-    footprint = build([loaded[k] for k in sorted(loaded)], arguments.depth, arguments.fill_footers, arguments.repeat)
-    write(arguments.output, footprint, arguments.depth, arguments.layout, arguments.dictionary, arguments.rows_per_part)
+    footprint = build([loaded[k] for k in sorted(loaded)], arguments.depth, arguments.fill_footers, arguments.repeat,
+                      arguments.format_version)
+    write(arguments.output, footprint, arguments.depth, arguments.layout, arguments.dictionary, arguments.rows_per_part,
+          arguments.format_version)

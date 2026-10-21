@@ -29,7 +29,7 @@ public sealed class Manifest
     /// <summary>Always <c>pqax</c>.</summary>
     public string Format { get; }
 
-    /// <summary>The version of the format, such as <c>0.1</c>.</summary>
+    /// <summary>The version of the format, such as <c>0.2</c>.</summary>
     public string FormatVersion { get; }
 
     /// <summary>How and when the footprint was collected. Every property is null when the manifest has no collection object.</summary>

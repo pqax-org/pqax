@@ -10,7 +10,7 @@ namespace Pqax.Collector;
 internal sealed class DeltaState
 {
     private readonly Dictionary<string, LiveFile> live = new Dictionary<string, LiveFile>(StringComparer.Ordinal);
-    private readonly Dictionary<string, long?> removed = new Dictionary<string, long?>(StringComparer.Ordinal);
+    private readonly Dictionary<string, Tombstone> removed = new Dictionary<string, Tombstone>(StringComparer.Ordinal);
 
     public MetadataAction? Metadata { get; private set; }
 
@@ -57,7 +57,10 @@ internal sealed class DeltaState
         }
     }
 
-    /// <summary>Writes the files and the tombstones into the log, the files sorted by modification time and path.</summary>
+    /// <summary>
+    /// Writes the files and the tombstones into the log, the files sorted by modification time and path, and the tombstones
+    /// as their count, their size, and the earliest and latest of their removal times.
+    /// </summary>
     public void Finish(DeltaLog log)
     {
         var files = new List<LiveFile>(live.Values);
@@ -77,7 +80,9 @@ internal sealed class DeltaState
         long count = 0;
         long size = 0;
         bool sizeKnown = true;
-        foreach (KeyValuePair<string, long?> tombstone in removed)
+        long? oldest = null;
+        long? newest = null;
+        foreach (KeyValuePair<string, Tombstone> tombstone in removed)
         {
             // A file removed with one deletion vector and added back with another is still live.
             if (livePaths.Contains(tombstone.Key))
@@ -86,18 +91,27 @@ internal sealed class DeltaState
             }
 
             count++;
-            if (tombstone.Value == null)
+            if (tombstone.Value.Size == null)
             {
                 sizeKnown = false;
             }
             else
             {
-                size += tombstone.Value.Value;
+                size += tombstone.Value.Size.Value;
+            }
+
+            long? removedAt = tombstone.Value.DeletionTimestamp;
+            if (removedAt != null)
+            {
+                oldest = oldest == null ? removedAt : Math.Min(oldest.Value, removedAt.Value);
+                newest = newest == null ? removedAt : Math.Max(newest.Value, removedAt.Value);
             }
         }
 
         log.NonLiveFileCount = count;
         log.NonLiveFileSize = sizeKnown ? size : (long?)null;
+        log.NonLiveOldestRemovedAt = oldest;
+        log.NonLiveNewestRemovedAt = newest;
         log.Metadata = Metadata;
         log.Protocol = Protocol;
         foreach (KeyValuePair<string, string> domain in Domains)
@@ -174,12 +188,15 @@ internal sealed class DeltaState
             size ??= file.Size;
         }
 
-        if (removed.TryGetValue(path, out long? known) && size == null)
+        // The latest remove of a path wins, and what it does not record comes from an earlier remove of the same path.
+        long? removedAt = remove.DeletionTimestamp;
+        if (removed.TryGetValue(path, out Tombstone known))
         {
-            size = known;
+            size ??= known.Size;
+            removedAt ??= known.DeletionTimestamp;
         }
 
-        removed[path] = size;
+        removed[path] = new Tombstone(size, removedAt);
     }
 
     private static bool? VOrder(IReadOnlyDictionary<string, string?>? tags)
@@ -223,5 +240,19 @@ internal sealed class DeltaState
         }
 
         return array;
+    }
+
+    /// <summary>What the remove actions of a path say: the size of the file and when it was removed, in milliseconds since 1970.</summary>
+    private readonly struct Tombstone
+    {
+        public Tombstone(long? size, long? deletionTimestamp)
+        {
+            Size = size;
+            DeletionTimestamp = deletionTimestamp;
+        }
+
+        public long? Size { get; }
+
+        public long? DeletionTimestamp { get; }
     }
 }

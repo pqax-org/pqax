@@ -94,6 +94,85 @@ public class ReaderTests
         Assert.Empty(features);
     }
 
+    private static readonly DateTimeOffset RemovedAt = new(2023, 11, 14, 22, 14, 10, TimeSpan.Zero);
+
+    private static readonly string[] TableFields0_2 = ["unreferencedFileCount", "unreferencedFileSize", "nonLiveOldestRemovedAt", "nonLiveNewestRemovedAt"];
+
+    [Fact]
+    public void Sample_has_the_fields_of_format_0_2()
+    {
+        using PqaxDocument doc = PqaxDocument.Open(Path.Combine(Kit.Samples, "sample.pqax"));
+        PqaxTable<TableRow> tables = doc.Summary.Tables;
+        Assert.Equal([1L, 2L], tables.Select(table => table.Id));
+        Assert.Equal([1L, 0L], tables.Select(table => table.UnreferencedFileCount));
+        Assert.Equal([737L, 0L], tables.Select(table => table.UnreferencedFileSize));
+        Assert.Equal([RemovedAt, null], tables.Select(table => table.NonLiveOldestRemovedAt));
+        Assert.Equal([RemovedAt, null], tables.Select(table => table.NonLiveNewestRemovedAt));
+        Assert.Equal(TimeSpan.Zero, tables[0].NonLiveOldestRemovedAt!.Value.Offset);
+        Assert.Equal(
+            [new DateTimeOffset(2023, 11, 14, 22, 15, 0, TimeSpan.Zero), new DateTimeOffset(2023, 11, 14, 22, 15, 10, TimeSpan.Zero)],
+            doc.ReadPartitions().Select(partition => partition.LastModifiedAt));
+        Assert.All(TableFields0_2, field => Assert.False(tables.ExtraFields.ContainsKey(field), field));
+        Assert.False(doc.ReadPartitions().ExtraFields.ContainsKey("lastModifiedAt"));
+    }
+
+    [Fact]
+    public void A_file_of_format_0_2_opens_and_is_valid()
+    {
+        string path = Path.Combine(Kit.Samples, "sample.pqax");
+        using PqaxDocument doc = PqaxDocument.Open(path);
+        Assert.Equal("0.2", doc.Manifest.FormatVersion);
+        Assert.Equal(52, doc.ReadColumnChunks().Count);
+        Assert.True(PqaxValidator.Validate(path).IsValid);
+    }
+
+    [Fact]
+    public void A_file_of_format_0_1_opens_without_the_fields_of_format_0_2_and_with_the_tables_of_sample()
+    {
+        using PqaxDocument doc = PqaxDocument.Open(Path.Combine(Kit.Samples, "format-0.1.pqax"));
+        Assert.Equal("0.1", doc.Manifest.FormatVersion);
+        Assert.Empty(Kit.Differences(Kit.Shape(doc), Kit.Expected("sample"), Kit.ShapeKeys.Where(key => key != "formatVersion")));
+        Assert.Equal(2, doc.Summary.Tables.Count);
+        Assert.All(doc.Summary.Tables, table =>
+        {
+            Assert.Null(table.UnreferencedFileCount);
+            Assert.Null(table.UnreferencedFileSize);
+            Assert.Null(table.NonLiveOldestRemovedAt);
+            Assert.Null(table.NonLiveNewestRemovedAt);
+        });
+        Assert.Equal(2, doc.ReadPartitions().Count);
+        Assert.All(doc.ReadPartitions(), partition => Assert.Null(partition.LastModifiedAt));
+        Assert.All(TableFields0_2, field => Assert.False(doc.ReadRaw("tables").Fields.ContainsKey(field), field));
+        Assert.False(doc.ReadRaw("partitions").Fields.ContainsKey("lastModifiedAt"));
+
+        // Apart from the five fields, the tables are those of sample.pqax.
+        using PqaxDocument sample = PqaxDocument.Open(Path.Combine(Kit.Samples, "sample.pqax"));
+        foreach (TableRow table in sample.Summary.Tables)
+        {
+            table.UnreferencedFileCount = null;
+            table.UnreferencedFileSize = null;
+            table.NonLiveOldestRemovedAt = null;
+            table.NonLiveNewestRemovedAt = null;
+        }
+
+        foreach (PartitionRow partition in sample.ReadPartitions())
+        {
+            partition.LastModifiedAt = null;
+        }
+
+        Assert.Equal(sample.Summary.Tables.Rows, doc.Summary.Tables.Rows);
+        Assert.Equal(sample.Summary.Columns.Rows, doc.Summary.Columns.Rows);
+        Assert.Equal(sample.Summary.Sources.Rows, doc.Summary.Sources.Rows);
+        Assert.Equal(sample.Summary.PhysicalColumns.Rows, doc.Summary.PhysicalColumns.Rows);
+        Assert.Equal(sample.Summary.Writers.Rows, doc.Summary.Writers.Rows);
+        Assert.Equal(sample.Summary.Operations.Rows, doc.Summary.Operations.Rows);
+        Assert.Equal(sample.ReadPartitions().Rows, doc.ReadPartitions().Rows);
+        Assert.Equal(sample.ReadFiles().Rows, doc.ReadFiles().Rows);
+        Assert.Equal(sample.ReadRowGroups().Rows, doc.ReadRowGroups().Rows);
+        Assert.Equal(sample.ReadColumnChunks().Rows, doc.ReadColumnChunks().Rows);
+        Assert.Equal(sample.ReadCommits().Rows, doc.ReadCommits().Rows);
+    }
+
     [Fact]
     public void Multipart_joins_the_parts_and_fills_missing_fields_with_null()
     {

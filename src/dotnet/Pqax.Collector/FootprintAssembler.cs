@@ -106,6 +106,10 @@ internal static class FootprintAssembler
             OldestCommitAt = table.OldestCommitAt,
             NonLiveFileCount = table.NonLiveFileCount,
             NonLiveFileSize = table.NonLiveFileSize,
+            NonLiveOldestRemovedAt = table.NonLiveOldestRemovedAt,
+            NonLiveNewestRemovedAt = table.NonLiveNewestRemovedAt,
+            UnreferencedFileCount = table.UnreferencedFileCount,
+            UnreferencedFileSize = table.UnreferencedFileSize,
             MetadataFileCount = table.MetadataFileCount,
             MetadataSize = table.MetadataSize,
             FooterCount = table.FooterCount,
@@ -243,6 +247,7 @@ internal static class FootprintAssembler
                 FileSize = partition.FileSize.Value,
                 RowCount = partition.RowCount.Value,
                 DeletedRowCount = partition.DeletedRowCount.Value,
+                LastModifiedAt = partition.LastModifiedAt,
             });
         }
 

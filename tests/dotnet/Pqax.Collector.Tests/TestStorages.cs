@@ -98,6 +98,21 @@ public sealed class TestStorage(IStorage inner) : IStorage
 }
 
 /// <summary>
+/// A storage over another one whose listings give no size for the files that a test chooses, as a storage that does
+/// not report sizes. It is a plain <see cref="IStorage"/>, so the collector lists it one folder at a time.
+/// </summary>
+public sealed class SizelessStorage(IStorage inner, Func<string, bool> sizeless) : IStorage
+{
+    public async Task<IReadOnlyList<StorageEntry>> ListAsync(string path, CancellationToken cancellation) =>
+        (await inner.ListAsync(path, cancellation))
+            .Select(entry => !entry.IsDirectory && sizeless(entry.Path) ? new StorageEntry(entry.Path, false, null, entry.LastModified) : entry)
+            .ToList();
+
+    public Task<byte[]> ReadRangeAsync(string path, long offset, int length, CancellationToken cancellation) =>
+        inner.ReadRangeAsync(path, offset, length, cancellation);
+}
+
+/// <summary>
 /// A storage with one file of any size, all zeros except its last bytes, to test the footer reader on files that
 /// would be too large to build.
 /// </summary>
@@ -232,13 +247,20 @@ public sealed class FakeOneLake(string folder, string workspace) : HttpMessageHa
             return Json(HttpStatusCode.NotFound, new JsonObject { ["error"] = new JsonObject { ["code"] = "PathNotFound" } });
         }
 
-        var entries = new DirectoryInfo(full).EnumerateFileSystemInfos().OrderBy(info => info.Name, StringComparer.Ordinal).ToList();
+        // With recursive=true, as the DFS endpoint does, every folder and file below the directory, at any depth, in the
+        // same pages; each name is the full path from the root of the filesystem.
+        bool recursive = query.GetValueOrDefault("recursive") == "true";
+        var root = new DirectoryInfo(full);
+        var entries = (recursive ? root.EnumerateFileSystemInfos("*", SearchOption.AllDirectories) : root.EnumerateFileSystemInfos())
+            .Select(info => (Info: info, Relative: Path.GetRelativePath(full, info.FullName).Replace('\\', '/')))
+            .OrderBy(entry => entry.Relative, StringComparer.Ordinal)
+            .ToList();
         int start = int.Parse(query.GetValueOrDefault("continuation", "0"), CultureInfo.InvariantCulture);
         var page = entries.Skip(start).Take(PageSize).ToList();
         var paths = new JsonArray();
-        foreach (FileSystemInfo info in page)
+        foreach ((FileSystemInfo info, string relative) in page)
         {
-            string name = (directory.Length == 0 ? "" : directory + "/") + info.Name;
+            string name = (directory.Length == 0 ? "" : directory + "/") + relative;
             var entry = new JsonObject { ["name"] = name, ["lastModified"] = info.LastWriteTimeUtc.ToString("R", CultureInfo.InvariantCulture) };
             if (info is FileInfo file)
             {

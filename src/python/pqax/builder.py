@@ -320,7 +320,7 @@ class Builder:
 
     def add_partition(self, **fields: Any) -> int:
         """Adds a row to partitions and returns its id. Fields: id, table, partitionSpec, values, fileCount, fileSize,
-        rowCount, deletedRowCount."""
+        rowCount, deletedRowCount, lastModifiedAt."""
         return self._add("partitions", fields, "add_partition")
 
     def add_file(self, **fields: Any) -> int:

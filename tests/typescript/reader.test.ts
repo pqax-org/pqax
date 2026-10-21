@@ -4,7 +4,8 @@ import { describe, expect, it } from "vitest";
 import { PqaxError, embeddedSource, indexById, openEmbedded, openPqax, rows, validate } from "@pqax/pqax";
 import {
   CountingSource, DETAIL_TABLES, EMBEDDED_PART, INVALID, REFUSED, SAMPLES, SUMMARY_TABLES, bytesOf, centralDirectory,
-  computeShape, dataOffset, entrySpans, expectedByName, invalidCases, join, rewriteZip, shapeOf, touchedEntries,
+  computeShape, dataOffset, documentShape, entrySpans, expectedByName, invalidCases, join, rewriteZip, shapeOf,
+  touchedEntries,
 } from "./kit";
 
 const EXPECTED = expectedByName();
@@ -67,6 +68,60 @@ describe("the facts of conformance/README.md", () => {
     const doc = await openPqax(sample());
     expect((await doc.readTable("commits")).metrics![1]).toEqual({});
     expect(doc.summary.tables!.delta![1]!.readerFeatures).toEqual([]);
+  });
+
+  it("sample.pqax has the fields of format 0.2", async () => {
+    const doc = await openPqax(sample());
+    const tables = doc.summary.tables!;
+    expect(tables.id).toEqual([1, 2]);
+    expect(tables.unreferencedFileCount).toEqual([1, 0]);
+    expect(tables.unreferencedFileSize).toEqual([737, 0]);
+    expect(tables.nonLiveOldestRemovedAt).toEqual(["2023-11-14T22:14:10.000Z", null]);
+    expect(tables.nonLiveNewestRemovedAt).toEqual(["2023-11-14T22:14:10.000Z", null]);
+    expect((await doc.readTable("partitions")).lastModifiedAt).toEqual(["2023-11-14T22:15:00.000Z", "2023-11-14T22:15:10.000Z"]);
+  });
+
+  it("a file of format 0.2 opens and is valid", async () => {
+    const doc = await openPqax(sample());
+    expect(doc.manifest.formatVersion).toBe("0.2");
+    expect((await doc.readTable("columnChunks")).length).toBe(52);
+    expect((await validate(sample())).isValid).toBe(true);
+  });
+
+  it("format-0.1.pqax opens without the fields of format 0.2, and with the tables of sample.pqax", async () => {
+    const doc = await openPqax(bytesOf(join(SAMPLES, "format-0.1.pqax")));
+    expect(doc.manifest.formatVersion).toBe("0.1");
+    const { formatVersion: _old, ...shape } = await documentShape(doc);
+    const { formatVersion: _new, ...expected } = shapeOf(EXPECTED.sample!);
+    expect(shape).toEqual(expected);
+    const tables = doc.summary.tables!;
+    expect(tables.length).toBe(2);
+    expect(tables.unreferencedFileCount).toBeUndefined();
+    expect(tables.unreferencedFileSize).toBeUndefined();
+    expect(tables.nonLiveOldestRemovedAt).toBeUndefined();
+    expect(tables.nonLiveNewestRemovedAt).toBeUndefined();
+    const partitions = await doc.readTable("partitions");
+    expect(partitions.length).toBe(2);
+    expect(partitions.lastModifiedAt).toBeUndefined();
+    for (const row of rows(tables)) {
+      for (const name of ["unreferencedFileCount", "unreferencedFileSize", "nonLiveOldestRemovedAt", "nonLiveNewestRemovedAt"]) {
+        expect((row as Record<string, unknown>)[name] ?? null, name).toBeNull();
+      }
+    }
+    // Apart from the five fields, the tables are those of sample.pqax.
+    const plain = await openPqax(sample());
+    const {
+      unreferencedFileCount: _a, unreferencedFileSize: _b, nonLiveOldestRemovedAt: _c, nonLiveNewestRemovedAt: _d, ...rest
+    } = plain.summary.tables!;
+    expect(tables).toEqual(rest);
+    for (const name of SUMMARY_TABLES.filter((table) => table !== "tables")) {
+      expect((doc.summary as Record<string, unknown>)[name], name).toEqual((plain.summary as Record<string, unknown>)[name]);
+    }
+    const { lastModifiedAt: _e, ...plainPartitions } = await plain.readTable("partitions");
+    expect(partitions).toEqual(plainPartitions);
+    for (const name of DETAIL_TABLES.filter((table) => table !== "partitions")) {
+      expect(await doc.readTable(name), name).toEqual(await plain.readTable(name));
+    }
   });
 
   it("multipart.pqax joins the parts and fills the fields that a part leaves out with null", async () => {

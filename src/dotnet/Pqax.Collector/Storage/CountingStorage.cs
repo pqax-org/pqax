@@ -7,9 +7,10 @@ namespace Pqax.Collector;
 
 /// <summary>
 /// Wraps the storage of a collection: it limits the requests in flight to the parallelism of the options, and it
-/// counts the calls and the bytes, for a storage that does not count them itself.
+/// counts the calls and the bytes, for a storage that does not count them itself. A recursive listing is one call when
+/// the inner storage implements <see cref="IRecursiveStorage"/>, and one call for each folder otherwise.
 /// </summary>
-internal sealed class CountingStorage : IStorage, IDisposable
+internal sealed class CountingStorage : IStorage, IRecursiveStorage, IDisposable
 {
     private readonly IStorage inner;
     private readonly SemaphoreSlim gate;
@@ -33,6 +34,26 @@ internal sealed class CountingStorage : IStorage, IDisposable
         {
             Interlocked.Increment(ref requests);
             return await inner.ListAsync(path, cancellation).ConfigureAwait(false);
+        }
+        finally
+        {
+            gate.Release();
+        }
+    }
+
+    public async Task<IReadOnlyList<StorageEntry>> ListFilesAsync(string path, IReadOnlyCollection<string> excludedFolders, CancellationToken cancellation)
+    {
+        if (!(inner is IRecursiveStorage recursive))
+        {
+            // Each folder goes through ListAsync, so each one is a call, counted and limited as any other.
+            return await StorageListing.WalkAsync(this, path, excludedFolders, cancellation).ConfigureAwait(false);
+        }
+
+        await gate.WaitAsync(cancellation).ConfigureAwait(false);
+        try
+        {
+            Interlocked.Increment(ref requests);
+            return await recursive.ListFilesAsync(path, excludedFolders, cancellation).ConfigureAwait(false);
         }
         finally
         {

@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -14,7 +15,7 @@ namespace Pqax.Collector;
 /// The discovery records the full path of an item folder as the location of its source, and the full path of a table
 /// folder as the location of the table, with the separators of the platform.
 /// </remarks>
-public sealed class LocalStorage : IStorage, IStorageStatistics, ILocatedStorage
+public sealed class LocalStorage : IStorage, IStorageStatistics, ILocatedStorage, IRecursiveStorage
 {
     private static readonly IReadOnlyList<StorageEntry> NoEntries = new StorageEntry[0];
 
@@ -82,6 +83,58 @@ public sealed class LocalStorage : IStorage, IStorageStatistics, ILocatedStorage
 
         entries.Sort((a, b) => string.CompareOrdinal(a.Name, b.Name));
         return Task.FromResult<IReadOnlyList<StorageEntry>>(entries);
+    }
+
+    /// <summary>Lists the files under a folder at any depth, as one request.</summary>
+    /// <param name="path">The folder, relative to the root.</param>
+    /// <param name="excludedFolders">The names of folders directly inside the folder that are not walked.</param>
+    /// <param name="cancellation">Cancels the request.</param>
+    /// <returns>The files, sorted by path. Empty when the folder does not exist.</returns>
+    Task<IReadOnlyList<StorageEntry>> IRecursiveStorage.ListFilesAsync(string path, IReadOnlyCollection<string> excludedFolders, CancellationToken cancellation)
+    {
+        cancellation.ThrowIfCancellationRequested();
+        string full = Resolve(path);
+        Interlocked.Increment(ref requests);
+        var directory = new DirectoryInfo(full);
+        if (!directory.Exists)
+        {
+            return Task.FromResult(NoEntries);
+        }
+
+        string prefix = Normalize(path);
+        var files = new List<StorageEntry>();
+        var folders = new Stack<KeyValuePair<DirectoryInfo, string>>();
+        folders.Push(new KeyValuePair<DirectoryInfo, string>(directory, prefix));
+        try
+        {
+            while (folders.Count > 0)
+            {
+                cancellation.ThrowIfCancellationRequested();
+                KeyValuePair<DirectoryInfo, string> folder = folders.Pop();
+                foreach (FileSystemInfo info in folder.Key.EnumerateFileSystemInfos())
+                {
+                    string entryPath = folder.Value.Length == 0 ? info.Name : folder.Value + "/" + info.Name;
+                    if (info is FileInfo file)
+                    {
+                        files.Add(new StorageEntry(entryPath, false, file.Length, new DateTimeOffset(file.LastWriteTimeUtc, TimeSpan.Zero)));
+                    }
+                    else if (info is DirectoryInfo child && !(folder.Key == directory && excludedFolders.Contains(info.Name)))
+                    {
+                        folders.Push(new KeyValuePair<DirectoryInfo, string>(child, entryPath));
+                    }
+                }
+            }
+        }
+        catch (UnauthorizedAccessException e)
+        {
+            throw new StorageException("Access to a local folder was denied.", 403, e);
+        }
+        catch (IOException e)
+        {
+            throw new StorageException("A local folder could not be listed: " + e.GetType().Name + ".", null, e);
+        }
+
+        return Task.FromResult(StorageListing.Sorted(files));
     }
 
     /// <inheritdoc/>

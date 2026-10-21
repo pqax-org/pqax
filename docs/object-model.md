@@ -1,6 +1,6 @@
 # PQAX object model
 
-Draft 0.4, 6 October 2026.
+Draft 0.5, 21 October 2026.
 
 This document defines the logical content of a PQAX file: the objects, their fields, and how they relate. It does not define how the objects are written to a file. The [serialization](serialization.md) does that, and section 10 keeps the option of several representations open.
 
@@ -9,6 +9,8 @@ Statements marked **Decided** were taken by the maintainers and are recorded in 
 Draft 0.3 takes into account a test on the tables of a real Fabric lakehouse and warehouse.
 
 Draft 0.4 aligns identifiers and a few names with the serialization, so that a field has the same name in both documents. Every object that another object refers to has an `Id`. The identifiers that Iceberg assigns are now `SpecId` and `OrderId`, the identifier of a commit is `CommitId`, and `Partition.Spec` is `Partition.PartitionSpec`. A footprint can also hold issues that concern no single table.
+
+Draft 0.5 takes into account a test of storage views on a real lakehouse. It showed that the non-live files of a table are only an upper bound of the space it wastes: a VACUUM may have deleted some of them already, and the storage can hold files that no commit references. `Table` now has the unreferenced files that a listing of the storage finds, and the removal times of the non-live files. `Partition` has `LastModifiedAt`. Format version 0.2 carries the new fields.
 
 ## 1. Purpose
 
@@ -26,7 +28,7 @@ The model must answer these questions without access to the storage:
 6. Which engine wrote the files, and with which optimizations?
 7. What did schema changes leave behind in older files?
 8. Which table format features and properties are in use?
-9. Which maintenance operations ran, and when?
+9. Which maintenance operations ran, and when, and how much space do the files take that the table no longer uses?
 10. How do the tables relate to the semantic model that reads them, when there is one?
 
 ## 2. Principles
@@ -99,6 +101,8 @@ An object that can lose its detail stores totals. They are the fields marked `To
 2. When the detail is present, a total equals the same sum over the detail.
 3. The totals of level 2 cover the files whose footer was read. `FooterCount` and `FileCount` say how complete they are. A collector does not extrapolate.
 4. A total is absent when a value it needs is unknown.
+
+The fields of `Table` that count the non-live and the unreferenced files follow rules 1 and 4 as well, although no detail list holds those files, so rule 2 has nothing to compare. UnreferencedFileSize is the one exception to rule 4: a file whose size the listing does not give counts in UnreferencedFileCount and not in the size, and the size is still present. NonLiveOldestRemovedAt and NonLiveNewestRemovedAt are an exception too: they are taken over the remove actions that have a timestamp, and they are absent only when none has one.
 
 ### 4.3 Distributions
 
@@ -229,6 +233,8 @@ Totals:
 | CommitsRead | integer | Collector | 1 | | The most recent commits that the collector read. Each one costs a request, so a collector reads only some. |
 | OldestCommitAt | timestamp | Total | 1 | | The time of the oldest of those commits |
 | NonLiveFileCount, NonLiveFileSize | integer | Delta `remove` actions | 1 | | Files that left the table and that the log still tracks, so they may still be stored |
+| NonLiveOldestRemovedAt, NonLiveNewestRemovedAt | timestamp | Delta `remove.deletionTimestamp` | 1 | | The earliest and the latest removal time of the files that NonLiveFileCount counts. Absent when none of their remove actions has a timestamp. |
+| UnreferencedFileCount, UnreferencedFileSize | integer | Storage listing | 1 | | The data files under the table location that the version described does not reference, and the sum of their sizes as the listing gives them. See below the table. |
 | MetadataFileCount, MetadataSize | integer | Storage listing | 1 | | The files of the table format itself: the Delta log, or the Iceberg metadata and manifests |
 | FooterCount | integer | Total | 2 | | The files whose footer was read |
 | RowGroupCount | integer | Total | 2 | | The row groups of those files |
@@ -239,6 +245,10 @@ Totals:
 | FileSizes | Distribution | Total | 1 | | The sizes of the data files |
 | RowGroupRowCounts | Distribution | Total | 2 | | The rows of the row groups |
 | PartitionSizes | Distribution | Total | 1 | | The data size of the partitions |
+
+A data file, for the unreferenced files, is a file whose name ends with `.parquet`, at any depth under the table location and outside the folders `_delta_log` and `_change_data`. It is referenced when its path relative to the table location equals the path of a live file of the version described, after the path of the log is decoded. The comparison is case-sensitive. A file that no commit ever referenced, such as one of an aborted write, is unreferenced too. A file whose size the listing does not give counts in UnreferencedFileCount and not in UnreferencedFileSize. Both fields are absent when the live files are unknown or when the listing fails, which is then an issue.
+
+The unreferenced files include the non-live files that are still stored, so a reader that compares them with NonLiveFileCount and NonLiveFileSize can tell the non-live files still in storage from those that a VACUUM already deleted, and the removal times say how old the tombstones are against the retention of the table.
 
 Children:
 
@@ -348,6 +358,7 @@ A `Partition` is one distinct combination of partition values that has at least 
 | PartitionSpec | reference to PartitionSpec | | 1 | | The spec that produced the values |
 | Values | list of string | Delta `add.partitionValues`, Iceberg `partition` | 1 | Data | One value for each field of the spec, null when the partition value is null. Excluded by default, and partitions then differ only by Id. |
 | FileCount, FileSize, RowCount, DeletedRowCount | integer | Total | 1 | | The totals of the files of the partition |
+| LastModifiedAt | timestamp | Total | 1 | | The most recent ModifiedAt of the files of the partition |
 
 ### 6.7 SortOrder
 
@@ -607,13 +618,14 @@ Each question of section 1, with what answers it at the `Summary` depth and what
 | Compression, encodings, codec | Column totals, with the codecs and encodings in use | The same for each row group |
 | Dictionaries | DictionaryChunkCount, FallbackChunkCount, DictionaryPageSize, LargestChunkDistinctCount | The dictionary of each column chunk |
 | File and row group sizing | FileSizes, RowGroupRowCounts, FileCount, RowGroupCount | The files and row groups that are out of range |
-| Partitioning and distribution | PartitionSpecs, PartitionCount, PartitionSizes | Each partition |
+| Partitioning and distribution | PartitionSpecs, PartitionCount, PartitionSizes | Each partition, and when its files last changed |
 | Clustering and sort | ClusteringColumns, SortOrders | Which files were clustered. Judging how well needs data values. |
 | Deleted rows | DeletedRowCount, DeleteFileCount | The files that carry them |
 | Writer and optimizations | Writers, VOrderedFileCount | The writer of each file |
 | Leftovers of schema changes | PhysicalSchemas, StaleColumnSize, FileCountWithoutColumn | The files of each schema |
 | Features and properties | Properties, DeltaDetails, IcebergDetails | |
 | Maintenance history | Operations, CommitCount, OldestCommitAt | Each commit, with its metrics |
+| Storage that the table no longer uses | NonLiveFileCount, NonLiveFileSize, UnreferencedFileCount, UnreferencedFileSize, NonLiveOldestRemovedAt, NonLiveNewestRemovedAt | |
 | Link to the semantic model | ModelBindings | |
 | Distinct values per column | LargestChunkDistinctCount at level 2 or 3, DistinctCount at level 4 | |
 

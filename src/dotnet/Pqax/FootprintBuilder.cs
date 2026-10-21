@@ -39,7 +39,7 @@ namespace Pqax;
 public sealed class FootprintBuilder
 {
     /// <summary>The version of the format that the builder writes.</summary>
-    internal const string WrittenFormatVersion = "0.1";
+    internal const string WrittenFormatVersion = "0.2";
 
     private const string SummaryPartName = "summary.json";
 

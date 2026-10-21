@@ -92,7 +92,7 @@ public class BuilderTests
         byte[] data = Write(FootprintBuilder.From(original));
         using PqaxDocument copy = Open(data);
         Assert.Equal("pqax", copy.Manifest.Format);
-        Assert.Equal("0.1", copy.Manifest.FormatVersion);
+        Assert.Equal("0.2", copy.Manifest.FormatVersion);
         Assert.Equal("summary.json", copy.Manifest.Parts[0].Name);
         Assert.Equal(original.Manifest.Collection, copy.Manifest.Collection);
         Assert.Equal(original.Manifest.ObfuscatorDictionaryId, copy.Manifest.ObfuscatorDictionaryId);
@@ -267,8 +267,9 @@ public class BuilderTests
             Iceberg = new IcebergDetails { FormatVersion = 2, CurrentSchemaId = 0, SchemaCount = 1, SnapshotCount = 3, RefCount = 1, ManifestCount = 2, ManifestSize = 9000, StatisticsFileCount = 0 },
             CollectedLevel = 2, DetailDepth = "Column chunks", FileCount = 2, FileSize = 3000, RowCount = 150, DeletedRowCount = 5,
             LastModifiedAt = Utc(2026, 1, 2, 3, 0, 0), VOrderedFileCount = 0, PartitionCount = 1, DeleteFileCount = 1, DeleteFileSize = 100,
-            CommitCount = 2, CommitsRead = 2, OldestCommitAt = Utc(2026, 1, 1, 0, 0, 0), NonLiveFileCount = 0, NonLiveFileSize = 0,
-            MetadataFileCount = 4, MetadataSize = 4096, FooterCount = 2, RowGroupCount = 3, CompressedSize = totalChunks,
+            CommitCount = 2, CommitsRead = 2, OldestCommitAt = Utc(2026, 1, 1, 0, 0, 0), NonLiveFileCount = 2, NonLiveFileSize = 700,
+            NonLiveOldestRemovedAt = Utc(2025, 12, 1, 0, 0, 0, 250), NonLiveNewestRemovedAt = Utc(2025, 12, 31, 23, 59, 59),
+            UnreferencedFileCount = 3, UnreferencedFileSize = 900, MetadataFileCount = 4, MetadataSize = 4096, FooterCount = 2, RowGroupCount = 3, CompressedSize = totalChunks,
             UncompressedSize = 2 * totalChunks, FooterSize = 500, StaleColumnSize = 0, ColumnTotalsSource = "Footers", FileSizes = distribution,
             RowGroupRowCounts = new Distribution { Count = 3, Sum = 150, Minimum = 40, FirstQuartile = 40, Median = 50, ThirdQuartile = 60, Maximum = 60 },
             PartitionSizes = distribution,
@@ -360,7 +361,9 @@ public class BuilderTests
         Assert.Equal(1, builder.AddColumnBinding(bindingTwo));
         all.ColumnBindings.AddRange([bindingOne, bindingTwo]);
 
-        var partition = new PartitionRow { Table = 1, PartitionSpec = 1, Values = ["3"], FileCount = 2, FileSize = 3000, RowCount = 150, DeletedRowCount = 5 };
+        // LastModifiedAt is the latest ModifiedAt of the two files of the partition, below.
+        var partition = new PartitionRow { Table = 1, PartitionSpec = 1, Values = ["3"], FileCount = 2, FileSize = 3000, RowCount = 150, DeletedRowCount = 5,
+            LastModifiedAt = Utc(2026, 1, 2, 3, 0, 0, 999) };
         Assert.Equal(1, builder.AddPartition(partition));
         partition.Id = 1;
         all.Partitions.Add(partition);
@@ -464,6 +467,75 @@ public class BuilderTests
         JsonNode files = Kit.Json(Kit.Entries(data).Single(entry => entry.Name == "files.json").Content);
         Assert.Equal("2026-01-02T03:00:00.999Z", (string?)files["files"]!["modifiedAt"]![0]);
         Assert.Equal("2026-01-02T02:00:00.000Z", (string?)files["files"]!["modifiedAt"]![1]);
+    }
+
+    // ---- the fields of format 0.2 ----
+
+    [Fact]
+    public void A_footprint_with_the_fields_of_format_0_2_writes_0_2_and_reads_them_back_equal()
+    {
+        var builder = new FootprintBuilder(new CollectionInfo { CollectorApp = "pqax-tests", Level = 1 });
+        builder.AddSource(new SourceRow { Kind = "Storage folder" });
+        var first = new TableRow
+        {
+            Source = 1, Name = "a", Format = "Delta", DetailDepth = "Files", FileCount = 2, FileSize = 30, NonLiveFileCount = 2, NonLiveFileSize = 50,
+            NonLiveOldestRemovedAt = Utc(2025, 3, 1, 8, 0, 0, 5), NonLiveNewestRemovedAt = new DateTimeOffset(2025, 3, 2, 10, 0, 0, TimeSpan.FromHours(2)),
+            UnreferencedFileCount = 4, UnreferencedFileSize = 0,
+        };
+        var second = new TableRow { Source = 1, Name = "b", Format = "Delta", DetailDepth = "Summary", UnreferencedFileCount = 0, UnreferencedFileSize = 0 };
+        first.Id = builder.AddTable(first);
+        second.Id = builder.AddTable(second);
+        var partition = new PartitionRow { Table = first.Id, FileCount = 2, FileSize = 30, LastModifiedAt = Utc(2025, 3, 3, 0, 0, 0) };
+        partition.Id = builder.AddPartition(partition);
+        builder.AddFile(new FileRow { Table = first.Id, FileSize = 10, Partition = partition.Id, ModifiedAt = Utc(2025, 3, 2, 0, 0, 0) });
+        builder.AddFile(new FileRow { Table = first.Id, FileSize = 20, Partition = partition.Id, ModifiedAt = Utc(2025, 3, 3, 0, 0, 0) });
+        byte[] data = Write(builder);
+        using PqaxDocument doc = Open(data);
+        Assert.Equal("0.2", doc.Manifest.FormatVersion);
+        Assert.Equal([first, second], doc.Summary.Tables.Rows);
+        Assert.Equal([partition], doc.ReadPartitions().Rows);
+        Assert.Equal(new DateTimeOffset(2025, 3, 2, 8, 0, 0, TimeSpan.Zero), doc.Summary.Tables[0].NonLiveNewestRemovedAt);
+        Assert.Empty(doc.Summary.Tables.ExtraFields);
+        Assert.Empty(doc.ReadPartitions().ExtraFields);
+
+        JsonNode summary = Kit.Json(Kit.Entries(data).Single(entry => entry.Name == "summary.json").Content);
+        Assert.Equal("[4,0]", Kit.Canonical(summary["tables"]!["unreferencedFileCount"]));
+        Assert.Equal("[0,0]", Kit.Canonical(summary["tables"]!["unreferencedFileSize"]));
+        Assert.Equal("[\"2025-03-01T08:00:00.005Z\",null]", Kit.Canonical(summary["tables"]!["nonLiveOldestRemovedAt"]));
+        Assert.Equal("[\"2025-03-02T08:00:00.000Z\",null]", Kit.Canonical(summary["tables"]!["nonLiveNewestRemovedAt"]));
+        JsonNode partitions = Kit.Json(Kit.Entries(data).Single(entry => entry.Name.StartsWith("partitions", StringComparison.Ordinal)).Content);
+        Assert.Equal("[\"2025-03-03T00:00:00.000Z\"]", Kit.Canonical(partitions["partitions"]!["lastModifiedAt"]));
+        AssertValid(data);
+        Assert.Empty(SchemaCheck.Errors(data));
+
+        byte[] again = Write(FootprintBuilder.From(doc));
+        using PqaxDocument copy = Open(again);
+        Assert.Equal("0.2", copy.Manifest.FormatVersion);
+        AssertSameTables(doc, copy);
+        AssertValid(again);
+    }
+
+    [Fact]
+    public void A_rewrite_of_a_file_of_format_0_1_writes_0_2_and_keeps_the_tables()
+    {
+        using PqaxDocument original = PqaxDocument.Open(Path.Combine(Kit.Samples, "format-0.1.pqax"));
+        Assert.Equal("0.1", original.Manifest.FormatVersion);
+        byte[] data = Write(FootprintBuilder.From(original));
+        using PqaxDocument copy = Open(data);
+        Assert.Equal("0.2", copy.Manifest.FormatVersion);
+        Assert.Equal(original.Manifest.Collection, copy.Manifest.Collection);
+        AssertSameTables(original, copy);
+        Assert.All(copy.Summary.Tables, table =>
+        {
+            Assert.Null(table.UnreferencedFileCount);
+            Assert.Null(table.UnreferencedFileSize);
+            Assert.Null(table.NonLiveOldestRemovedAt);
+            Assert.Null(table.NonLiveNewestRemovedAt);
+        });
+        Assert.All(copy.ReadPartitions(), partition => Assert.Null(partition.LastModifiedAt));
+        Assert.Empty(Kit.Differences(Kit.Shape(copy), Kit.Expected("format-0.1"), Kit.ShapeKeys.Where(key => key is not "parts" and not "formatVersion")));
+        AssertValid(data);
+        Assert.Empty(SchemaCheck.Errors(data));
     }
 
     [Fact]

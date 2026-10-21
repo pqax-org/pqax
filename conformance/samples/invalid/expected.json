@@ -26,6 +26,14 @@
     "change": "rowGroups.uncompressedSize of the first row group is 9007199254740993, which is 2^53 + 1."
   },
   "json.invalid.pqax": {"codes": ["json.invalid"], "change": "commits.json is cut in the middle, so it is not valid JSON."},
+  "json.timestamp.nonLiveOldestRemovedAt.pqax": {
+    "codes": ["json.timestamp"],
+    "change": "tables.nonLiveOldestRemovedAt of the first table has no decimals: 2023-11-14T22:14:10Z."
+  },
+  "json.timestamp.partitionLastModifiedAt.pqax": {
+    "codes": ["json.timestamp"],
+    "change": "partitions.lastModifiedAt of the first partition has no decimals: 2023-11-14T22:15:00Z."
+  },
   "json.timestamp.pqax": {"codes": ["json.timestamp"], "change": "files.modifiedAt of the first file has no decimals: 2023-11-14T22:15:00Z."},
   "json.topLevel.pqax": {"codes": ["json.topLevel"], "change": "The top level of commits.json is an array that holds the object of the part."},
   "json.type.map.pqax": {
@@ -35,6 +43,10 @@
   "json.type.pqax": {
     "codes": ["json.type"],
     "change": "files.footerSize of the first file is the string \"1139\", where the model says integer."
+  },
+  "json.type.unreferencedFileCount.pqax": {
+    "codes": ["json.type"],
+    "change": "tables.unreferencedFileCount of the first table is the string \"1\", where the model says integer."
   },
   "manifest.duplicatePart.pqax": {"codes": ["manifest.duplicatePart"], "change": "The manifest lists commits.json twice, at the end."},
   "manifest.firstPart.pqax": {"codes": ["manifest.firstPart"], "change": "The manifest lists files.json first and summary.json second."},

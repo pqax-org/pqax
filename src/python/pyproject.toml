@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "pqax"
-version = "0.1.2"
+version = "0.2.0"
 description = "Read, validate, and write PQAX files: the footprint of Parquet tables, for analysis without access to the data."
 readme = "README.md"
 license = "MIT"

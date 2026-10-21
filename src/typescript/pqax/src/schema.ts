@@ -97,6 +97,10 @@ export const FIELDS = {
     oldestCommitAt: T,
     nonLiveFileCount: I,
     nonLiveFileSize: I,
+    nonLiveOldestRemovedAt: T,
+    nonLiveNewestRemovedAt: T,
+    unreferencedFileCount: I,
+    unreferencedFileSize: I,
     metadataFileCount: I,
     metadataSize: I,
     footerCount: I,
@@ -172,6 +176,7 @@ export const FIELDS = {
     fileSize: I,
     rowCount: I,
     deletedRowCount: I,
+    lastModifiedAt: T,
   },
   files: {
     id: "id",

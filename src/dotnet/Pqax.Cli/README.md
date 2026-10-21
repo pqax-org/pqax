@@ -29,14 +29,14 @@ A file with the extension `.vpax` is read as a VPAX file that holds the footprin
 `check` on a valid file:
 
 ```
-sample.pqax: valid, 743 checks
+sample.pqax: valid, 767 checks
 ```
 
 `check` on an invalid file:
 
 ```
 part.rowCount: commits.engine has 5 values, and the manifest states 6 rows of commits in this part. (part commits.json, table commits, field engine)
-part.rowCount.array.pqax: invalid, 1 issue in 743 checks
+part.rowCount.array.pqax: invalid, 1 issue in 767 checks
 ```
 
 The codes are those of the [rules of the conformance kit](https://github.com/pqax-org/pqax/blob/main/conformance/rules.md). An issue line starts with the code, followed by a colon. The last line starts with the file name.
@@ -44,9 +44,9 @@ The codes are those of the [rules of the conformance kit](https://github.com/pqa
 `info`:
 
 ```
-File               sample.pqax, 4183 bytes
-Format             pqax 0.1
-Collector          pqax-conformance-kit 0.1
+File               sample.pqax, 4307 bytes
+Format             pqax 0.2
+Collector          pqax-conformance-kit 0.2
 Level              2
 Collected          unknown to 2026-10-05 20:55:12 UTC
 Data values        no

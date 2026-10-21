@@ -15,7 +15,8 @@ openPqax in TypeScript. The valid samples of the kit are checked too, as a refer
 
 Every file must pass every validator, and every reader must get the expected row counts and totals: the rows of every
 table, the length of every table read whole, and tablesFileSize, tablesRowCount, columnChunksCompressedSize, tables,
-and largestColumns of conformance/expected. What is not available is skipped with a message.
+and largestColumns of conformance/expected. A written file has format version 0.2. What is not available is skipped
+with a message.
 
 Exit code 0 when every check that ran passed, 1 when one failed, 2 when nothing could run. Standard library only.
 """
@@ -46,8 +47,12 @@ FIXTURE = KIT / "fixtures" / "lakehouse"
 JOBS = (("sample", "sample.pqax", "sample", None),
         ("parts20", "sample.pqax", "sample", 20),
         ("extensions", "extensions.pqax", "extensions", None))
-# The valid samples that every validator and reader also checks, as a reference.
-REFERENCES = (("sample", "sample.pqax"), ("multipart", "multipart.pqax"), ("extensions", "extensions.pqax"))
+# The valid samples that every validator and reader also checks, as a reference. format-0.1.pqax is a file of
+# format 0.1, which a reader of 0.2 opens.
+REFERENCES = (("sample", "sample.pqax"), ("multipart", "multipart.pqax"), ("extensions", "extensions.pqax"),
+              ("format-0.1", "format-0.1.pqax"))
+# The format version that every writer writes.
+WRITTEN_VERSION = "0.2"
 SHAPE_KEYS = ("tablesFileSize", "tablesRowCount", "columnChunksCompressedSize", "tables", "largestColumns")
 FIELDS = {"tables": ("id", "fileCount", "fileSize", "rowCount"),
           "columnChunks": ("physicalColumn", "compressedSize"),
@@ -120,7 +125,7 @@ def check_read(read: Dict[str, Any], expected: Dict[str, Any], written: bool) ->
     parts = [part.get("name") for part in manifest.get("parts", [])]
     if manifest.get("format") != expected["format"]:
         problems.append(f"format {manifest.get('format')!r}")
-    version = "0.1" if written else expected["formatVersion"]
+    version = WRITTEN_VERSION if written else expected["formatVersion"]
     if manifest.get("formatVersion") != version:
         problems.append(f"formatVersion {manifest.get('formatVersion')!r}, expected {version!r}")
     if written and parts[:1] != ["summary.json"]:
@@ -157,15 +162,12 @@ class Python:
         self.env["PYTHONPATH"] = os.pathsep.join(filter(None, [str(PYTHON_PACKAGE), os.environ.get("PYTHONPATH")]))
 
     def prepare(self, work: Path, build: bool) -> None:
+        # The package of this repository, before any installed copy, as the validator gets through PYTHONPATH.
+        sys.path.insert(0, str(PYTHON_PACKAGE))
         try:
-            import pqax  # noqa: F401
-        except ImportError:
-            sys.path.insert(0, str(PYTHON_PACKAGE))
-            try:
-                import pqax  # noqa: F401
-            except ImportError as error:
-                raise Skip(f"the package does not import: {error}")
-        import pqax
+            import pqax
+        except ImportError as error:
+            raise Skip(f"the package does not import: {error}")
         self.pqax = pqax
 
     def write(self, jobs: List[Tuple[Path, Path, Optional[int]]]) -> None:

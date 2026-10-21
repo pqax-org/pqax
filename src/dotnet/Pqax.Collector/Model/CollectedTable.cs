@@ -65,6 +65,16 @@ internal sealed class CollectedTable
 
     public long? NonLiveFileSize { get; set; }
 
+    public DateTimeOffset? NonLiveOldestRemovedAt { get; set; }
+
+    public DateTimeOffset? NonLiveNewestRemovedAt { get; set; }
+
+    /// <summary>The data files in the table folder that the version does not reference. Null when the live files are unknown or the listing failed.</summary>
+    public long? UnreferencedFileCount { get; set; }
+
+    /// <summary>Their size, over the files whose size the listing gives.</summary>
+    public long? UnreferencedFileSize { get; set; }
+
     public long? MetadataFileCount { get; set; }
 
     public long? MetadataSize { get; set; }

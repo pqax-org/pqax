@@ -25,7 +25,7 @@ namespace Pqax.Collector;
 /// <c>itemId</c> for those given as ids.
 /// </para>
 /// </remarks>
-public sealed class OneLakeStorage : IStorage, IStorageStatistics, ILocatedStorage, IDisposable
+public sealed class OneLakeStorage : IStorage, IStorageStatistics, ILocatedStorage, IRecursiveStorage, IDisposable
 {
     /// <summary>The scope of the access token that the token provider must return.</summary>
     public const string Scope = "https://storage.azure.com/.default";
@@ -100,13 +100,45 @@ public sealed class OneLakeStorage : IStorage, IStorageStatistics, ILocatedStora
             throw new ArgumentNullException(nameof(path));
         }
 
+        List<StorageEntry>? entries = await ListCoreAsync(path.Trim('/'), false, cancellation).ConfigureAwait(false);
+        return entries == null || entries.Count == 0 ? NoEntries : Sorted(entries);
+    }
+
+    /// <summary>
+    /// Lists the files under a folder at any depth, with one listing of the DFS endpoint with <c>recursive=true</c>, in as
+    /// many pages as it takes. The endpoint cannot leave a folder out, so the files of the excluded folders are dropped here.
+    /// </summary>
+    /// <param name="path">The folder, relative to the workspace.</param>
+    /// <param name="excludedFolders">The names of folders directly inside the folder whose files are left out.</param>
+    /// <param name="cancellation">Cancels the requests.</param>
+    /// <returns>The files, sorted by path. Empty when the folder does not exist.</returns>
+    async Task<IReadOnlyList<StorageEntry>> IRecursiveStorage.ListFilesAsync(string path, IReadOnlyCollection<string> excludedFolders, CancellationToken cancellation)
+    {
+        if (path == null)
+        {
+            throw new ArgumentNullException(nameof(path));
+        }
+
         string directory = path.Trim('/');
+        List<StorageEntry>? entries = await ListCoreAsync(directory, true, cancellation).ConfigureAwait(false);
+        if (entries == null)
+        {
+            return NoEntries;
+        }
+
+        entries.RemoveAll(e => e.IsDirectory || StorageListing.IsExcluded(directory, e.Path, excludedFolders));
+        return StorageListing.Sorted(entries);
+    }
+
+    /// <summary>Gets every page of a listing. Null when the folder does not exist.</summary>
+    private async Task<List<StorageEntry>?> ListCoreAsync(string directory, bool recursive, CancellationToken cancellation)
+    {
         var entries = new List<StorageEntry>();
         string? continuation = null;
         do
         {
             // The root of the workspace is listed without the directory parameter: OneLake answers 400 to an empty one.
-            string url = baseUrl + "?resource=filesystem&recursive=false"
+            string url = baseUrl + "?resource=filesystem&recursive=" + (recursive ? "true" : "false")
                 + (directory.Length == 0 ? string.Empty : "&directory=" + Uri.EscapeDataString(directory));
             if (continuation != null)
             {
@@ -116,7 +148,7 @@ public sealed class OneLakeStorage : IStorage, IStorageStatistics, ILocatedStora
             using HttpResponseMessage response = await SendAsync(url, null, 0, cancellation).ConfigureAwait(false);
             if (response.StatusCode == HttpStatusCode.NotFound)
             {
-                return entries.Count == 0 ? NoEntries : Sorted(entries);
+                return entries.Count == 0 ? null : entries;
             }
 
             EnsureSuccess(response);
@@ -128,7 +160,7 @@ public sealed class OneLakeStorage : IStorage, IStorageStatistics, ILocatedStora
         }
         while (continuation != null);
 
-        return Sorted(entries);
+        return entries;
     }
 
     /// <inheritdoc/>

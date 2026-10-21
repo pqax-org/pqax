@@ -7,9 +7,9 @@ import pathlib
 import pytest
 
 import pqax
-from pqax_kit import (DETAIL_TABLES, EMBEDDED_PART, FORMAT_TABLES, INVALID, REFUSED, SAMPLES, SUMMARY_TABLES,
-                      CountingReader, compute_shape, drop_entry, entry_spans, expected_by_name, invalid_cases,
-                      row_total, shape_differences, touched_entries, write_package_without_footprint)
+from pqax_kit import (DETAIL_TABLES, EMBEDDED_PART, FORMAT_TABLES, INVALID, REFUSED, SAMPLES, SHAPE_KEYS,
+                      SUMMARY_TABLES, CountingReader, compute_shape, drop_entry, entry_spans, expected_by_name,
+                      invalid_cases, row_total, shape_differences, touched_entries, write_package_without_footprint)
 
 EXPECTED = expected_by_name()
 SHAPE_ONLY = ("tablesFileSize", "tablesRowCount", "columnChunksCompressedSize", "tables", "largestColumns")
@@ -144,6 +144,47 @@ def test_sample_known_empty_values_are_not_null():
     with pqax.open(str(SAMPLES / "sample.pqax")) as doc:
         assert doc.table("commits")["metrics"][1] == {}
         assert doc.summary["tables"]["delta"][1]["readerFeatures"] == []
+
+
+TABLE_FIELDS_0_2 = ("unreferencedFileCount", "unreferencedFileSize", "nonLiveOldestRemovedAt", "nonLiveNewestRemovedAt")
+
+
+def test_sample_has_the_fields_of_format_0_2():
+    with pqax.open(str(SAMPLES / "sample.pqax")) as doc:
+        tables = doc.summary["tables"]
+        assert tables["id"] == [1, 2]
+        assert tables["unreferencedFileCount"] == [1, 0]
+        assert tables["unreferencedFileSize"] == [737, 0]
+        assert tables["nonLiveOldestRemovedAt"] == ["2023-11-14T22:14:10.000Z", None]
+        assert tables["nonLiveNewestRemovedAt"] == ["2023-11-14T22:14:10.000Z", None]
+        assert doc.table("partitions")["lastModifiedAt"] == ["2023-11-14T22:15:00.000Z", "2023-11-14T22:15:10.000Z"]
+
+
+def test_a_file_of_format_0_2_opens_and_is_valid():
+    with pqax.open(str(SAMPLES / "sample.pqax")) as doc:
+        assert doc.manifest["formatVersion"] == "0.2"
+        assert row_total(doc.table("columnChunks")) == 52
+    assert pqax.validate(str(SAMPLES / "sample.pqax")).is_valid
+
+
+def test_a_file_of_format_0_1_opens_without_the_fields_of_format_0_2():
+    with pqax.open(str(SAMPLES / "format-0.1.pqax")) as old, pqax.open(str(SAMPLES / "sample.pqax")) as new:
+        assert old.manifest["formatVersion"] == "0.1"
+        assert not shape_differences(shape_of(old), EXPECTED["sample"], [key for key in SHAPE_KEYS if key != "formatVersion"])
+        rows = list(old.rows("tables"))
+        assert len(rows) == 2
+        for row in rows:
+            for name in TABLE_FIELDS_0_2:
+                assert row.get(name) is None, name
+        partitions = list(old.rows("partitions"))
+        assert len(partitions) == 2
+        assert all(row.get("lastModifiedAt") is None for row in partitions)
+        # Apart from the five fields, the tables are those of sample.pqax.
+        for table in FORMAT_TABLES:
+            expected = {name: values for name, values in new.table(table).items()
+                        if not (table == "tables" and name in TABLE_FIELDS_0_2)
+                        and not (table == "partitions" and name == "lastModifiedAt")}
+            assert old.table(table) == expected, table
 
 
 def test_multipart_concatenates_parts_and_fills_missing_fields_with_null():

@@ -1,6 +1,6 @@
 # PQAX validation rules
 
-Format version 0.1. Every validator reports the codes of this document. The codes and their one-line rules come from section 4.1 of the [contracts](../docs/contracts.md). This document adds what the plan leaves to the kit: the exact condition of each code, the fields that each rule covers, and the rules that a validator skips when an earlier one fails.
+Format version 0.2. Every validator reports the codes of this document. The codes and their one-line rules come from section 4.1 of the [contracts](../docs/contracts.md). This document adds what the plan leaves to the kit: the exact condition of each code, the fields that each rule covers, and the rules that a validator skips when an earlier one fails.
 
 The [serialization](../docs/serialization.md) and the [object model](../docs/object-model.md) are the source of truth. When this document disagrees with them, this document is wrong and is fixed.
 
@@ -142,7 +142,7 @@ A field or a member that the format does not define is not checked, whatever its
 
 ### 4.2 Timestamps of the format
 
-`tables.createdAt`, `tables.snapshotTimestamp`, `tables.lastModifiedAt`, `tables.oldestCommitAt`, `operations.lastAt`, `files.modifiedAt`, `commits.timestamp`, and in the manifest `collection.startedAt` and `collection.completedAt`.
+`tables.createdAt`, `tables.snapshotTimestamp`, `tables.lastModifiedAt`, `tables.oldestCommitAt`, `tables.nonLiveOldestRemovedAt`, `tables.nonLiveNewestRemovedAt`, `operations.lastAt`, `partitions.lastModifiedAt`, `files.modifiedAt`, `commits.timestamp`, and in the manifest `collection.startedAt` and `collection.completedAt`.
 
 ### 4.3 JSON types
 
@@ -270,8 +270,8 @@ A reader is more tolerant than a validator (contracts 4.1). It skips a byte orde
 | `json.duplicateMember` | `json.duplicateMember.pqax` |
 | `json.integer` | `json.integer.pqax` |
 | `json.integerRange` | `json.integerRange.pqax` |
-| `json.timestamp` | `json.timestamp.pqax` |
-| `json.type` | `json.type.pqax`, `json.type.map.pqax` |
+| `json.timestamp` | `json.timestamp.pqax`, `json.timestamp.nonLiveOldestRemovedAt.pqax`, `json.timestamp.partitionLastModifiedAt.pqax` |
+| `json.type` | `json.type.pqax`, `json.type.map.pqax`, `json.type.unreferencedFileCount.pqax` |
 | `manifest.required` | `manifest.required.pqax`, `manifest.required.level.pqax`, `manifest.required.partTables.pqax` |
 | `manifest.format` | `manifest.format.pqax` |
 | `manifest.formatVersion` | `manifest.formatVersion.pqax` |

@@ -95,7 +95,7 @@ public class KitTests(DefaultCollection collection) : IClassFixture<DefaultColle
         Assert.Equal(collection.Result.StorageBytes, info.BytesRead);
         Assert.True(info.RequestCount > 0);
         Assert.Equal("pqax", collection.Document.Manifest.Format);
-        Assert.Equal("0.1", collection.Document.Manifest.FormatVersion);
+        Assert.Equal("0.2", collection.Document.Manifest.FormatVersion);
     }
 
     [Fact]

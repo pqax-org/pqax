@@ -48,6 +48,12 @@ internal sealed class DeltaLog
 
     public long? NonLiveFileSize { get; set; }
 
+    /// <summary>The earliest removal time of those files, in milliseconds since 1970. Null when no remove of theirs has one.</summary>
+    public long? NonLiveOldestRemovedAt { get; set; }
+
+    /// <summary>The latest removal time of those files, in milliseconds since 1970.</summary>
+    public long? NonLiveNewestRemovedAt { get; set; }
+
     /// <summary>
     /// Every commit read, in ascending order of version: those that the state needs, and the older ones read for the
     /// history up to the limit. A commit whose read failed is not here.

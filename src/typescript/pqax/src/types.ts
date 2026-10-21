@@ -198,6 +198,14 @@ export interface TablesTable extends ColumnarTable {
   readonly nonLiveFileCount?: (number | null)[];
   /** The size of those files. */
   readonly nonLiveFileSize?: (number | null)[];
+  /** The earliest removal time of the non-live files. Absent when no remove action has a timestamp. Since format 0.2. */
+  readonly nonLiveOldestRemovedAt?: (string | null)[];
+  /** The latest removal time of the non-live files. Since format 0.2. */
+  readonly nonLiveNewestRemovedAt?: (string | null)[];
+  /** The data files under the table location that the version described does not reference. Since format 0.2. */
+  readonly unreferencedFileCount?: (number | null)[];
+  /** The sum of their sizes, as the storage listing gives them. Since format 0.2. */
+  readonly unreferencedFileSize?: (number | null)[];
   /** The files of the table format itself. */
   readonly metadataFileCount?: (number | null)[];
   /** The size of the files of the table format itself. */
@@ -464,6 +472,8 @@ export interface PartitionsTable extends ColumnarTable {
   readonly rowCount?: (number | null)[];
   /** The rows marked as deleted in the files of the partition. */
   readonly deletedRowCount?: (number | null)[];
+  /** The most recent `modifiedAt` of the files of the partition. Since format 0.2. */
+  readonly lastModifiedAt?: (string | null)[];
 }
 
 /** `files`: one row for each data file. Kept from the `Files` depth. */

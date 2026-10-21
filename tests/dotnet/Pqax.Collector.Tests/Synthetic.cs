@@ -145,6 +145,61 @@ public static class LogLines
         return new JsonObject { ["add"] = add };
     }
 
+    /// <summary>
+    /// The add action of a file, with its rows in the statistics, a modification time, or none when null, and the
+    /// values of the partition column <c>p</c> of <see cref="PartitionedMetadata"/>, or no partition values when null.
+    /// </summary>
+    public static JsonObject Add(string path, long? size, long rows, long? modificationTime, string? partition = null)
+    {
+        JsonObject action = Add(path, size, rows);
+        JsonObject add = action["add"]!.AsObject();
+        add.Remove("modificationTime");
+        if (modificationTime != null)
+        {
+            add["modificationTime"] = modificationTime.Value;
+        }
+
+        if (partition != null)
+        {
+            add["partitionValues"] = new JsonObject { ["p"] = partition };
+        }
+
+        return action;
+    }
+
+    /// <summary>The remove action of a file, with its size and its deletion time, each left out of the log when null.</summary>
+    public static JsonObject Remove(string path, long? size, long? deletionTimestamp)
+    {
+        var remove = new JsonObject { ["path"] = path, ["dataChange"] = true };
+        if (deletionTimestamp != null)
+        {
+            remove["deletionTimestamp"] = deletionTimestamp.Value;
+        }
+
+        if (size != null)
+        {
+            remove["size"] = size.Value;
+        }
+
+        return new JsonObject { ["remove"] = remove };
+    }
+
+    /// <summary>The metadata of a table with two columns, <c>id</c> and the partition column <c>p</c>, a string.</summary>
+    public static JsonObject PartitionedMetadata()
+    {
+        JsonObject metadata = Metadata();
+        JsonObject inner = metadata["metaData"]!.AsObject();
+        inner["schemaString"] = new JsonObject
+        {
+            ["type"] = "struct",
+            ["fields"] = new JsonArray(
+                new JsonObject { ["name"] = "id", ["type"] = "long", ["nullable"] = true, ["metadata"] = new JsonObject() },
+                new JsonObject { ["name"] = "p", ["type"] = "string", ["nullable"] = true, ["metadata"] = new JsonObject() }),
+        }.ToJsonString();
+        inner["partitionColumns"] = new JsonArray("p");
+        return metadata;
+    }
+
     /// <summary>The state that a checkpoint of these tables holds: the protocol and the metadata, and no file.</summary>
     public static IReadOnlyList<DeltaAction> CheckpointState() =>
     [

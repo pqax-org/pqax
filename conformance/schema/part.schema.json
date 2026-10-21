@@ -116,6 +116,10 @@
         "oldestCommitAt": {"$ref": "#/$defs/timestampField"},
         "nonLiveFileCount": {"$ref": "#/$defs/integerField"},
         "nonLiveFileSize": {"$ref": "#/$defs/integerField"},
+        "unreferencedFileCount": {"$ref": "#/$defs/integerField"},
+        "unreferencedFileSize": {"$ref": "#/$defs/integerField"},
+        "nonLiveOldestRemovedAt": {"$ref": "#/$defs/timestampField"},
+        "nonLiveNewestRemovedAt": {"$ref": "#/$defs/timestampField"},
         "metadataFileCount": {"$ref": "#/$defs/integerField"},
         "metadataSize": {"$ref": "#/$defs/integerField"},
         "footerCount": {"$ref": "#/$defs/integerField"},
@@ -332,7 +336,8 @@
         "fileCount": {"$ref": "#/$defs/integerField"},
         "fileSize": {"$ref": "#/$defs/integerField"},
         "rowCount": {"$ref": "#/$defs/integerField"},
-        "deletedRowCount": {"$ref": "#/$defs/integerField"}
+        "deletedRowCount": {"$ref": "#/$defs/integerField"},
+        "lastModifiedAt": {"$ref": "#/$defs/timestampField"}
       },
       "additionalProperties": true
     },

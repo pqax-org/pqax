@@ -6,8 +6,8 @@ Reads, writes, and validates PQAX files in .NET. A PQAX file holds the footprint
 |---|---|
 | Targets | netstandard2.0, so that .NET Framework hosts can use it, and net8.0 |
 | Dependencies | None on net8.0. On netstandard2.0, `System.Text.Json` 8.0.5 and the packages that it brings. |
-| Reads | Format versions whose first number, the text before the first dot, is 0: `0.1`, `0.9`, and also `0` or `0.1.2` |
-| Writes | Format version `0.1` |
+| Reads | Format versions whose first number, the text before the first dot, is 0: `0.1` and `0.2`, and also `0.9`, `0`, or `0.1.2` |
+| Writes | Format version `0.2` |
 | Validates | Every rule of the conformance kit, with its code |
 
 ## Install
@@ -163,7 +163,7 @@ There is one Add method for each of the 21 tables. For a table with ids, it keep
 
 The file has `manifest.json`, then `summary.json`, then the parts of the detail tables, with at most `Options.RowsPerPart` rows in a part: 250,000, the most that the format allows, by default. The JSON is compact UTF-8, deflated at `Options.CompressionLevel`, `Optimal` by default. Every entry has the date of `Collection.CompletedAt`, so the same footprint gives the same bytes on the same .NET runtime. The documentation of `FootprintBuilder` has the details.
 
-`FootprintBuilder.From(document)` copies every table of a document, with its ids, the fields and tables that this version does not know, the members of the manifest and of nested objects that it does not know, the collection, and the obfuscation fields. A tool that rewrites a file starts there. The written file has format version 0.1, and its detail parts are named after their tables.
+`FootprintBuilder.From(document)` copies every table of a document, with its ids, the fields and tables that this version does not know, the members of the manifest and of nested objects that it does not know, the collection, and the obfuscation fields. A tool that rewrites a file starts there. The written file has format version 0.2, also when the document is a 0.1 file, and its detail parts are named after their tables.
 
 ## Embed a footprint in a VPAX file
 
@@ -264,7 +264,7 @@ The reader refuses a file with a `PqaxFormatException` only in these cases:
 | Derived measures and a view model, such as compression ratios or a tree of tables and columns | Not defined yet. The rows mirror the file, and a reference is an id. |
 | Write a VPAX file, or embed a footprint in one | `System.IO.Packaging`, as above, and later the VPAX library |
 | Obfuscate names | Later, in the VPAX obfuscator, from `FootprintBuilder.From` |
-| Asynchronous I/O | Not in 0.1 |
+| Asynchronous I/O | Not in 0.2 |
 | Check the CRC of the zip entries | Not done. Deflate finds most damage, and a damaged stored part fails as JSON. |
 | A command line | The package `Pqax.Cli`: `pqax check` and `pqax info` |
 

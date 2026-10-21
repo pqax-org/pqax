@@ -34,7 +34,7 @@ sys.dont_write_bytecode = True          # no __pycache__ in the prototype folder
 sys.path.insert(0, PROTOTYPE)
 import build_pqax  # noqa: E402
 
-FORMAT_VERSION = "0.1"
+FORMAT_VERSION = build_pqax.FORMAT_VERSION
 ROWS_PER_PART = 250_000
 ZIP_DATE = (2026, 10, 7, 0, 0, 0)
 STORED, DEFLATED, BZIP2 = zipfile.ZIP_STORED, zipfile.ZIP_DEFLATED, zipfile.ZIP_BZIP2
@@ -90,11 +90,12 @@ def zip_bytes(entries):
     return buffer.getvalue()
 
 
-def footprint(depth, rows_per_part=None):
+def footprint(depth, rows_per_part=None, version=FORMAT_VERSION):
     """The entries of a PQAX file at a depth of build_pqax, with the parts of section 7.2 of the serialization.
 
-    rows_per_part maps a detail table to a limit lower than 250,000, to split it in several parts."""
-    tables = build_pqax.build(copy.deepcopy(DUMPS), depth, False, 1)
+    rows_per_part maps a detail table to a limit lower than 250,000, to split it in several parts. version is the
+    format version that the file is written in: 0.1 leaves out the fields that 0.2 added."""
+    tables = build_pqax.build(copy.deepcopy(DUMPS), depth, False, 1, version)
     parts = [("summary.json", {name: tables[name].rows for name in SUMMARY_TABLES if tables[name].rows})]
     for name in DETAIL_TABLES:
         rows = tables[name].rows
@@ -102,7 +103,7 @@ def footprint(depth, rows_per_part=None):
         for start in range(0, len(rows), limit):
             part = f"{name}.json" if len(rows) <= limit else f"{name}.{start // limit + 1}.json"
             parts.append((part, {name: rows[start:start + limit]}))
-    manifest = {"format": "pqax", "formatVersion": FORMAT_VERSION, "collection": copy.deepcopy(COLLECTION),
+    manifest = {"format": "pqax", "formatVersion": version, "collection": dict(COLLECTION, collectorAppVersion=version),
                 "parts": [{"name": part, "tables": {name: len(rows) for name, rows in content.items()}} for part, content in parts]}
     entries = [["manifest.json", manifest, DEFLATED]]
     for part, content in parts:
@@ -186,6 +187,7 @@ def valid_samples(bases):
     sample = bases["columnChunks"]
     files = {
         "sample.pqax": zip_bytes(sample),
+        "format-0.1.pqax": zip_bytes(footprint("columnChunks", version="0.1")),
         "summary-only.pqax": zip_bytes(bases["summary"]),
         "files.pqax": zip_bytes(bases["files"]),
         "row-groups.pqax": zip_bytes(bases["rowGroups"]),
@@ -268,10 +270,28 @@ def invalid_samples(bases):
         files = doc(e, "files.json")["files"]
         files["modifiedAt"][0] = files["modifiedAt"][0][:-5] + "Z"
 
+    @case("json.timestamp.nonLiveOldestRemovedAt.pqax", ["json.timestamp"],
+          "tables.nonLiveOldestRemovedAt of the first table has no decimals: 2023-11-14T22:14:10Z.")
+    def _(e):
+        tables = doc(e, "summary.json")["tables"]
+        tables["nonLiveOldestRemovedAt"][0] = tables["nonLiveOldestRemovedAt"][0][:-5] + "Z"
+
+    @case("json.timestamp.partitionLastModifiedAt.pqax", ["json.timestamp"],
+          "partitions.lastModifiedAt of the first partition has no decimals: 2023-11-14T22:15:00Z.")
+    def _(e):
+        partitions = doc(e, "partitions.json")["partitions"]
+        partitions["lastModifiedAt"][0] = partitions["lastModifiedAt"][0][:-5] + "Z"
+
     @case("json.type.pqax", ["json.type"], "files.footerSize of the first file is the string \"1139\", where the model says integer.")
     def _(e):
         files = doc(e, "files.json")["files"]
         files["footerSize"][0] = str(files["footerSize"][0])
+
+    @case("json.type.unreferencedFileCount.pqax", ["json.type"],
+          "tables.unreferencedFileCount of the first table is the string \"1\", where the model says integer.")
+    def _(e):
+        tables = doc(e, "summary.json")["tables"]
+        tables["unreferencedFileCount"][0] = str(tables["unreferencedFileCount"][0])
 
     @case("json.type.map.pqax", ["json.type"],
           "tables.properties of the first table is an array of key and value pairs, where the model says map.")
