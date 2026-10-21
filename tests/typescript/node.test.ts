@@ -1,9 +1,9 @@
-// fromFile of pqax/node, which reads a file on disk by range: the checks of conformance.test.ts and validate.test.ts,
+// fromFile of @pqax/pqax/node, which reads a file on disk by range: the checks of conformance.test.ts and validate.test.ts,
 // from the files of the kit on disk. This file needs Node, so vitest.browser.config.ts leaves it out.
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { openEmbedded, openPqax, validate } from "pqax";
-import { fromFile } from "pqax/node";
+import { openEmbedded, openPqax, validate } from "@pqax/pqax";
+import { fromFile } from "@pqax/pqax/node";
 import { INVALID, KIT_DIR, SAMPLES, bytesOf, documentShape, expectedByName, shapeOf } from "./kit";
 
 const EXPECTED = expectedByName();

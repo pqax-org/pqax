@@ -2,7 +2,7 @@
 
 Reads and validates PQAX files, in a browser and in Node. A PQAX file holds the footprint of a set of Parquet tables: a zip archive of JSON tables, as the [serialization](https://github.com/pqax-org/pqax/blob/main/docs/serialization.md) defines it. The package has no dependency.
 
-Version 0.1.0. It reads format version 0.x, whatever the second number. It is not published to npm yet.
+Version 0.1.1. It reads format version 0.x, whatever the second number. On npm it is `@pqax/pqax`: the registry refuses the unscoped name `pqax` as too similar to existing packages.
 
 ## What it does
 
@@ -20,7 +20,7 @@ Version 0.1.0. It reads format version 0.x, whatever the second number. It is no
 | `rows(table)` | Reads a table one row at a time |
 | `indexById(table)` | Maps the `id` of each row to its position, to follow references |
 | `validate(input)` | Checks a file against every rule, and returns every issue with its code |
-| `fromFile(path)` | In `pqax/node`: a file on disk that the reader reads by range, never whole |
+| `fromFile(path)` | In `@pqax/pqax/node`: a file on disk that the reader reads by range, never whole |
 
 An input is a `Blob` (a `File` is one), an `ArrayBuffer`, a `Uint8Array` or another `ArrayBufferView`, or a `ByteSource`: an object with a `size` and a `read(offset, length)` method that returns a promise of exactly those bytes. A `ByteSource` lets the reader work on a large file, or on a server that answers range requests, without loading it.
 
@@ -31,11 +31,11 @@ An input is a `Blob` (a `File` is one), an `ArrayBuffer`, a `Uint8Array` or anot
 | Node | 20.12 or later |
 | Browsers | Chrome and Edge 103, Firefox 113, Safari 16.4, or later |
 
-The reader inflates parts with `DecompressionStream("deflate-raw")`, which these versions have. The main entry imports nothing from Node. The Node helper is in the second entry, `pqax/node`.
+The reader inflates parts with `DecompressionStream("deflate-raw")`, which these versions have. The main entry imports nothing from Node. The Node helper is in the second entry, `@pqax/pqax/node`.
 
 ## Browsers
 
-The tests run in Node and in the three browser engines, through Playwright and the browser mode of vitest. The browsers run every test file but `node.test.ts`, which tests `pqax/node`.
+The tests run in Node and in the three browser engines, through Playwright and the browser mode of vitest. The browsers run every test file but `node.test.ts`, which tests `@pqax/pqax/node`.
 
 | Engine | Build tested | Browsers on the engine |
 |---|---|---|
@@ -61,7 +61,7 @@ A time covers the read of the entry, the inflate of a deflated part, the decodin
 In a browser, with a file that the user picks:
 
 ```js
-import { openPqax, rows } from "pqax";
+import { openPqax, rows } from "@pqax/pqax";
 
 const doc = await openPqax(input.files[0]);
 for (const table of rows(doc.summary.tables)) {
@@ -72,8 +72,8 @@ for (const table of rows(doc.summary.tables)) {
 In Node:
 
 ```js
-import { embeddedSource, indexById, openEmbedded, openPqax, validate } from "pqax";
-import { fromFile } from "pqax/node";
+import { embeddedSource, indexById, openEmbedded, openPqax, validate } from "@pqax/pqax";
+import { fromFile } from "@pqax/pqax/node";
 
 const doc = await openPqax(await fromFile("sample.pqax"));
 const chunks = await doc.readTable("columnChunks");
@@ -180,6 +180,6 @@ npm run smoke        # after a build: the conformance kit, through the built pac
 node scripts/smoke.mjs file.pqax ...   # after a build: opens, reads, and validates the files
 ```
 
-The tests import the package as `pqax` and `pqax/node`. The vitest configuration maps both names to the TypeScript sources, so the tests need no build. It also turns the files of the conformance kit into a module, `virtual:pqax-kit`, so that the tests read the samples in the same way in Node and in a browser. `vitest.browser.config.ts` runs the tests in the browsers.
+The tests import the package as `pqax` and `@pqax/pqax/node`. The vitest configuration maps both names to the TypeScript sources, so the tests need no build. It also turns the files of the conformance kit into a module, `virtual:pqax-kit`, so that the tests read the samples in the same way in Node and in a browser. `vitest.browser.config.ts` runs the tests in the browsers.
 
 `npm publish` runs the build and `npm test` first. It publishes with provenance, which npm creates only in a CI service such as GitHub Actions.

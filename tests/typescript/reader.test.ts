@@ -1,7 +1,7 @@
 // The reader of the TypeScript package: what it reads and when, the facts of conformance/README.md that the expected
 // files do not hold, the invalid samples, and rows and indexById (plan 4.4).
 import { describe, expect, it } from "vitest";
-import { PqaxError, embeddedSource, indexById, openEmbedded, openPqax, rows, validate } from "pqax";
+import { PqaxError, embeddedSource, indexById, openEmbedded, openPqax, rows, validate } from "@pqax/pqax";
 import {
   CountingSource, DETAIL_TABLES, EMBEDDED_PART, INVALID, REFUSED, SAMPLES, SUMMARY_TABLES, bytesOf, centralDirectory,
   computeShape, dataOffset, entrySpans, expectedByName, invalidCases, join, rewriteZip, shapeOf, touchedEntries,

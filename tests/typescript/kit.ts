@@ -14,7 +14,7 @@ const encoder = new TextEncoder();
 export const SAMPLES = "samples";
 export const INVALID = "samples/invalid";
 export const EXPECTED = "expected";
-/** The folder of the kit on disk, for the tests of pqax/node, which read files. */
+/** The folder of the kit on disk, for the tests of @pqax/pqax/node, which read files. */
 export const KIT_DIR: string = root;
 export const EMBEDDED_PART = "Footprint.pqax";
 

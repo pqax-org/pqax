@@ -1,7 +1,7 @@
 // The validator of the TypeScript package against the conformance kit (conformance/README.md, "A validator test", and
-// plan 4.1 and 4.4). node.test.ts adds fromFile of pqax/node.
+// plan 4.1 and 4.4). node.test.ts adds fromFile of @pqax/pqax/node.
 import { describe, expect, it } from "vitest";
-import { embeddedSource, type PqaxInput, validate } from "pqax";
+import { embeddedSource, type PqaxInput, validate } from "@pqax/pqax";
 import {
   CountingSource, EMBEDDED_PART, INVALID, PLAN_CODES, SAMPLES, bytesOf, expectedByName, invalidCases, join, json,
   rewriteZip, textOf, toBytes,

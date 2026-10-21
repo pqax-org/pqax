@@ -64,13 +64,13 @@ footer { margin-top: 3rem; padding-top: 1rem; border-top: 1px solid var(--line);
 <tr><td><a href="https://github.com/pqax-org/pqax/blob/main/src/dotnet/Pqax/README.md"><code>Pqax</code></a></td><td>NuGet</td><td>Reads, writes, and validates PQAX files in .NET, also inside a VPAX file. netstandard2.0 and net8.0.</td></tr>
 <tr><td><a href="https://github.com/pqax-org/pqax/blob/main/src/dotnet/Pqax.Collector/README.md"><code>Pqax.Collector</code></a></td><td>NuGet</td><td>Collects the footprint of Delta tables from OneLake or from a folder, reading only the Delta log and the Parquet footers. <code>Pqax.Collector.ParquetNet</code> adds the checkpoint reader.</td></tr>
 <tr><td><a href="https://github.com/pqax-org/pqax/blob/main/src/dotnet/Pqax.Cli/README.md"><code>Pqax.Cli</code></a></td><td>NuGet, as a .NET tool</td><td>The command line <code>pqax</code>: <code>check</code>, <code>info</code>, and <code>collect</code>.</td></tr>
-<tr><td><a href="https://github.com/pqax-org/pqax/blob/main/src/typescript/pqax/README.md"><code>pqax</code></a></td><td>npm</td><td>Reads and validates PQAX files in a browser and in Node, with no dependency.</td></tr>
+<tr><td><a href="https://github.com/pqax-org/pqax/blob/main/src/typescript/pqax/README.md"><code>@pqax/pqax</code></a></td><td>npm</td><td>Reads and validates PQAX files in a browser and in Node, with no dependency.</td></tr>
 <tr><td><a href="https://github.com/pqax-org/pqax/blob/main/src/python/README.md"><code>pqax</code></a></td><td>PyPI</td><td>Reads, validates, and writes PQAX files with the standard library, with a command line and data frames through pandas or polars.</td></tr>
 </table>
 
 <pre><code>dotnet add package Pqax
 dotnet tool install -g Pqax.Cli
-npm install pqax
+npm install @pqax/pqax
 pip install pqax</code></pre>
 
 <h2>A first look at a file</h2>

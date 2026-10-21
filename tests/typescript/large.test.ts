@@ -2,7 +2,7 @@
 // validated. The package has no writer, so the file is written here with the zip writer of the tests. It takes a few
 // seconds.
 import { describe, expect, it } from "vitest";
-import { openPqax, validate } from "pqax";
+import { openPqax, validate } from "@pqax/pqax";
 import { CountingSource, toBytes } from "./kit";
 import { writeZip } from "./zip";
 

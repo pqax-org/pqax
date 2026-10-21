@@ -8,7 +8,7 @@
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <!-- A security advisory on a dependency is a warning to read, not a broken build. -->
     <WarningsNotAsErrors>NU1901;NU1902;NU1903;NU1904</WarningsNotAsErrors>
-    <Version>0.1.0</Version>
+    <Version>0.1.1</Version>
     <Authors>SQLBI</Authors>
     <Company>SQLBI</Company>
     <Product>PQAX</Product>

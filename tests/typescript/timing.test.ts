@@ -4,7 +4,7 @@
 // has CompressionStream("deflate-raw"), to a deflated one, reads it three times from each, and prints the times. It
 // asserts only that every read takes less than 10 seconds. The README of the package reports the times.
 import { describe, expect, it } from "vitest";
-import { openPqax } from "pqax";
+import { openPqax } from "@pqax/pqax";
 import { toBytes } from "./kit";
 import { canDeflate, writeZip } from "./zip";
 

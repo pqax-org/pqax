@@ -1,5 +1,5 @@
 // The tests of vitest.config.ts in Chromium, Firefox, and WebKit, the engine of Safari, through Playwright: every test
-// file but node.test.ts, which tests pqax/node and needs Node. The browsers come from `npx playwright install chromium
+// file but node.test.ts, which tests @pqax/pqax/node and needs Node. The browsers come from `npx playwright install chromium
 // firefox webkit`.
 import { fileURLToPath } from "node:url";
 import { playwright } from "@vitest/browser-playwright";

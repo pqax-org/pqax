@@ -12,7 +12,7 @@ What the first version delivers:
 | C# `Pqax.Cli` | `pqax check <file>`, `pqax info <file>`, and `pqax collect`, over the library and the collector |
 | C# `Pqax.Collector` | Collects Delta tables from a local folder or from OneLake, at collection levels 1 and 2, and writes a PQAX file. Its own Parquet footer parser. No Parquet library. |
 | C# `Pqax.Collector.ParquetNet` | Reads Delta checkpoints, which are Parquet files with nested data, with Parquet.Net. It plugs into the collector through an interface. |
-| TypeScript `pqax` | Reads and validates PQAX files in a browser and in Node, with no dependency |
+| TypeScript `@pqax/pqax` | Reads and validates PQAX files in a browser and in Node, with no dependency |
 | Python `pqax` | Reads, validates, and writes PQAX files with the standard library, loads tables into data frames when pandas or polars is installed, and has a command line |
 | Conformance kit | A JSON Schema of every part, sample files with expected results, the list of validation rules with their codes, and the fixture that the collector tests use |
 | Tests | For every piece, written from the conformance kit and the contracts of section 4, not from the code |
@@ -303,7 +303,7 @@ Risks to watch: the format changes before 1.0 and the three packages drift, whic
 
 This is the policy of version 0.1. It is not a decision of the maintainers, and the decision log of section 8 does not list it.
 
-1. The six packages share one version number: `Pqax`, `Pqax.Cli`, `Pqax.Collector`, and `Pqax.Collector.ParquetNet` on NuGet, `pqax` on npm, and `pqax` on PyPI. Packages with the same number read and write the same format.
+1. The six packages share one version number: `Pqax`, `Pqax.Cli`, `Pqax.Collector`, and `Pqax.Collector.ParquetNet` on NuGet, `@pqax/pqax` on npm, and `pqax` on PyPI. Packages with the same number read and write the same format.
 2. The major and minor numbers are those of the format version that the packages write, so format 0.1 gives packages 0.1.x. The patch number counts the releases that do not change the format.
 3. A package states in its README and in its metadata which format versions it reads, every version with the same major number up to its own, and which it writes, its own. A reader still opens a file of a later version with the same major number and reads what it knows, as section 9 of the [serialization](serialization.md) requires.
 4. A release is a GitHub release tagged `v<version>`, such as `v0.1.0`, and the packages are published from it. The publish workflow checks that the tag equals the version in `src/dotnet/Directory.Build.props`, `src/typescript/pqax/package.json`, `src/python/pyproject.toml`, and `src/python/pqax/__init__.py`, so that the three registries get the same version.
@@ -320,3 +320,4 @@ This is the policy of version 0.1. It is not a decision of the maintainers, and 
 | 2026-10-07 | MIT license | Marco Russo |
 | 2026-10-07 | The public API of `Pqax` 0.1 stays as implemented; the eight points of its review are recorded in [decisions.md](decisions.md), and the later changes are in the [backlog](backlog.md) | Marco Russo |
 | 2026-10-07 | The device code is the default sign-in of `pqax collect` | Marco Russo |
+| 2026-10-21 | The npm package is `@pqax/pqax`: npm refuses the unscoped name `pqax` as too similar to the packages `rax` and `sax`. The three ecosystems move to 0.1.1 together, with no other change. | Marco Russo |

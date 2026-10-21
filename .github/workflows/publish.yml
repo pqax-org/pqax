@@ -156,7 +156,7 @@ jobs:
     runs-on: ubuntu-latest
     environment:
       name: npm
-      url: https://www.npmjs.com/package/pqax
+      url: https://www.npmjs.com/package/@pqax/pqax
     permissions:
       id-token: write
       contents: read

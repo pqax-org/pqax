@@ -8,8 +8,8 @@
 import { readFile, readdir } from "node:fs/promises";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { detailTableNames, embeddedSource, indexById, openEmbedded, openPqax, PqaxError, summaryTableNames, validate } from "pqax";
-import { fromFile } from "pqax/node";
+import { detailTableNames, embeddedSource, indexById, openEmbedded, openPqax, PqaxError, summaryTableNames, validate } from "@pqax/pqax";
+import { fromFile } from "@pqax/pqax/node";
 import { readZip } from "../dist/zip.js";
 
 const args = process.argv.slice(2);

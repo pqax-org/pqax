@@ -1,5 +1,5 @@
 // The tests live in tests/typescript at the root of the repository, outside this package. They import the package by
-// its name, "pqax" and "pqax/node", which resolves to the TypeScript sources, so the tests need no build.
+// its name, "pqax" and "@pqax/pqax/node", which resolves to the TypeScript sources, so the tests need no build.
 //
 // The tests read the files of the conformance kit from the module "virtual:pqax-kit", which this configuration makes
 // from conformance/ when the tests start. The same tests then run in Node and in browsers, which cannot read files.
@@ -44,8 +44,8 @@ export default defineConfig({
   ],
   resolve: {
     alias: [
-      { find: /^pqax$/, replacement: here("./src/index.ts") },
-      { find: /^pqax\/node$/, replacement: here("./src/node.ts") },
+      { find: /^@pqax\/pqax$/, replacement: here("./src/index.ts") },
+      { find: /^@pqax\/pqax\/node$/, replacement: here("./src/node.ts") },
     ],
   },
   test: {

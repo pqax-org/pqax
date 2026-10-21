@@ -1,8 +1,8 @@
 // The reader of the TypeScript package against the expected results of the conformance kit (conformance/README.md,
 // "A reader test", and plan 4.4), from every kind of input that the package accepts in a browser. node.test.ts adds
-// fromFile of pqax/node.
+// fromFile of @pqax/pqax/node.
 import { describe, expect, it } from "vitest";
-import { openEmbedded, openPqax, type PqaxDocument, type PqaxInput } from "pqax";
+import { openEmbedded, openPqax, type PqaxDocument, type PqaxInput } from "@pqax/pqax";
 import {
   CountingSource, DETAIL_TABLES, type Expected, FORMAT_TABLES, SAMPLES, SUMMARY_TABLES, bytesOf, documentShape,
   expectedByName, fieldsOf, join, shapeOf,

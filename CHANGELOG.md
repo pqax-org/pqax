@@ -2,6 +2,18 @@
 
 The packages of a release share its version number, as section 7.1 of the [contracts](docs/contracts.md) says.
 
+## 0.1.1 - 2026-10-21
+
+The npm package is `@pqax/pqax`. npm refused the unscoped name `pqax` as too similar to the existing packages `rax` and `sax`, so release 0.1.0 reached NuGet and PyPI and not npm. Nothing else changes: the four NuGet packages and the PyPI package get the same number, so that the six keep one version as section 7.1 of the contracts says.
+
+### Release text
+
+The npm package of PQAX is `@pqax/pqax`, published from this release; the registry refuses the unscoped name. NuGet and PyPI get the same version with no other change. The changelog has what 0.1.0 holds.
+
+```
+npm install @pqax/pqax
+```
+
 ## 0.1.0 - 2026-10-21
 
 The first release: format version 0.1, its conformance kit, and the reference implementations in C#, TypeScript, and Python.
@@ -31,7 +43,7 @@ On NuGet.
 
 | Package | What it does | Format | Runs on | Known limits |
 |---|---|---|---|---|
-| `pqax` | Reads and validates PQAX files, also inside a VPAX file, in a browser and in Node, with no dependency | Reads 0.1 | Node 20.12 or later. Chrome and Edge 103, Firefox 113, Safari 16.4, or later. | Does not write. Tested in Node 24 and, through Playwright, in Chromium 156, Firefox 157, and WebKit 27.2. A part is held in memory whole while it is parsed, and `validate` holds every part. |
+| `@pqax/pqax` | Reads and validates PQAX files, also inside a VPAX file, in a browser and in Node, with no dependency | Reads 0.1 | Node 20.12 or later. Chrome and Edge 103, Firefox 113, Safari 16.4, or later. | Does not write. Tested in Node 24 and, through Playwright, in Chromium 156, Firefox 157, and WebKit 27.2. A part is held in memory whole while it is parsed, and `validate` holds every part. |
 
 ### PyPI
 
