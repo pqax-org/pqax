@@ -587,7 +587,8 @@ function filesByTable(files: FilesTable | null | undefined): Map<number, FilesOf
         entry.vOrderedBytes += fileSize ?? 0;
       }
     }
-    const estimate = deletedEstimate(fileSize, size(files.deletedRowCount, i), size(files.rowCount, i));
+    // Only a file with a size counts, so that the files that give an estimate are among the sizes.
+    const estimate = fileSize === null ? null : deletedEstimate(fileSize, size(files.deletedRowCount, i), size(files.rowCount, i));
     if (estimate !== null) {
       entry.deleted += estimate;
       entry.deletedKnown++;
