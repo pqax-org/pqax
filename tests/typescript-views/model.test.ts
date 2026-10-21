@@ -165,7 +165,8 @@ describe("the samples of the kit", () => {
     expect(ALL).toContain("sample.pqax");
     expect(ALL).toContain("embedded-stored.vpax");
     expect(ALL).toContain("embedded-deflated.vpax");
-    expect(ALL.length).toBe(10);
+    expect(ALL).toContain("format-0.1.pqax");
+    expect(ALL.length).toBe(11);
   });
 
   it.each(ALL)("%s gives the collection line of its manifest", async (file) => {
@@ -173,7 +174,8 @@ describe("the samples of the kit", () => {
     const { doc, model } = await modelOf(file);
     const c = model.collection;
     expect(c.formatVersion).toBe(expected.formatVersion);
-    expect(c.collector).toBe("pqax-conformance-kit 0.1");
+    // The kit names its collector after the format version it writes; format-0.1.pqax keeps the 0.1 bytes.
+    expect(c.collector).toBe(`pqax-conformance-kit ${expected.formatVersion}`);
     expect(c.library).toBeNull();
     expect(c.level).toBe(2);
     expect(c.startedAt).toBeNull();
