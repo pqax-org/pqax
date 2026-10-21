@@ -2,7 +2,7 @@
 
 The kit keeps the readers, writers, and validators of PQAX consistent across languages. It holds the validation rules with their codes, a JSON Schema of the format, sample files with the results that a reader must get from them, invalid files with the codes that a validator must report, and the synthetic fixture that the collector tests use.
 
-Format version 0.1. The [serialization](../docs/serialization.md) and the [object model](../docs/object-model.md) define the format, and section 4 of the [contracts](../docs/contracts.md) defines the contracts that the kit tests. When the kit and those documents disagree, the kit is checked against them first, and the one that is wrong is fixed.
+Format version 0.2. The [serialization](../docs/serialization.md) and the [object model](../docs/object-model.md) define the format, and section 4 of the [contracts](../docs/contracts.md) defines the contracts that the kit tests. When the kit and those documents disagree, the kit is checked against them first, and the one that is wrong is fixed.
 
 Everything in the kit is synthetic. No name in it comes from a real lakehouse.
 
@@ -17,7 +17,7 @@ Everything in the kit is synthetic. No name in it comes from a real lakehouse.
 | `samples/invalid/*.pqax` | Files that break one rule each. Every validator rejects them. |
 | `samples/invalid/expected.json` | The codes that a validator must report for each invalid file |
 | `expected/<sample>.json` | The results that a reader must get from each valid file |
-| `fixtures/lakehouse` | A synthetic lakehouse and warehouse in the OneLake layout: Delta logs and Parquet files written by DuckDB |
+| `fixtures/lakehouse` | A synthetic lakehouse and warehouse in the OneLake layout: Delta logs and Parquet files written by DuckDB, and one data file that no commit references |
 | `fixtures/probe-dump` | The output of the probe that preceded the collector on the fixture. It is the input of `make_kit.py`, and the oracle of the collector tests. The section on the probe dump describes every field. |
 | `make_kit.py` | Rebuilds `samples/` and `expected/` from `fixtures/probe-dump` |
 | `check_schema.py` | Validates the samples against the schema |
@@ -25,11 +25,12 @@ Everything in the kit is synthetic. No name in it comes from a real lakehouse.
 
 ## Valid samples
 
-All are built from the fixture: a lakehouse table with 3 files, 10 row groups, a partition column, a deletion vector, and clustering, and a warehouse table with 2 files and 3 row groups. The parts of `sample.pqax` have the same bytes as the parts of [research/prototype/sample.pqax](../research/prototype/sample.pqax). Only the collection in the manifest differs.
+All are built from the fixture: a lakehouse table with 3 files, 10 row groups, a partition column, a deletion vector, and clustering, and a warehouse table with 2 files and 3 row groups. The folder of the lakehouse table also holds `Year=2024/part-0004.parquet`, an aborted write that no commit references, so the table has one unreferenced file. Its checkpoint keeps one removed file, `part-0000.parquet`, that a VACUUM already deleted.
 
 | File | Content | What it tests |
 |---|---|---|
 | `sample.pqax` | Both tables at the `Column chunks` depth: 5 files, 13 row groups, 52 column chunks, 2 partitions, 6 commits | The base case |
+| `format-0.1.pqax` | As `sample.pqax`, in format 0.1, without the five fields that 0.2 added. Its parts have the same bytes as the parts of [research/prototype/sample.pqax](../research/prototype/sample.pqax). Only the collection in the manifest differs. | A reader of 0.2 opens a file of 0.1 |
 | `summary-only.pqax` | `Summary` depth: `manifest.json` and `summary.json` only | A file with no detail |
 | `files.pqax` | `Files` depth: partitions, files, and commits | A depth without row groups |
 | `row-groups.pqax` | `Row groups` depth | A depth without column chunks |
@@ -85,7 +86,7 @@ No file tests `container.encrypted` or `container.zip64`: the `zipfile` module o
   "embeddedPart": null,
   "embeddedCompression": null,
   "format": "pqax",
-  "formatVersion": "0.1",
+  "formatVersion": "0.2",
   "parts": ["summary.json", "partitions.json", "files.json", "rowGroups.json", "columnChunks.json", "commits.json"],
   "rows": {"sources": 2, "tables": 2, "columns": 10, "partitionSpecs": 1, "partitionFields": 1, "physicalSchemas": 2,
            "physicalColumns": 8, "writers": 3, "operations": 5, "partitions": 2, "files": 5, "rowGroups": 13,
@@ -140,6 +141,8 @@ These facts are not in the expected files, and a test can check them too:
 | Sample | Fact |
 |---|---|
 | `sample.pqax` | `commits.metrics` of the second commit is `{}`, a known empty map, not `null`. `tables.delta` of the second table has `readerFeatures` `[]`. |
+| `sample.pqax` | `tables.unreferencedFileCount` is `[1, 0]` and `tables.unreferencedFileSize` is `[737, 0]`. `tables.nonLiveOldestRemovedAt` and `tables.nonLiveNewestRemovedAt` are both `["2023-11-14T22:14:10.000Z", null]`. `partitions.lastModifiedAt` is `["2023-11-14T22:15:00.000Z", "2023-11-14T22:15:10.000Z"]`. |
+| `format-0.1.pqax` | The same results as `sample.pqax`, apart from `formatVersion` `0.1`. `tables` has no `unreferencedFileCount`, `unreferencedFileSize`, `nonLiveOldestRemovedAt`, or `nonLiveNewestRemovedAt`, and `partitions` has no `lastModifiedAt`: a reader returns `null` for them. |
 | `multipart.pqax` | `files.deletionVectorSize` is `[40, null, null, null, null]` and `files.partition` is `[1, 1, 2, null, null]` |
 | `extensions.pqax` | The same results as `sample.pqax`, apart from `parts` and `rows`. `columnChunks` has no `encodings`. Where the API returns unknown fields, `tables.acme_score` is `[7, 9]`. Where it returns unknown members of the manifest, `acme_build` is there. |
 | `later-depth.pqax` | `detailDepth` is `Pages` for both tables, as written |
@@ -183,7 +186,7 @@ python conformance/check_schema.py
 
 `make_kit.py` deletes the files in `samples/`, `samples/invalid/`, and `expected/`, and writes them again. Do not edit them by hand: change the script.
 
-It reads `fixtures/probe-dump` and builds the tables with `build_pqax.py`, the builder of the [prototype](../research/prototype/README.md). That import is the one exception to the rule that the kit depends on nothing outside `conformance/`, `src/`, and `tests/`. The Python package now has a writer, `pqax.Builder`, and the [backlog](../docs/backlog.md) has the item that makes the script use it.
+It reads `fixtures/probe-dump` and builds the tables with `build_pqax.py`, the builder of the [prototype](../research/prototype/README.md). It builds `format-0.1.pqax` with the format version 0.1 of the builder, which leaves out the fields that 0.2 added. That import is the one exception to the rule that the kit depends on nothing outside `conformance/`, `src/`, and `tests/`. The Python package now has a writer, `pqax.Builder`, and the [backlog](../docs/backlog.md) has the item that makes the script use it.
 
 The output is deterministic: every zip entry has the date 2026-10-07 00:00 and the same attributes, and the entries are written in a fixed order. Two runs with the same Python give the same bytes. Another zlib can compress differently: the samples in the repository were written by Python 3.14 on Windows, whose zlib is zlib-ng 1.3.1. The content and the expected results do not depend on it.
 
@@ -236,7 +239,9 @@ The folder of a table in `fixtures/lakehouse` is `<item>.<itemKind>/Tables/<name
 
 ### L001.json and W001.json
 
-A table file describes one table at its current version. The two files have the same fields, and `W001.json` leaves out those that its table has no value for, such as the checkpoint, the partitions, and the deletion vectors.
+A table file describes one table at its current version. The two files have the same fields, and `W001.json` leaves out those that its table has no value for, such as the checkpoint, the partitions, the deletion vectors, and the removal times.
+
+`unreferencedFileCount`, `unreferencedFileSize`, `delta.removedOldestTimestamp`, and `delta.removedNewestTimestamp` were added by hand for format 0.2, because the probe no longer runs. The values are those of the fixture: in `sales`, `Year=2024/part-0004.parquet`, 737 bytes, is the one unreferenced file, and the tombstone of `part-0000.parquet` in the checkpoint has the removal time 1700000050000. `orders` has no unreferenced file and no tombstone.
 
 In the table, `rowGroups[]` is short for `files[].footer.rowGroups[]`. In a row group, `numRows`, `totalByteSize`, and `totalCompressedSize` describe the row group. Every other field is an array with one element for each column chunk, in the order of the leaf columns of the schema of the file: element i is the chunk of `schemas[s].columns[i]`, where s is `footer.schema`. Each chunk is one row of `columnChunks` at the `Column chunks` depth.
 
@@ -268,11 +273,15 @@ In the table, `rowGroups[]` is short for `files[].footer.rowGroups[]`. In a row 
 | `delta.readerFeatures`, `delta.writerFeatures` | array of strings | The table features of `protocol`, empty when it has none | `tables.delta.readerFeatures` and `tables.delta.writerFeatures` | Footprint |
 | `delta.domains` | map of strings | The `domainMetadata` actions: for each domain, its configuration as JSON text | `tables.delta.domains`, the names sorted. The `clusteringColumns` of `delta.clustering` give `tables.clusteringColumns`. | Footprint |
 | `delta.removedFileCount`, `delta.removedFileSize` | integer | The files that `remove` actions took out of the table and that the log still tracks, and the sum of their sizes | `tables.nonLiveFileCount` and `tables.nonLiveFileSize` | Footprint |
+| `delta.removedOldestTimestamp` | integer | The earliest `remove.deletionTimestamp` of those files. Absent when none has one. | `tables.nonLiveOldestRemovedAt` | Footprint |
+| `delta.removedNewestTimestamp` | integer | The latest `remove.deletionTimestamp` of those files. Absent when none has one. | `tables.nonLiveNewestRemovedAt` | Footprint |
 | `delta.partitionValueCounts` | map of integers | The distinct values of each partition column | Nothing: the kit counts the partitions from `files[].partition` | None |
+| `unreferencedFileCount` | integer | The `.parquet` files in the folder of the table, outside `_delta_log` and `_change_data`, that the current version does not reference | `tables.unreferencedFileCount` | Footprint |
+| `unreferencedFileSize` | integer | The sum of their sizes in the storage listing | `tables.unreferencedFileSize` | Footprint |
 | `files` | array of objects | One element for each data file of the current version: the `add` actions that the state keeps | One row of `files` each, at the `Files` depth and deeper. The totals of `tables` count every file at every depth. | Footprint |
 | `files[].path` | string | `add.path`, with partition values replaced by numbers | `files.path` | Footprint |
 | `files[].size` | integer | `add.size` | `files.fileSize`. Summed in `tables.fileSize`, `partitions.fileSize`, and `writers.fileSize`, and in the distribution `tables.fileSizes`. | Footprint |
-| `files[].modificationTime` | integer | `add.modificationTime` | `files.modifiedAt`. The latest is `tables.lastModifiedAt`. | Footprint |
+| `files[].modificationTime` | integer | `add.modificationTime` | `files.modifiedAt`. The latest is `tables.lastModifiedAt`, and the latest of the files of a partition is `partitions.lastModifiedAt`. | Footprint |
 | `files[].numRecords` | integer | `numRecords` in the statistics of `add`. Absent when the action has no statistics. | `files.rowCount`, or `footer.numRows` when absent. Summed in `tables.rowCount` and `partitions.rowCount`. | Footprint |
 | `files[].statsColumnCount` | integer | The columns that those statistics cover. Absent with them. | Nothing | None |
 | `files[].partition` | map of integers | For each partition column, the number of the value of the file. Absent when the table has no partition columns. | `files.partition`: one row of `partitions` for each distinct map, at the `Files` depth and deeper, with its totals. Also `tables.partitionCount` and `tables.partitionSizes`. | Footprint |
@@ -347,7 +356,7 @@ python conformance/cross_check.py --skip dotnet    # leaves out an implementatio
 | Validator | `python -m pqax check` | `pqax check`, or `PqaxValidator` when the command line does not build | `validate`, through `node` |
 | Reader | `pqax.open` | `PqaxDocument.Open` | `openPqax`, through `node` |
 
-The files are `sample.pqax`, `sample.pqax` with at most 20 rows in a detail part, and `extensions.pqax`, as each writer writes them, and the fixture as the collector writes it, which must give the results of `expected/sample.json`. Every validator must accept every file. Every reader must get the `rows`, the length of every table read whole, and `tablesFileSize`, `tablesRowCount`, `columnChunksCompressedSize`, `tables`, and `largestColumns` of the expected file of the sample. A written file has format version 0.1 and part names of its writer, so the parts are not compared.
+The files are `sample.pqax`, `sample.pqax` with at most 20 rows in a detail part, and `extensions.pqax`, as each writer writes them, the fixture as the collector writes it, which must give the results of `expected/sample.json`, and the samples `sample.pqax`, `multipart.pqax`, `extensions.pqax`, and `format-0.1.pqax` of the kit. Every validator must accept every file. Every reader must get the `rows`, the length of every table read whole, and `tablesFileSize`, `tablesRowCount`, `columnChunksCompressedSize`, `tables`, and `largestColumns` of the expected file of the sample. A written file has format version 0.2 and part names of its writer, so the parts are not compared.
 
 The script needs only the standard library. It skips, with a message, what is not there: `dotnet` or the .NET 10 SDK, `node`, a build of the TypeScript package, which it runs with `npm run build` when `dist/` is older than the sources unless `--no-build` is given. The exit code is 0 when every check passes, 1 when one fails, and 2 when nothing can run.
 

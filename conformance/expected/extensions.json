@@ -3,7 +3,7 @@
   "embeddedPart": null,
   "embeddedCompression": null,
   "format": "pqax",
-  "formatVersion": "0.1",
+  "formatVersion": "0.2",
   "parts": [
     "summary.json",
     "partitions.json",
