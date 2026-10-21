@@ -1,0 +1,50 @@
+{
+  "name": "@pqax/views",
+  "version": "0.0.0",
+  "private": true,
+  "license": "MIT",
+  "homepage": "https://pqax.org",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/pqax-org/pqax.git",
+    "directory": "src/typescript/views"
+  },
+  "description": "Storage views of a PQAX footprint in a browser: a view model and three views in plain DOM and SVG",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./styles.css": "./styles.css"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist",
+    "styles.css"
+  ],
+  "sideEffects": [
+    "*.css"
+  ],
+  "engines": {
+    "node": ">=20.12"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "test:browsers": "vitest run --config vitest.browser.config.ts",
+    "site": "node scripts/site.mjs",
+    "serve": "node scripts/serve.mjs"
+  },
+  "dependencies": {
+    "@pqax/pqax": "file:../pqax"
+  },
+  "devDependencies": {
+    "@vitest/browser-playwright": "^5.0.3",
+    "playwright": "^1.64.1",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.3"
+  }
+}

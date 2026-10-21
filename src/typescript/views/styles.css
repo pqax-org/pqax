@@ -1,0 +1,244 @@
+/* The styles of the storage views of PQAX. Every color is a custom property on .pqax-view, with a light and a dark
+   value. A page overrides a property on .pqax-view or on an ancestor. The dark values apply under
+   prefers-color-scheme: dark, under an ancestor with data-theme="dark", or with the theme option "dark"; the light
+   values under data-theme="light" or the option "light". The palette is the reference palette of the dataviz method:
+   one categorical order for the stack, one blue ramp for the null share. */
+
+.pqax-view {
+  --pqax-font: inherit;
+  --pqax-ink: #0b0b0b;
+  --pqax-ink-2: #52514e;
+  --pqax-muted: #6b6a65;
+  --pqax-grid: #e1e0d9;
+  --pqax-axis: #c3c2b7;
+  --pqax-surface: #fcfcfb;
+  --pqax-border: rgba(11, 11, 11, 0.12);
+  --pqax-focus: #0a5aa6;
+  --pqax-gap: #fcfcfb;
+  --pqax-live: #c3c2b7;
+  --pqax-non-live: #2a78d6;
+  --pqax-deleted: #eb6834;
+  --pqax-metadata: #1baf7a;
+  --pqax-stale: #eda100;
+  --pqax-no-totals: #e1e0d9;
+  --pqax-absent: #898781;
+  --pqax-seq-0: #cde2fb;
+  --pqax-seq-1: #9ec5f4;
+  --pqax-seq-2: #6da7ec;
+  --pqax-seq-3: #3987e5;
+  --pqax-seq-4: #256abf;
+  --pqax-seq-5: #104281;
+  --pqax-seq-ink-0: #0b0b0b;
+  --pqax-seq-ink-1: #0b0b0b;
+  --pqax-seq-ink-2: #0b0b0b;
+  --pqax-seq-ink-3: #ffffff;
+  --pqax-seq-ink-4: #ffffff;
+  --pqax-seq-ink-5: #ffffff;
+  --pqax-no-totals-ink: #52514e;
+  --pqax-strip-range: #898781;
+  --pqax-strip-box: #9ec5f4;
+  --pqax-strip-median: #0d366b;
+  --pqax-strip-dot: #2a78d6;
+  --pqax-vorder: #1baf7a;
+  --pqax-vorder-track: #e1e0d9;
+}
+
+@media (prefers-color-scheme: dark) {
+  .pqax-view {
+    --pqax-ink: #f0efec;
+    --pqax-ink-2: #c3c2b7;
+    --pqax-muted: #9a9890;
+    --pqax-grid: #2c2c2a;
+    --pqax-axis: #4a4a46;
+    --pqax-surface: #1a1a19;
+    --pqax-border: rgba(255, 255, 255, 0.14);
+    --pqax-focus: #79b8ff;
+    --pqax-gap: #1a1a19;
+    --pqax-live: #5f5e59;
+    --pqax-non-live: #3987e5;
+    --pqax-deleted: #d95926;
+    --pqax-metadata: #199e70;
+    --pqax-stale: #c98500;
+    --pqax-no-totals: #2c2c2a;
+    --pqax-absent: #898781;
+    --pqax-seq-0: #0d366b;
+    --pqax-seq-1: #184f95;
+    --pqax-seq-2: #256abf;
+    --pqax-seq-3: #3987e5;
+    --pqax-seq-4: #86b6ef;
+    --pqax-seq-5: #cde2fb;
+    --pqax-seq-ink-0: #f0efec;
+    --pqax-seq-ink-1: #f0efec;
+    --pqax-seq-ink-2: #f0efec;
+    --pqax-seq-ink-3: #0b0b0b;
+    --pqax-seq-ink-4: #0b0b0b;
+    --pqax-seq-ink-5: #0b0b0b;
+    --pqax-no-totals-ink: #c3c2b7;
+    --pqax-strip-range: #898781;
+    --pqax-strip-box: #184f95;
+    --pqax-strip-median: #cde2fb;
+    --pqax-strip-dot: #6da7ec;
+    --pqax-vorder: #199e70;
+    --pqax-vorder-track: #2c2c2a;
+  }
+}
+
+[data-theme="light"] .pqax-view,
+.pqax-view.pqax-view[data-theme="light"] {
+  --pqax-ink: #0b0b0b;
+  --pqax-ink-2: #52514e;
+  --pqax-muted: #6b6a65;
+  --pqax-grid: #e1e0d9;
+  --pqax-axis: #c3c2b7;
+  --pqax-surface: #fcfcfb;
+  --pqax-border: rgba(11, 11, 11, 0.12);
+  --pqax-focus: #0a5aa6;
+  --pqax-gap: #fcfcfb;
+  --pqax-live: #c3c2b7;
+  --pqax-non-live: #2a78d6;
+  --pqax-deleted: #eb6834;
+  --pqax-metadata: #1baf7a;
+  --pqax-stale: #eda100;
+  --pqax-no-totals: #e1e0d9;
+  --pqax-absent: #898781;
+  --pqax-seq-0: #cde2fb;
+  --pqax-seq-1: #9ec5f4;
+  --pqax-seq-2: #6da7ec;
+  --pqax-seq-3: #3987e5;
+  --pqax-seq-4: #256abf;
+  --pqax-seq-5: #104281;
+  --pqax-seq-ink-0: #0b0b0b;
+  --pqax-seq-ink-1: #0b0b0b;
+  --pqax-seq-ink-2: #0b0b0b;
+  --pqax-seq-ink-3: #ffffff;
+  --pqax-seq-ink-4: #ffffff;
+  --pqax-seq-ink-5: #ffffff;
+  --pqax-no-totals-ink: #52514e;
+  --pqax-strip-range: #898781;
+  --pqax-strip-box: #9ec5f4;
+  --pqax-strip-median: #0d366b;
+  --pqax-strip-dot: #2a78d6;
+  --pqax-vorder: #1baf7a;
+  --pqax-vorder-track: #e1e0d9;
+}
+
+[data-theme="dark"] .pqax-view,
+.pqax-view.pqax-view[data-theme="dark"] {
+  --pqax-ink: #f0efec;
+  --pqax-ink-2: #c3c2b7;
+  --pqax-muted: #9a9890;
+  --pqax-grid: #2c2c2a;
+  --pqax-axis: #4a4a46;
+  --pqax-surface: #1a1a19;
+  --pqax-border: rgba(255, 255, 255, 0.14);
+  --pqax-focus: #79b8ff;
+  --pqax-gap: #1a1a19;
+  --pqax-live: #5f5e59;
+  --pqax-non-live: #3987e5;
+  --pqax-deleted: #d95926;
+  --pqax-metadata: #199e70;
+  --pqax-stale: #c98500;
+  --pqax-no-totals: #2c2c2a;
+  --pqax-absent: #898781;
+  --pqax-seq-0: #0d366b;
+  --pqax-seq-1: #184f95;
+  --pqax-seq-2: #256abf;
+  --pqax-seq-3: #3987e5;
+  --pqax-seq-4: #86b6ef;
+  --pqax-seq-5: #cde2fb;
+  --pqax-seq-ink-0: #f0efec;
+  --pqax-seq-ink-1: #f0efec;
+  --pqax-seq-ink-2: #f0efec;
+  --pqax-seq-ink-3: #0b0b0b;
+  --pqax-seq-ink-4: #0b0b0b;
+  --pqax-seq-ink-5: #0b0b0b;
+  --pqax-no-totals-ink: #c3c2b7;
+  --pqax-strip-range: #898781;
+  --pqax-strip-box: #184f95;
+  --pqax-strip-median: #cde2fb;
+  --pqax-strip-dot: #6da7ec;
+  --pqax-vorder: #199e70;
+  --pqax-vorder-track: #2c2c2a;
+}
+
+/* ---- shared ---- */
+
+.pqax-view {
+  position: relative;
+  color: var(--pqax-ink);
+  font-family: var(--pqax-font);
+  font-size: 0.875rem;
+  line-height: 1.4;
+  font-variant-numeric: tabular-nums;
+}
+
+.pqax-view svg { display: block; overflow: visible; }
+.pqax-view svg text { fill: var(--pqax-ink-2); font-size: 12px; }
+
+.pqax-view .pqax-item { outline: none; cursor: default; }
+.pqax-view .pqax-item:focus-visible { outline: 2px solid var(--pqax-focus); outline-offset: 2px; }
+.pqax-view svg .pqax-item:focus-visible { outline: none; }
+.pqax-view svg .pqax-item:focus-visible > .pqax-hit,
+.pqax-view svg .pqax-item:focus-visible > rect:first-child { stroke: var(--pqax-focus); stroke-width: 2px; }
+
+.pqax-view .pqax-tooltip {
+  position: absolute;
+  z-index: 10;
+  max-width: 22rem;
+  padding: 0.45rem 0.6rem;
+  border: 1px solid var(--pqax-border);
+  border-radius: 6px;
+  background: var(--pqax-surface);
+  color: var(--pqax-ink);
+  box-shadow: 0 2px 8px var(--pqax-border);
+  pointer-events: none;
+  font-size: 0.8125rem;
+}
+.pqax-view .pqax-tooltip[hidden] { display: none; }
+.pqax-view .pqax-tooltip strong { display: block; margin-bottom: 0.15rem; overflow-wrap: anywhere; }
+.pqax-view .pqax-tooltip span { display: block; color: var(--pqax-ink-2); }
+
+.pqax-view .pqax-toolbar { display: flex; flex-wrap: wrap; gap: 0.5rem 1rem; align-items: center; margin-bottom: 0.6rem; }
+
+.pqax-view .pqax-toggle { display: inline-flex; border: 1px solid var(--pqax-border); border-radius: 6px; overflow: hidden; }
+.pqax-view .pqax-toggle button {
+  font: inherit;
+  padding: 0.2rem 0.65rem;
+  border: 0;
+  background: transparent;
+  color: var(--pqax-ink-2);
+  cursor: pointer;
+}
+.pqax-view .pqax-toggle button + button { border-left: 1px solid var(--pqax-border); }
+.pqax-view .pqax-toggle button[aria-pressed="true"] { background: var(--pqax-grid); color: var(--pqax-ink); font-weight: 600; }
+.pqax-view .pqax-toggle button:focus-visible { outline: 2px solid var(--pqax-focus); outline-offset: -2px; }
+
+.pqax-view .pqax-legend { display: flex; flex-wrap: wrap; gap: 0.25rem 0.9rem; color: var(--pqax-ink-2); font-size: 0.8125rem; }
+.pqax-view .pqax-legend-item { display: inline-flex; align-items: center; gap: 0.35rem; }
+.pqax-view .pqax-swatch { display: inline-block; width: 0.75rem; height: 0.75rem; border-radius: 2px; }
+
+.pqax-view .pqax-empty { color: var(--pqax-muted); margin: 0.5rem 0; }
+
+/* The fills by role, shared by the HTML and the SVG of the views. */
+.pqax-view [data-component="live"] { --pqax-fill: var(--pqax-live); }
+.pqax-view [data-component="nonLive"] { --pqax-fill: var(--pqax-non-live); }
+.pqax-view [data-component="deleted"] { --pqax-fill: var(--pqax-deleted); }
+.pqax-view [data-component="metadata"] { --pqax-fill: var(--pqax-metadata); }
+.pqax-view [data-component="stale"] { --pqax-fill: var(--pqax-stale); }
+.pqax-view [data-bin="0"] { --pqax-fill: var(--pqax-seq-0); --pqax-fill-ink: var(--pqax-seq-ink-0); }
+.pqax-view [data-bin="1"] { --pqax-fill: var(--pqax-seq-1); --pqax-fill-ink: var(--pqax-seq-ink-1); }
+.pqax-view [data-bin="2"] { --pqax-fill: var(--pqax-seq-2); --pqax-fill-ink: var(--pqax-seq-ink-2); }
+.pqax-view [data-bin="3"] { --pqax-fill: var(--pqax-seq-3); --pqax-fill-ink: var(--pqax-seq-ink-3); }
+.pqax-view [data-bin="4"] { --pqax-fill: var(--pqax-seq-4); --pqax-fill-ink: var(--pqax-seq-ink-4); }
+.pqax-view [data-bin="5"] { --pqax-fill: var(--pqax-seq-5); --pqax-fill-ink: var(--pqax-seq-ink-5); }
+.pqax-view [data-bin="none"] { --pqax-fill: var(--pqax-no-totals); --pqax-fill-ink: var(--pqax-no-totals-ink); }
+.pqax-view .pqax-swatch { background: var(--pqax-fill); }
+
+/* An absent mark: a dashed outline, so that it does not read as a value. */
+.pqax-view .pqax-absent-mark {
+  display: inline-block;
+  width: 0.75rem;
+  height: 0.75rem;
+  border: 1px dashed var(--pqax-absent);
+  border-radius: 2px;
+}
