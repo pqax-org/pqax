@@ -41,6 +41,12 @@ public static class IssueCodes
     /// <summary>The statistics of a data file are not valid JSON.</summary>
     public const string DeltaStatsNotParsed = "DeltaStatsNotParsed";
 
+    /// <summary>
+    /// The table folder could not be listed for its data files, for another reason than a denied access, so the
+    /// unreferenced files of the table are unknown.
+    /// </summary>
+    public const string DataFilesNotListed = "DataFilesNotListed";
+
     /// <summary>A data file is outside the table folder, so its footer was not read.</summary>
     public const string FileOutsideTable = "FileOutsideTable";
 

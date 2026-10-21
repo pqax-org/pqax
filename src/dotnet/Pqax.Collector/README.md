@@ -94,6 +94,7 @@ For each table:
 | The checkpoint | Through the checkpoint reader: a classic checkpoint, every part of a multi-part checkpoint, a v2 checkpoint in Parquet, or in JSON, which the collector reads itself, and its sidecar files |
 | The commits that the state needs | One request each, replayed into the state: the commits after the checkpoint, or every commit when the state comes from the JSON commits alone |
 | Older commits | One request each, for the history, the most recent first, until the commit files read reach `MaxCommitsPerTable`. See [Commits](#commits). |
+| One listing of the table folder, at any depth | When the files of the version are known, at every level. `OneLakeStorage` lists with `recursive=true`, in as many pages as the listing takes, and `LocalStorage` counts one request. Through another storage, each folder is a listing of its own, and `_delta_log` and `_change_data` are not listed. It gives `unreferencedFileCount` and `unreferencedFileSize`. See [Unreferenced files](#unreferenced-files). |
 | The footer of each file | At level 2: the last `FooterTailBytes` bytes, and a second request only for a longer footer |
 
 Every request goes through the `IStorage`, so the collection states its requests and bytes. When the storage implements `IStorageStatistics`, those numbers come from it and include retries and the pages of a listing.
@@ -124,9 +125,9 @@ The collector fills every field of the object model that a Delta table and its f
 | Object | From |
 |---|---|
 | Source | The `TableLocation` of its tables: kind, name, location, and identifiers. See [Locations](#locations). |
-| Table | The `TableLocation` for the location, then `metaData`, `protocol`, the domains, the listing, the history, and totals over the files, the footers, and the row groups. `fileSizes`, `rowGroupRowCounts`, and `partitionSizes` are distributions with quartiles taken by position in the sorted values. |
+| Table | The `TableLocation` for the location, then `metaData`, `protocol`, the domains, the listings, the history, and totals over the files, the footers, and the row groups. `fileSizes`, `rowGroupRowCounts`, and `partitionSizes` are distributions with quartiles taken by position in the sorted values. `nonLiveOldestRemovedAt` and `nonLiveNewestRemovedAt` are the earliest and the latest `remove.deletionTimestamp` of the files that `nonLiveFileCount` counts. |
 | Column | `schemaString`: name, type as Spark writes it in DDL, nullability, field id and physical name of column mapping, comment. Totals over the column chunks of the footers read, or at level 1 the null count of the statistics of the log, when every file has one. |
-| Partition spec and partitions | `partitionColumns` and `add.partitionValues`, by physical name with column mapping |
+| Partition spec and partitions | `partitionColumns` and `add.partitionValues`, by physical name with column mapping. `lastModifiedAt` of a partition is the latest `add.modificationTime` of its files, and `null` when one of them has none, as for the table. |
 | Physical schema and physical column | The schemas of the footers. A leaf maps to a column by the field id of its top-level field when the table has field ids, and otherwise by the physical name, or the name. |
 | Writer | `created_by`, and V-Order from the `VORDER` tag of the file or the footer keys |
 | Operation and commit | `commitInfo` of the commits read: time, operation, engine, blind append, metrics. Never a user name, a notebook, or a cluster. |
@@ -134,6 +135,16 @@ The collector fills every field of the object model that a Delta table and its f
 | Issue | What went wrong, with a code. A table keeps 100 issues, and one more counts the rest. |
 
 Partitions and commits are kept from the `Files` depth, as in the prototype.
+
+### Unreferenced files
+
+| Rule | Detail |
+|---|---|
+| Data file | A file of the listing of the table folder, at any depth, whose name ends with `.parquet`, in any case, outside `_delta_log` and `_change_data` |
+| Referenced | Its path relative to the table folder equals the decoded path of a live file of the version. An absolute path of the log that starts with the table location is compared without it. The comparison is case-sensitive. |
+| Unreferenced | Every other data file: removed files that a VACUUM has not deleted yet, and files that no commit referenced, such as those of an aborted write |
+| Size | The sum of the sizes that the listing gives. A file without a size counts in `unreferencedFileCount` only. |
+| Unknown | Both fields are `null` when the files of the version are unknown, and when the listing fails, which is then an issue: `AccessDenied` or `DataFilesNotListed` |
 
 ### Locations
 
@@ -155,7 +166,7 @@ Partitions and commits are kept from the `Files` depth, as in the prototype.
 
 | Code | When |
 |---|---|
-| `AccessDenied` | The storage denied access, with status 401 or 403, to a folder, a commit, or the footer of a file |
+| `AccessDenied` | The storage denied access, with status 401 or 403, to a folder, a commit, or the footer of a file. On the listing of the table folder, `unreferencedFileCount` and `unreferencedFileSize` are `null`. |
 | `TableNotRead` | The table could not be read for another reason |
 | `DeltaLogMissing` | The table folder has no Delta log |
 | `DeltaLogIncomplete` | Commits that the state needs are missing |
@@ -164,6 +175,7 @@ Partitions and commits are kept from the `Files` depth, as in the prototype.
 | `DeltaCommitNotRead` | A commit file could not be read or parsed |
 | `DeltaSchemaNotParsed` | `schemaString` is not valid |
 | `DeltaStatsNotParsed` | The statistics of some files are not valid JSON |
+| `DataFilesNotListed` | The listing of the table folder for its data files failed for another reason than a denied access; `unreferencedFileCount` and `unreferencedFileSize` are `null` |
 | `FileOutsideTable` | A file has an absolute path, so its footer was not read |
 | `FooterNotRead` | The read of a footer failed for another reason than a denied access, or the log gives no size |
 | `FooterEncrypted` | The footer is encrypted: the file ends with `PARE` |

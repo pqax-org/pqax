@@ -17,6 +17,9 @@ internal sealed class TableCollector
 {
     private const string ConstraintPrefix = "delta.constraints.";
 
+    /// <summary>The folders of the table folder that hold no data files of the table: the log, and the change data feed.</summary>
+    private static readonly string[] NonDataFolders = { "_delta_log", "_change_data" };
+
     private readonly IStorage storage;
     private readonly CollectorOptions options;
     private readonly ICheckpointReader? checkpoints;
@@ -328,6 +331,9 @@ internal sealed class TableCollector
         BuildFiles(table, files, collected);
         table.NonLiveFileCount = log.NonLiveFileCount;
         table.NonLiveFileSize = log.NonLiveFileSize;
+        table.NonLiveOldestRemovedAt = Time(log.NonLiveOldestRemovedAt);
+        table.NonLiveNewestRemovedAt = Time(log.NonLiveNewestRemovedAt);
+        await UnreferencedAsync(table, files, issues, cancellation).ConfigureAwait(false);
 
         var aggregate = new FooterAggregate(table, options.Depth);
         if (options.Level >= 2)
@@ -336,6 +342,76 @@ internal sealed class TableCollector
         }
 
         Totals(table, files, collected, aggregate);
+    }
+
+    /// <summary>
+    /// Lists the table folder at any depth, outside <c>_delta_log</c> and <c>_change_data</c>, and counts the Parquet
+    /// files that no live file of the version is: files removed and not yet vacuumed, and files that no commit
+    /// referenced. A file whose size the listing does not give counts, and adds nothing to the size. When the listing
+    /// fails, the issue says so and both totals stay unknown.
+    /// </summary>
+    private async Task UnreferencedAsync(CollectedTable table, List<LiveFile> files, IssueList issues, CancellationToken cancellation)
+    {
+        string root = table.Location.Path.Trim('/');
+        IReadOnlyList<StorageEntry> listing;
+        try
+        {
+            listing = await StorageListing.ListFilesAsync(storage, root, NonDataFolders, cancellation).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (StorageException e)
+        {
+            issues.Add(e.IsAccessDenied ? IssueCodes.AccessDenied : IssueCodes.DataFilesNotListed, "The table folder could not be listed for its data files: " + e.Message);
+            return;
+        }
+        catch (Exception e)
+        {
+            issues.Add(IssueCodes.DataFilesNotListed, "The table folder could not be listed for its data files: " + e.GetType().Name + ": " + e.Message);
+            return;
+        }
+
+        // The decoded paths of the live files, relative to the table folder. An absolute path inside the table location is
+        // made relative, so that it matches the listing.
+        string? location = table.Location.Location?.Replace('\\', '/').TrimEnd('/');
+        var referenced = new HashSet<string>(StringComparer.Ordinal);
+        foreach (LiveFile file in files)
+        {
+            string path = file.Path;
+            if (file.IsOutsideTable && location != null && location.Length > 0 && path.Length > location.Length + 1
+                && path[location.Length] == '/' && path.StartsWith(location, StringComparison.Ordinal))
+            {
+                path = path.Substring(location.Length + 1);
+            }
+
+            referenced.Add(path);
+        }
+
+        long count = 0;
+        long size = 0;
+        foreach (StorageEntry entry in listing)
+        {
+            if (entry.IsDirectory
+                || !entry.Name.EndsWith(".parquet", StringComparison.OrdinalIgnoreCase)
+                || StorageListing.IsExcluded(root, entry.Path, NonDataFolders))
+            {
+                continue;
+            }
+
+            string relative = root.Length == 0 ? entry.Path : entry.Path.Substring(root.Length + 1);
+            if (referenced.Contains(relative))
+            {
+                continue;
+            }
+
+            count++;
+            size += entry.Size ?? 0;
+        }
+
+        table.UnreferencedFileCount = count;
+        table.UnreferencedFileSize = size;
     }
 
     private void BuildColumns(CollectedTable table, MetadataAction? metadata, IssueList issues)
@@ -640,6 +716,7 @@ internal sealed class TableCollector
                 partition.FileSize.Add(file.FileSize);
                 partition.RowCount.Add(file.RowCount);
                 partition.DeletedRowCount.Add(file.DeletedRowCount);
+                partition.AddModifiedAt(file.ModifiedAt);
             }
         }
 

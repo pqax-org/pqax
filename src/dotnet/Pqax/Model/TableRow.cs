@@ -99,6 +99,18 @@ public sealed class TableRow : IEquatable<TableRow>
     /// <summary>The size of the files that left the table and that the log still tracks.</summary>
     public long? NonLiveFileSize { get; set; }
 
+    /// <summary>The earliest removal time of the non-live files. Null when none of their remove actions has a timestamp.</summary>
+    public DateTimeOffset? NonLiveOldestRemovedAt { get; set; }
+
+    /// <summary>The latest removal time of the non-live files.</summary>
+    public DateTimeOffset? NonLiveNewestRemovedAt { get; set; }
+
+    /// <summary>The data files found under the table location that the version described does not reference. They include the non-live files that are still stored.</summary>
+    public long? UnreferencedFileCount { get; set; }
+
+    /// <summary>The sum of the sizes of the unreferenced files, as the listing gives them. A file whose size the listing does not give counts in <see cref="UnreferencedFileCount"/> and not here.</summary>
+    public long? UnreferencedFileSize { get; set; }
+
     /// <summary>The files of the table format itself: the Delta log, or the Iceberg metadata and manifests.</summary>
     public long? MetadataFileCount { get; set; }
 

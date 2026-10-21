@@ -99,6 +99,10 @@ internal static class Schemas
         .Timestamp("oldestCommitAt", x => x.OldestCommitAt, (x, v) => x.OldestCommitAt = v)
         .Integer("nonLiveFileCount", x => x.NonLiveFileCount, (x, v) => x.NonLiveFileCount = v)
         .Integer("nonLiveFileSize", x => x.NonLiveFileSize, (x, v) => x.NonLiveFileSize = v)
+        .Timestamp("nonLiveOldestRemovedAt", x => x.NonLiveOldestRemovedAt, (x, v) => x.NonLiveOldestRemovedAt = v)
+        .Timestamp("nonLiveNewestRemovedAt", x => x.NonLiveNewestRemovedAt, (x, v) => x.NonLiveNewestRemovedAt = v)
+        .Integer("unreferencedFileCount", x => x.UnreferencedFileCount, (x, v) => x.UnreferencedFileCount = v)
+        .Integer("unreferencedFileSize", x => x.UnreferencedFileSize, (x, v) => x.UnreferencedFileSize = v)
         .Integer("metadataFileCount", x => x.MetadataFileCount, (x, v) => x.MetadataFileCount = v)
         .Integer("metadataSize", x => x.MetadataSize, (x, v) => x.MetadataSize = v)
         .Integer("footerCount", x => x.FooterCount, (x, v) => x.FooterCount = v)
@@ -246,6 +250,7 @@ internal static class Schemas
         .Integer("fileSize", x => x.FileSize, (x, v) => x.FileSize = v)
         .Integer("rowCount", x => x.RowCount, (x, v) => x.RowCount = v)
         .Integer("deletedRowCount", x => x.DeletedRowCount, (x, v) => x.DeletedRowCount = v)
+        .Timestamp("lastModifiedAt", x => x.LastModifiedAt, (x, v) => x.LastModifiedAt = v)
         .Build();
 
     public static readonly Schema<FileRow> Files = new SchemaBuilder<FileRow>("files", false, () => new FileRow())
