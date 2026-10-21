@@ -11,7 +11,7 @@ Once, before the first release:
 | GitHub | The repository is public. npm provenance needs it, and so do the Source Link and the release notes link of the NuGet packages. |
 | GitHub | The environments `nuget`, `npm`, and `pypi`, each with a required reviewer. A secret of an environment reaches its job only after the approval. |
 | nuget.org | A trusted publishing policy, owned by the account that will own the packages: repository owner `pqax-org`, repository `pqax`, workflow file `publish.yml`, environment `nuget`, allowed to push new packages and new versions of `Pqax*`. The secret `NUGET_USER` holds the nuget.org user name, not the email, of the account that created the policy. |
-| npmjs.com | A trusted publisher is set in the settings of a package that exists, so the first release uses the secret `NPM_TOKEN`, a granular access token that can publish. After it, set the trusted publisher of `@pqax/pqax`: owner `pqax-org`, repository `pqax`, workflow `publish.yml`, environment `npm`. Then delete `NPM_TOKEN`. |
+| npmjs.com | A trusted publisher on `@pqax/pqax`: owner `pqax-org`, repository `pqax`, workflow `publish.yml`, environment `npm`, allowed to publish. npm validates a new publisher with the first publish that goes through it, within 48 hours of its creation. No token. |
 | pypi.org | A pending trusted publisher for the project `pqax`: owner `pqax-org`, repository `pqax`, workflow `publish.yml`, environment `pypi`. |
 
 How each job signs in:
@@ -19,7 +19,7 @@ How each job signs in:
 | Job | The secret is set | The secret is not set |
 |---|---|---|
 | `nuget` | `NUGET_API_KEY` is the key | `NuGet/login` trades the OIDC token of the job for a key valid one hour, for the user in `NUGET_USER` |
-| `npm` | `NPM_TOKEN` goes to npm, which tries trusted publishing first and then the token | Trusted publishing, with no token |
+| `npm` | No secret is read | Trusted publishing |
 | `pypi` | No secret is read | Trusted publishing |
 
 ## Steps

@@ -2,6 +2,14 @@
 
 The packages of a release share its version number, as section 7.1 of the [contracts](docs/contracts.md) says.
 
+## 0.1.2 - 2026-10-21
+
+No change in the packages. npm validates a new trusted publisher with the first publish that goes through it, within 48 hours of its creation, so this release publishes `@pqax/pqax` through the trusted publisher of the repository; NuGet and PyPI get the same number, so that the six packages keep one version. The publish workflow loses its token path.
+
+### Release text
+
+No change in the packages: this release publishes `@pqax/pqax` through the repository's trusted publisher on npm, which validates it, and gives NuGet and PyPI the same number.
+
 ## 0.1.1 - 2026-10-21
 
 The npm package is `@pqax/pqax`. npm refused the unscoped name `pqax` as too similar to the existing packages `rax` and `sax`, so release 0.1.0 reached NuGet and PyPI and not npm. Nothing else changes: the four NuGet packages and the PyPI package get the same number, so that the six keep one version as section 7.1 of the contracts says.

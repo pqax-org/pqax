@@ -14,7 +14,7 @@ The package needs only the standard library. to_dataframe uses pandas or polars 
 """
 from __future__ import annotations
 
-__version__ = "0.1.1"
+__version__ = "0.1.2"
 
 from ._errors import (
     ContainerError, FormatError, JsonError, ManifestMissingError, PartMissingError, PqaxError, UnknownVersionError,

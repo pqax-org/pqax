@@ -4,7 +4,7 @@
 
 | | |
 |---|---|
-| Version | 0.1.1 |
+| Version | 0.1.2 |
 | Format | Reads every version 0.x. Writes version 0.1. |
 | Python | 3.10 or later |
 | Dependencies | None. `to_dataframe` uses pandas, or polars 1.0 or later, when one is installed. |

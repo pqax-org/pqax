@@ -2,7 +2,7 @@
 
 Reads and validates PQAX files, in a browser and in Node. A PQAX file holds the footprint of a set of Parquet tables: a zip archive of JSON tables, as the [serialization](https://github.com/pqax-org/pqax/blob/main/docs/serialization.md) defines it. The package has no dependency.
 
-Version 0.1.1. It reads format version 0.x, whatever the second number. On npm it is `@pqax/pqax`: the registry refuses the unscoped name `pqax` as too similar to existing packages.
+Version 0.1.2. It reads format version 0.x, whatever the second number. On npm it is `@pqax/pqax`: the registry refuses the unscoped name `pqax` as too similar to existing packages.
 
 ## What it does
 
