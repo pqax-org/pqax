@@ -45,6 +45,7 @@ Each item has a stage: **Before publishing** means before the first NuGet, npm, 
 | Read log compaction files and v2 checkpoint sidecars instead of counting them | They are counted and reported, not used | Later |
 | Items by id as well as by name on OneLake, and a check of the API version `2018-11-09` against the current one | OneLake accepts both forms but not a mix | Later |
 | Depth per table from a budget, as the open question 1 of the object model asks | One depth for the whole collection today | Before 1.0 |
+| Run the collector on a real workspace to check the listing of the table folders and the fields of format 0.2 | The unreferenced files and the removal times were tested only on the fixture and on synthetic logs | Before 1.0 |
 
 ## 4. Conformance kit and format
 
@@ -55,6 +56,7 @@ Each item has a stage: **Before publishing** means before the first NuGet, npm, 
 | ~~A field reference of the probe dump in the kit README~~ Done on 20 October 2026: the section The probe dump of [conformance/README.md](../conformance/README.md) | The collector tests use it as their oracle and inferred its meaning | Before publishing |
 | `make_kit.py` generates the samples with the Python `Builder` or with the collector, instead of the prototype builder | The exception noted in the kit README | Before 1.0 |
 | A code for a string that is not valid Unicode, and codes for the totals that have none, or a decision that they stay without | Gaps noted in `rules.md` | Before 1.0 |
+| ~~Unreferenced files and removal times of the non-live files in the format~~ Done on 21 October 2026, in format 0.2: four fields on `Table` and `LastModifiedAt` on `Partition`, in draft 0.5 of the [object model](object-model.md) | A prototype of storage views on a real lakehouse showed that the non-live files are only an upper bound of the space that a table wastes | Before 1.0 |
 | Define the derived measures in the object model: compression ratio, dictionary fallback, small files, and the others of section 9 of the model | Defined once, computed the same everywhere | Before 1.0 |
 | Decide the open questions of the object model that touch the file: file paths left out, the depth budget, the commit limit, the limit on issues | Sizes and completeness of real footprints | Before 1.0 |
 | The `Pages` depth, and views, when a tool asks | Doors kept open by section 9 of the serialization | Later |

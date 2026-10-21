@@ -2,6 +2,48 @@
 
 The packages of a release share its version number, as section 7.1 of the [contracts](docs/contracts.md) says.
 
+## 0.2.0 - unreleased
+
+Format version 0.2 adds five optional fields. On `tables`, `unreferencedFileCount` and `unreferencedFileSize` count the data files in storage that the version described does not reference, and `nonLiveOldestRemovedAt` and `nonLiveNewestRemovedAt` say when its non-live files were removed. On `partitions`, `lastModifiedAt` says when the files of a partition last changed. Compared with `nonLiveFileCount` and `nonLiveFileSize`, they let a reader tell the non-live files still in storage from those that a VACUUM already deleted, and see how old the tombstones are against the retention of the table.
+
+### Format
+
+| Piece | Version | Content |
+|---|---|---|
+| [Object model](docs/object-model.md) | Draft 0.5 | The five fields, how the unreferenced files are found, and the one exception to the rule on absent totals |
+| [Serialization](docs/serialization.md) | Draft 0.3 | The five fields in `tables` and `partitions`. The rules for versions do not change. |
+| [Conformance kit](conformance/README.md) | Format 0.2 | The schema has the five fields. The samples are format 0.2, plus `format-0.1.pqax`, a sample of format 0.1. The fixture has a data file that no commit references, and the probe dump has the new fields, added by hand. |
+
+A reader of format 0.1 ignores the new fields. A reader of format 0.2 opens a file of format 0.1.
+
+### .NET
+
+| Package | What changes | Format |
+|---|---|---|
+| `Pqax` | `TableRow` and `PartitionRow` have the five fields. `FootprintBuilder`, also through `From`, writes format 0.2. | Reads 0.1 and 0.2, writes 0.2 |
+| `Pqax.Cli` | No change of its own | Reads 0.1 and 0.2, writes 0.2 |
+| `Pqax.Collector` | Lists the folder of each table at every collection level to find the unreferenced files, and computes the removal times from the `remove` actions and `lastModifiedAt` of each partition. A listing that fails becomes the issue `AccessDenied` or `DataFilesNotListed`. | Writes 0.2 |
+| `Pqax.Collector.ParquetNet` | No change | Reads and writes no PQAX file |
+
+### npm
+
+`@pqax/pqax` has the five fields in its types. Reads 0.1 and 0.2.
+
+### PyPI
+
+`pqax` has the five fields, and `Builder`, also through `from_document`, writes format 0.2. Reads 0.1 and 0.2, writes 0.2.
+
+### Release text
+
+Format version 0.2 adds five optional fields: the files in storage that a table no longer references, the removal times of its non-live files, and when each partition last changed. The packages read files of format 0.1 and 0.2 and write format 0.2. `CHANGELOG.md` lists what changes in each package.
+
+```
+dotnet add package Pqax
+dotnet tool install -g Pqax.Cli
+npm install @pqax/pqax
+pip install pqax
+```
+
 ## 0.1.2 - 2026-10-21
 
 No change in the packages. npm validates a new trusted publisher with the first publish that goes through it, within 48 hours of its creation, so this release publishes `@pqax/pqax` through the trusted publisher of the repository; NuGet and PyPI get the same number, so that the six packages keep one version. The publish workflow loses its token path.

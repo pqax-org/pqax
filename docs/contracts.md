@@ -19,6 +19,17 @@ What the first version delivers:
 
 Not in 0.1: the view model and the derived measures, Iceberg tables, obfuscation, collection level 3 and 4. The packages are published from release 0.1.0, as section 7.1 says.
 
+### 1.1 Version 0.2
+
+Version 0.2, started on 21 October 2026, adds five optional fields to the format and changes nothing else:
+
+| Piece | Content |
+|---|---|
+| Format | Draft 0.5 of the object model and draft 0.3 of the serialization: `unreferencedFileCount`, `unreferencedFileSize`, `nonLiveOldestRemovedAt`, and `nonLiveNewestRemovedAt` on `tables`, and `lastModifiedAt` on `partitions` |
+| Conformance kit | The schema has the five fields. The valid samples are format 0.2, and `format-0.1.pqax` keeps a sample of format 0.1. The fixture has a data file that no commit references. |
+| C#, TypeScript, Python | The rows and the types have the five fields. The readers open files of format 0.1 and 0.2, and the C# and Python writers write format 0.2. |
+| C# `Pqax.Collector` | Lists the folder of each table to find the unreferenced files, and computes the removal times of the non-live files and the last modification of each partition |
+
 ## 2. Layout
 
 ```
@@ -142,7 +153,7 @@ For each sample in `conformance/samples`, `conformance/expected/<sample>.json` h
 
 ### 4.3 C# library `Pqax`
 
-Namespace `Pqax`. One class per table of the file, named after its object with the suffix `Row`: `SourceRow`, `TableRow`, `ColumnRow`, `PartitionSpecRow`, `PartitionFieldRow`, `SortOrderRow`, `SortFieldRow`, `PhysicalSchemaRow`, `PhysicalColumnRow`, `WriterRow`, `OperationRow`, `IssueRow`, `ModelBindingRow`, `TableBindingRow`, `ColumnBindingRow`, `PartitionRow`, `FileRow`, `RowGroupRow`, `ColumnChunkRow`, `DeleteFileRow`, `CommitRow`. A row has one property per field of the object model, named as in the file with a capital first letter: `long?` for integers, `string?`, `bool?`, `DateTimeOffset?` for timestamps, `IReadOnlyList<string>?` for lists, `IReadOnlyDictionary<string, string>?` for maps, `Distribution?`, `DeltaDetails?`, `IcebergDetails?`, and `long?` for a reference, with the name of the reference field: `ColumnRow.Table`, `ColumnChunkRow.RowGroup`. An `id` is `long`.
+Namespace `Pqax`. One class per table of the file, named after its object with the suffix `Row`: `SourceRow`, `TableRow`, `ColumnRow`, `PartitionSpecRow`, `PartitionFieldRow`, `SortOrderRow`, `SortFieldRow`, `PhysicalSchemaRow`, `PhysicalColumnRow`, `WriterRow`, `OperationRow`, `IssueRow`, `ModelBindingRow`, `TableBindingRow`, `ColumnBindingRow`, `PartitionRow`, `FileRow`, `RowGroupRow`, `ColumnChunkRow`, `DeleteFileRow`, `CommitRow`. A row has one property per field of the object model, named as in the file with a capital first letter: `long?` for integers, `string?`, `bool?`, `DateTimeOffset?` for timestamps, `IReadOnlyList<string>?` for lists, `IReadOnlyDictionary<string, string>?` for maps, `Distribution?`, `DeltaDetails?`, `IcebergDetails?`, and `long?` for a reference, with the name of the reference field: `ColumnRow.Table`, `ColumnChunkRow.RowGroup`. An `id` is `long`. The fields of format 0.2 follow the same rule: `TableRow` has `UnreferencedFileCount`, `UnreferencedFileSize`, `NonLiveOldestRemovedAt`, and `NonLiveNewestRemovedAt`, and `PartitionRow` has `LastModifiedAt`.
 
 ```csharp
 public sealed class PqaxDocument : IDisposable
@@ -266,6 +277,8 @@ public sealed class PqaxCollector
 
 The collector parses Parquet footers itself, from the Thrift compact protocol and `parquet.thrift`, and reads a footer with one request in the common case: the tail of the file first, then more when the footer is longer. Without an `ICheckpointReader`, a table whose log needs a checkpoint gets an issue, and its summary holds what the JSON commits say. `Pqax.Collector.ParquetNet` provides the checkpoint reader with Parquet.Net, with the definition-level handling that the probe needed. Data values are never kept unless the options ask for them, and footer key-value metadata is kept only for keys on the allow-list. A failure on one table or file becomes an issue, and the collection goes on.
 
+At every collection level, the collector lists the folder of each table, at any depth, to count the unreferenced files of format 0.2: one request for each folder, or the pages of one recursive listing where the storage has one. A listing that fails becomes an issue, `AccessDenied` for a 403 and `DataFilesNotListed` otherwise, and the two unreferenced fields of the table are then absent.
+
 ## 5. Tests
 
 The tests are written from the kit and from section 4, not from the code.
@@ -273,7 +286,7 @@ The tests are written from the kit and from section 4, not from the code.
 | Suite | Tool | What it checks |
 |---|---|---|
 | `tests/dotnet/Pqax.Tests` | xunit | Every sample of the kit opens and gives the expected results. Every invalid sample is rejected with at least the expected codes. A footprint built with `FootprintBuilder` is written, read back, and equal, and its file passes the validator. Unknown fields survive `From` and `Write`. A table of 600,000 rows is split in parts of 250,000 and read back whole. An embedded footprint opens from a stored and from a deflated part. |
-| `tests/dotnet/Pqax.Collector.Tests` | xunit | The fixture lakehouse and warehouse are collected from `LocalStorage` at levels 1 and 2, and the result equals the probe dump of the same fixture in files, rows, row groups, column chunks, and sizes. The footer parser agrees with the dump on every footer. A missing checkpoint reader produces an issue, not an exception. Locations, every footer failure with its code and its effect on the totals, and the commit limit on synthetic logs. |
+| `tests/dotnet/Pqax.Collector.Tests` | xunit | The fixture lakehouse and warehouse are collected from `LocalStorage` at levels 1 and 2, and the result equals the probe dump of the same fixture in files, rows, row groups, column chunks, and sizes. The footer parser agrees with the dump on every footer. A missing checkpoint reader produces an issue, not an exception. Locations, every footer failure with its code and its effect on the totals, and the commit limit on synthetic logs. The unreferenced files and the removal times of the non-live files on the fixture, and distinct oldest and newest removal times on synthetic logs. |
 | `tests/dotnet/Pqax.Cli.Tests` | xunit | `check` returns 0 on a valid sample and 1 on an invalid one, with the codes in the output. `info` prints the parts and the rows. |
 | `tests/typescript` | vitest | The same conformance checks as the C# reader and validator, from `Uint8Array`, `Blob`, and a `ByteSource` that counts its reads: opening a sample must not read a detail part. The suite runs in Node and, through Playwright, in Chromium, Firefox, and WebKit. |
 | `tests/python` | pytest | The same conformance checks as the C# reader and validator. The command line returns the right exit codes. |

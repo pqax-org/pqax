@@ -1,12 +1,14 @@
 # PQAX serialization
 
-Draft 0.2, 6 October 2026.
+Draft 0.3, 21 October 2026.
 
 This document defines how a PQAX file is written. The [object model](object-model.md) defines the content: the objects and their fields. This document defines the container, the JSON, how the objects are laid out, and what a reader and a writer do.
 
 Everything here is **Proposed** unless it is marked **Decided**. The decisions it builds on are in [decisions.md](decisions.md).
 
 Draft 0.2 records five decisions that the maintainers made on 6 October 2026: names are in lower camel case, the part embedded in a VPAX is named `Footprint.pqax`, the first version has no views, values that repeat are written in full with no dictionary, and a detail part holds at most 250,000 rows.
+
+Draft 0.3 describes format version 0.2. It adds the five optional fields of draft 0.5 of the object model: `unreferencedFileCount`, `unreferencedFileSize`, `nonLiveOldestRemovedAt`, and `nonLiveNewestRemovedAt` on `tables`, and `lastModifiedAt` on `partitions`. The change follows rule 3 of section 9, so a reader of format 0.1 ignores them, and a reader of format 0.2 opens a file of format 0.1.
 
 The [prototype](../research/prototype/README.md) writes, reads, and checks files in this format. It includes a [sample file](../research/prototype/sample.pqax), and section 13 has its measurements.
 
@@ -168,15 +170,15 @@ Identifiers are explicit, and not positions in the arrays, so that a tool can fi
 
 ### 7.1 Manifest
 
-`manifest.json` says what the file is and lists its parts. This is the manifest of the sample file:
+`manifest.json` says what the file is and lists its parts. This is the manifest of `sample.pqax` in the [conformance kit](../conformance/README.md), without the members of `collection` that record the time and the requests of the run:
 
 ```json
 {
   "format": "pqax",
-  "formatVersion": "0.1",
+  "formatVersion": "0.2",
   "collection": {
-    "collectorApp": "pqax-prototype",
-    "collectorAppVersion": "0.1",
+    "collectorApp": "pqax-conformance-kit",
+    "collectorAppVersion": "0.2",
     "level": 2,
     "includesDataValues": false,
     "includesPartitionValues": false
@@ -303,7 +305,7 @@ The VPAX obfuscator deletes every part except `DaxModel.json`. An obfuscated VPA
 
 ## 13. Measurements
 
-The numbers come from the [prototype](../research/prototype/README.md), run on 5 and 6 October 2026 with Python 3.14 and Node 24.
+The numbers come from the [prototype](../research/prototype/README.md), run on 5 and 6 October 2026 with Python 3.14 and Node 24, on files of format 0.1.
 
 The input is what a probe read from a real Fabric lakehouse and warehouse: 78 tables, 813 columns, 5,236 files, 13.7 GB, and 929 million rows. The probe read the footer of 399 files. The estimates give the other files a copy of a footer that was read, with its numbers changed at random.
 

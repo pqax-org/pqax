@@ -41,3 +41,22 @@ Reviewed on 7 October 2026 and kept as implemented. The later changes that some 
 6. One exception type, `PqaxFormatException`, with the rule codes of the conformance kit.
 7. Unknown fields, tables, and manifest members survive a read and a rewrite with `FootprintBuilder.From`. Unknown members of the part descriptors do not; a rewrite names the parts after their tables and writes `formatVersion` 0.1.
 8. Not in the package: obfuscation, the embedding of a footprint into a VPAX package, the derived measures of the view model, anything about Parquet or Delta, and the CRC check of the zip entries.
+
+Point 7 describes 0.1. From 0.2.0, a rewrite writes `formatVersion` 0.2.
+
+## Proposed for format 0.2
+
+Proposed on 21 October 2026, with the work on format 0.2, for the maintainer to decide. None of them is decided yet. The fields are defined in sections 6.4 and 6.6 of the [object model](object-model.md).
+
+| Date | Proposal | Status |
+|---|---|---|
+| 2026-10-21 | Format 0.2 adds five optional fields at collection level 1: `UnreferencedFileCount`, `UnreferencedFileSize`, `NonLiveOldestRemovedAt`, and `NonLiveNewestRemovedAt` on `Table`, and `LastModifiedAt` on `Partition`. No new table, no new required field, and no new validation code. | Proposed |
+| 2026-10-21 | A data file, for the unreferenced files, is a file whose name ends with `.parquet`, in upper or lower case, outside the folders `_delta_log` and `_change_data`. Its path relative to the table location is compared with the decoded path of each live file, and the comparison is case-sensitive. | Proposed |
+| 2026-10-21 | A file whose size the listing does not give counts in `UnreferencedFileCount` and not in `UnreferencedFileSize`. This is the one exception to rule 4 of section 4.2 of the object model. | Proposed |
+| 2026-10-21 | The removal times cover the same tombstones that `NonLiveFileCount` counts. The latest remove action of a path wins, and when it has no timestamp, the timestamp of an earlier remove of the same path is kept. The oldest and the newest are taken over the tombstones that have a timestamp, so one without a timestamp does not make them absent; a strict reading of rule 4 of section 4.2 would. | Proposed |
+| 2026-10-21 | The collector lists the folder of each table at every collection level, with no option to turn it off. A listing that fails becomes an issue, `AccessDenied` for a 403 and the new code `DataFilesNotListed` otherwise, and the two unreferenced fields are then absent. | Proposed |
+| 2026-10-21 | The valid samples of the kit become format 0.2, and a new sample, `format-0.1.pqax`, keeps a file of format 0.1. The collector tests compare the collector with the samples field by field, so the samples must carry the new fields. | Proposed |
+| 2026-10-21 | The probe dump of the kit is extended by hand with four fields, because the probe no longer runs: `unreferencedFileCount`, `unreferencedFileSize`, `delta.removedOldestTimestamp`, and `delta.removedNewestTimestamp`. | Proposed |
+| 2026-10-21 | The tombstone already in the checkpoint of the fixture gives equal oldest and newest removal times. The synthetic logs of the collector tests cover distinct ones, so the fixture keeps its Delta logs. | Proposed |
+| 2026-10-21 | `pqax info` does not change. | Proposed |
+| 2026-10-21 | A rewrite with `FootprintBuilder.From` in C# or `Builder.from_document` in Python writes format 0.2. | Proposed |
