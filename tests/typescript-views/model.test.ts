@@ -174,8 +174,9 @@ describe("the samples of the kit", () => {
     const { doc, model } = await modelOf(file);
     const c = model.collection;
     expect(c.formatVersion).toBe(expected.formatVersion);
-    // The kit names its collector after the format version it writes; format-0.1.pqax keeps the 0.1 bytes.
-    expect(c.collector).toBe(`pqax-conformance-kit ${expected.formatVersion}`);
+    // The kit names its collector after its own version, 0.2, whatever format version a sample declares;
+    // format-0.1.pqax keeps the bytes of the 0.1 kit.
+    expect(c.collector).toBe(`pqax-conformance-kit ${file === "format-0.1.pqax" ? "0.1" : "0.2"}`);
     expect(c.library).toBeNull();
     expect(c.level).toBe(2);
     expect(c.startedAt).toBeNull();
