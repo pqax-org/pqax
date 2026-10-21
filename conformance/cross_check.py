@@ -572,7 +572,9 @@ class Node:
             if not build:
                 raise Skip("dist/ is missing or older than src/; run npm run build in the package, or leave out "
                            "--no-build")
-            if not npm or not (TYPESCRIPT_PACKAGE / "node_modules").is_dir():
+            # npm ci at the root of the repository installs the workspaces there, and in the package otherwise.
+            installed = (ROOT / "node_modules").is_dir() or (TYPESCRIPT_PACKAGE / "node_modules").is_dir()
+            if not npm or not installed:
                 raise Skip("dist/ is missing or older than src/, and npm or node_modules is missing to build it")
             completed = run([npm, "run", "build"], cwd=TYPESCRIPT_PACKAGE)
             if completed.returncode != 0 or not entry.is_file():

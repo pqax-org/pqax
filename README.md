@@ -6,7 +6,7 @@ This repository holds the format, its conformance kit, and the reference impleme
 
 ## Packages
 
-The packages are published from GitHub releases, as [RELEASING.md](RELEASING.md) describes. All six are published from release 0.1.0 on, the npm package from 0.1.1, with one version number, as section 7.1 of the [contracts](docs/contracts.md) says. The [changelog](CHANGELOG.md) says what each release holds.
+The packages are published from GitHub releases, as [RELEASING.md](RELEASING.md) describes. The six first ones are published from release 0.1.0 on, `@pqax/pqax` from 0.1.1, and `@pqax/views` from 0.2.0, with one version number, as section 7.1 of the [contracts](docs/contracts.md) says. The [changelog](CHANGELOG.md) says what each release holds.
 
 | Package | Registry | Install | README |
 |---|---|---|---|
@@ -15,6 +15,7 @@ The packages are published from GitHub releases, as [RELEASING.md](RELEASING.md)
 | `Pqax.Collector` | NuGet | `dotnet add package Pqax.Collector` | [src/dotnet/Pqax.Collector](src/dotnet/Pqax.Collector/README.md) |
 | `Pqax.Collector.ParquetNet` | NuGet | `dotnet add package Pqax.Collector.ParquetNet` | [src/dotnet/Pqax.Collector.ParquetNet](src/dotnet/Pqax.Collector.ParquetNet/README.md) |
 | `@pqax/pqax` | npm | `npm install @pqax/pqax` | [src/typescript/pqax](src/typescript/pqax/README.md) |
+| `@pqax/views` | npm | `npm install @pqax/views` | [src/typescript/views](src/typescript/views/README.md) |
 | `pqax` | PyPI | `pip install pqax` | [src/python](src/python/README.md) |
 
 ## Contents
@@ -31,7 +32,7 @@ The packages are published from GitHub releases, as [RELEASING.md](RELEASING.md)
 | [src/dotnet/Pqax.Cli](src/dotnet/Pqax.Cli/README.md) | `pqax check`, `pqax info`, and `pqax collect` |
 | [src/dotnet/Pqax.Collector](src/dotnet/Pqax.Collector/README.md) | C#: collects Delta tables from a folder or from OneLake, with its own Parquet footer parser |
 | [src/typescript/pqax](src/typescript/pqax/README.md) | TypeScript: reads and validates, in browsers and in Node, no dependency |
-| [src/typescript/views](src/typescript/views/README.md) | TypeScript: the view model and three storage views of a footprint, in plain DOM and SVG. Private, not published. The page at [pqax.org/tools](https://pqax.org/tools/) uses it. |
+| [src/typescript/views](src/typescript/views/README.md) | TypeScript: the view model and three storage views of a footprint, in plain DOM and SVG. The page at [pqax.org/tools](https://pqax.org/tools/) uses it. |
 | [src/python](src/python/README.md) | Python: reads, validates, and writes, with a command line, no dependency |
 | [research/](research/) | The prototype and the encoding experiment that the serialization document cites |
 
@@ -43,8 +44,7 @@ Requirements: the .NET 10 SDK, Node 20 or later, Python 3.10 or later.
 dotnet test Pqax.slnx
 pip install -e src/python pytest jsonschema
 python -m pytest tests/python -q
-cd src/typescript/pqax && npm ci && npm test && npm run build && cd ../../..
-cd src/typescript/views && npm ci && npm run typecheck && npm test && cd ../../..
+npm ci && npm run build && npm run typecheck && npm test
 python conformance/cross_check.py
 ```
 

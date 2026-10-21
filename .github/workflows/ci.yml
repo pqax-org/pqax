@@ -28,18 +28,13 @@ jobs:
         run: |
           pip install -e "src/python[dev]"
           python -m pytest tests/python -q
-      - name: TypeScript package and tests
-        working-directory: src/typescript/pqax
+      # npm ci at the root installs the two workspaces and links the views to the reader.
+      - name: TypeScript packages and tests
         run: |
           npm ci
-          npm test
           npm run build
-      - name: TypeScript storage views and tests
-        working-directory: src/typescript/views
-        run: |
-          npm ci
-          npm run typecheck
-          npm test
+          npm run typecheck --workspace src/typescript/views
+          npm test --workspaces
       - name: Cross-implementation check
         run: python conformance/cross_check.py
 
@@ -72,14 +67,8 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: 24
-      - name: TypeScript tests in Chromium, Firefox, and WebKit
-        working-directory: src/typescript/pqax
+      - name: TypeScript tests of both packages in Chromium, Firefox, and WebKit
         run: |
           npm ci
           npx playwright install --with-deps chromium firefox webkit
-          npm run test:browsers
-      - name: Storage views tests in Chromium, Firefox, and WebKit
-        working-directory: src/typescript/views
-        run: |
-          npm ci
           npm run test:browsers

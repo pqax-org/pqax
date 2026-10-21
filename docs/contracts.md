@@ -37,6 +37,7 @@ README.md
 CHANGELOG.md                      what each release holds
 RELEASING.md                      how a release is published
 LICENSE                           MIT
+package.json                      the npm workspaces of the two TypeScript packages
 Pqax.slnx                         every .NET project
 docs/
 ├── object-model.md               the logical content of a footprint
@@ -58,7 +59,7 @@ src/dotnet/Pqax.Cli               the command line
 src/dotnet/Pqax.Collector         the collector
 src/dotnet/Pqax.Collector.ParquetNet
 src/typescript/pqax               the TypeScript package
-src/typescript/views              the storage views: a view model and three views, private
+src/typescript/views              the storage views: a view model and three views
 src/python/pqax                   the Python package
 tests/dotnet/Pqax.Tests           xunit
 tests/dotnet/Pqax.Collector.Tests
@@ -306,7 +307,7 @@ The item-by-item list is the [backlog](backlog.md). The lines below are the dire
 
 - **Real tables.** Run the collector against more real workspaces and against tables written by other engines, compare the results with what a probe read, and fix the differences.
 - **Format 1.0.** Freeze the format when the collector has run on tables written by at least three engines, and when the JSON Schema and the kit are complete. Until then, every change to the format bumps the kit and the three packages together.
-- **Publishing.** The six packages are published together from a GitHub release, as section 7.1 says, after the public API is reviewed once more against the needs of DAX Studio, Bravo, and Tabular Editor. A package states which format versions it reads and writes.
+- **Publishing.** The seven packages are published together from a GitHub release, as section 7.1 says, after the public API is reviewed once more against the needs of DAX Studio, Bravo, and Tabular Editor. A package states which format versions it reads and writes.
 - **Derived measures and the view model.** Define them in the object model, then implement them in TypeScript for the application and once more in C# only if a tool asks.
 - **VPAX integration.** The VPAX library learns to embed `Footprint.pqax` and the obfuscator learns to obfuscate it, with `FootprintBuilder.From` as the base.
 - **Python writer.** Offer or contribute a PQAX export to semantic-link-labs once the format is 1.0.
@@ -318,10 +319,10 @@ Risks to watch: the format changes before 1.0 and the three packages drift, whic
 
 This is the policy of version 0.1. It is not a decision of the maintainers, and the decision log of section 8 does not list it.
 
-1. The six packages share one version number: `Pqax`, `Pqax.Cli`, `Pqax.Collector`, and `Pqax.Collector.ParquetNet` on NuGet, `@pqax/pqax` on npm, and `pqax` on PyPI. Packages with the same number read and write the same format.
+1. The seven packages share one version number: `Pqax`, `Pqax.Cli`, `Pqax.Collector`, and `Pqax.Collector.ParquetNet` on NuGet, `@pqax/pqax` and `@pqax/views` on npm, and `pqax` on PyPI. `@pqax/views` joins from release 0.2.0, and depends on `@pqax/pqax` of its own release. Packages with the same number read and write the same format.
 2. The major and minor numbers are those of the format version that the packages write, so format 0.1 gives packages 0.1.x. The patch number counts the releases that do not change the format.
 3. A package states in its README and in its metadata which format versions it reads, every version with the same major number up to its own, and which it writes, its own. A reader still opens a file of a later version with the same major number and reads what it knows, as section 9 of the [serialization](serialization.md) requires.
-4. A release is a GitHub release tagged `v<version>`, such as `v0.1.0`, and the packages are published from it. The publish workflow checks that the tag equals the version in `src/dotnet/Directory.Build.props`, `src/typescript/pqax/package.json`, `src/python/pyproject.toml`, and `src/python/pqax/__init__.py`, so that the three registries get the same version.
+4. A release is a GitHub release tagged `v<version>`, such as `v0.1.0`, and the packages are published from it. The publish workflow checks that the tag equals the version in `src/dotnet/Directory.Build.props`, `src/typescript/pqax/package.json`, `src/typescript/views/package.json`, `src/python/pyproject.toml`, and `src/python/pqax/__init__.py`, and that the views depend on `^<version>` of the reader, so that the three registries get the same version.
 5. The format reaches 1.0 only as the [backlog](backlog.md) says, and the packages then become 1.0.0 together.
 
 ## 8. Decision log

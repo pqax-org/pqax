@@ -2,20 +2,29 @@
 
 Storage views of a PQAX footprint, in a browser. A view model turns the tables of a footprint into plain data, and three views draw it in plain DOM and SVG: a storage stack per table, a treemap of the columns, and a strip of the file sizes. The package has one runtime dependency, the reader [`@pqax/pqax`](../pqax/README.md), and no framework.
 
-Version 0.0.0, private, not published. The name `@pqax/views` is provisional. The package joins the versioning of section 7.1 of the [contracts](../../../docs/contracts.md) when the maintainer decides its release. The page at [pqax.org/tools](https://pqax.org/tools/) uses it.
+Version 0.2.0, on npm as `@pqax/views` from this version. It shares the version number of the other packages, as section 7.1 of the [contracts](../../../docs/contracts.md) says, and depends on `@pqax/pqax` of the same release. It reads files of format 0.1 and 0.2, and writes none. The page at [pqax.org/tools](https://pqax.org/tools/) uses it.
+
+## Install
+
+```bash
+npm install @pqax/views
+```
+
+npm installs the reader with it.
 
 ## What it does
 
 | Export | What it does |
 |---|---|
-| `readFootprint(doc, options?)` | Reads what the model needs from an open document: the summary, and the `files` detail table when the file has it |
+| `readFootprint(doc, options?)` | Reads what the model needs from an open document: the summary, and the `files` and `partitions` detail tables when the file has them |
 | `buildModel(data, options?)` | The model of a footprint: the collection line, the sources, the tables, the columns, and the derived values |
 | `renderTableStack(container, model, options?)` | The storage stack of each table, sorted by waste, in bytes or in shares |
 | `renderColumnTreemap(container, model, options?)` | Sources, tables, and columns sized by compressed bytes and colored by the share of nulls, with drill-down |
 | `renderFileStrip(container, model, options?)` | The distribution of the file sizes of each table on a log scale, with the V-Order share |
 | `columnTree(model)`, `findPath(tree, key)` | The tree of the treemap, and the path to a node |
 | `sortTables(tables, order)` | The tables by waste, by total, or by label |
-| `deletedEstimate`, `stackOf`, `quartiles`, `smallShareAtLeast`, `commitsPerDay`, `ratio` | The derived values, one function each |
+| `deletedEstimate`, `stackOf`, `quartiles`, `smallShareAtLeast`, `commitsPerDay`, `daysBetween`, `ratio` | The derived values, one function each |
+| `STACK_COMPONENTS`, `WASTE_COMPONENTS`, `OVERHEAD_COMPONENTS` | The components of a stack, and which make the waste and the overhead |
 | `squarify(items, rect)` | The squarified treemap layout |
 | `nullShareBin(share)` | The color class of a share of nulls |
 | `formatBytes`, `formatCount`, `formatShare`, `formatNumber`, `formatTime` | How the views write numbers |
@@ -71,11 +80,11 @@ The options that the three share:
 
 ### Storage stack
 
-One bar per table, sorted by waste, the largest first. A bar has five segments: the live data, the non-live files, the deleted rows, the metadata and the footers together, and the stale columns. A component that the file does not have gets a dashed mark after the bar, so that a missing figure does not read as zero. A segment narrower than 3 pixels is drawn without the gap that separates the others. Below 480 pixels of width, the label goes above the bar.
+One bar per table, sorted by waste, the largest first. A bar has the live data, then the four segments of the waste: the non-live files, the unreferenced files, the deleted rows, and the stale columns. After a wider gap comes the overhead: the metadata and the footers together, which are not waste. A component that the file does not have gets a dashed mark after the bar, so that a missing figure does not read as zero: a file of format 0.1 has no unreferenced files. The tooltip of a table adds the files that the log and the listing count, when the non-live files were removed, the commits per day with the days since the last commit, the OPTIMIZE and VACUUM operations, and the partitions with the range of their last change. A segment narrower than 3 pixels is drawn without the gap that separates the others. Below 480 pixels of width, the label goes above the bar.
 
 | Option | Default | What it does |
 |---|---|---|
-| `mode` | `bytes` | `bytes`: the bars to the scale of the largest table. `shares`: every bar fills the width, split by the shares of its own total. A toggle switches it. |
+| `mode` | `bytes` | `bytes`: the bars to the scale of the largest table. `shares`: the live data and the waste of every table fill the same width, split by their shares of the data of the table, and the overhead goes beyond, since it is outside that denominator. A toggle switches it. |
 | `order` | `waste` | `waste`, `total`, or `label` |
 | `showToggle` | `true` | Whether to draw the bytes and shares toggle |
 | `maxTables` | all | The most tables to draw, the first in the order |
@@ -87,7 +96,7 @@ The children of one node at a time: the sources at first, then the tables of a s
 
 | Option | Default | What it does |
 |---|---|---|
-| `height` | 420 | The height of the plot, in pixels |
+| `height` | 420 | The height of the plot, in pixels. Without it, below 480 pixels of width, the plot is as tall as it is wide, at most 60% of the height of the window. |
 | `focus` | `root` | The key of the node whose children are shown |
 | `absentShare` | 0.01 | The share of its parent that each tile without totals takes |
 | `onFocusChange` | none | Called with the key of the new node when the user opens or leaves one |
@@ -96,7 +105,7 @@ The classes of the null share: 0, up to 5%, up to 20%, up to 50%, up to 80%, and
 
 ### File strip
 
-One row per table on a log scale shared by all rows: a line from the smallest to the largest file, a box from the first to the third quartile, and a mark at the median. When the footprint keeps the files of the table, a dot is a file and the figures come from the files; otherwise they come from the `fileSizes` distribution of the table. On the right, the share of V-Ordered files. A dashed line marks the small file threshold of the model when it falls inside the scale. The ticks are at powers of 1024, with their multiples by 10 and 100 when the range is narrow.
+One row per table on a log scale shared by all rows: a line from the smallest to the largest file, a box from the first to the third quartile, and a mark at the median. When the footprint keeps the files of the table, a dot is a file and the figures come from the files; otherwise they come from the `fileSizes` distribution of the table. On the right, the share of V-Ordered files. Dashed lines mark the two small file thresholds of the model, 8 MiB and 128 MiB by default, when they fall inside the scale; the tooltip gives the files below each. The ticks are at powers of 1024, with their multiples by 10 and 100 when the range is narrow.
 
 | Option | Default | What it does |
 |---|---|---|
@@ -104,17 +113,17 @@ One row per table on a log scale shared by all rows: a line from the smallest to
 | `showFiles` | `true` | Whether to draw a dot for each file |
 | `maxDots` | 400 | The most dots for one table; beyond it, an even sample of the sorted sizes |
 | `rowHeight` | 28 | The height of a row, in pixels |
-| `showThreshold` | `true` | Whether to draw the small file threshold |
+| `showThreshold` | `true` | Whether to draw the two small file thresholds |
 
 ## The view model
 
-`buildModel` is pure: it reads only its input, which `readFootprint` returns or a caller builds by hand. It tolerates a field that the file leaves out, a table that the file does not have, a value of the wrong type, duplicated ids, and a file of format 0.1. A value that cannot be computed is `null`; a stack component whose field is missing is marked `absent` and counts as 0. `readFootprint` reads the `files` table only when the manifest lists rows for it, and a `files` table that cannot be read becomes a warning in `model.warnings`, not an error.
+`buildModel` is pure: it reads only its input, which `readFootprint` returns or a caller builds by hand. It tolerates a field that the file leaves out, a table that the file does not have, a value of the wrong type, duplicated ids, and a file of format 0.1. A value that cannot be computed is `null`; a stack component whose field is missing is marked `absent` and counts as 0. `readFootprint` reads the `files` and `partitions` tables only when the manifest lists rows for them, and a detail table that cannot be read becomes a warning in `model.warnings`, not an error. `buildModel` takes two options, `smallFileSize`, 128 MiB by default, and `tinyFileSize`, 8 MiB by default.
 
 | Part of the model | Content |
 |---|---|
 | `collection` | Format version, collector, library, level, times, requests, bytes read, the embedded part, and totals: sources, tables, columns, files, data bytes, rows, footprint, waste, and the tables at each detail depth |
 | `sources` | One per source, plus `No source` for the tables that refer to none |
-| `tables` | One per table, with its stack, its file sizes, its maintenance, and its measures |
+| `tables` | One per table, with its stack, its file sizes, its maintenance, its partitions, its measures, and the fields of format 0.2 when the file has them |
 | `columns` | One per column, with its totals and its measures |
 | `hasFiles`, `warnings` | Whether the files were read, and what went wrong |
 
@@ -125,14 +134,23 @@ Keys: a table is `t:<id>`, a column `c:<id>`, a source `s:<id>`. A row without a
 | Value | Formula | Needs | Null or absent when |
 |---|---|---|---|
 | Deleted rows | `fileSize * deletedRowCount / rowCount`. With the files table, the sum of the same over the files of the table. 0 when `deletedRowCount` is 0. | `tables.fileSize`, `rowCount`, `deletedRowCount`; or `files.fileSize`, `rowCount`, `deletedRowCount` | A field is missing or `rowCount` is 0. The files are used only when every file of the table gives an estimate. |
-| Live data | `max(0, fileSize - deleted - footerSize - staleColumnSize)`, a missing term counting as 0 | `fileSize` | `fileSize` is missing |
-| Stack total | live + `nonLiveFileSize` + deleted + `metadataSize` + `footerSize` + `staleColumnSize`, which is `fileSize + nonLiveFileSize + metadataSize` when the live bytes are not clipped | The six components | Never: a missing component counts as 0 |
-| Waste | stack total - live data | | |
-| Waste share | waste / stack total | | The total is 0 |
+| Live data | `max(0, fileSize - deleted - footerSize - staleColumnSize)`, a missing term counting as 0. The footers and the stale columns are bytes inside the data files. | `fileSize` | `fileSize` is missing |
+| Non-live files | With the unreferenced files: `min(nonLiveFileSize, unreferencedFileSize)`. Without them: `nonLiveFileSize`, an upper bound. See below. | `nonLiveFileSize` | It is missing |
+| Unreferenced files | `unreferencedFileSize` - the non-live files above | `unreferencedFileSize`, format 0.2 | It is missing: a file of format 0.1, or a listing that failed |
+| Waste | non-live + unreferenced + deleted + `staleColumnSize` | | Never: a missing component counts as 0 |
+| Overhead | `metadataSize + footerSize`, outside the waste | | Never |
+| Data | live data + waste: the denominator of every share | | |
+| Stack total | data + overhead, which is `fileSize + metadataSize` plus `unreferencedFileSize` (format 0.2) or `nonLiveFileSize` (format 0.1) when the live bytes are not clipped | | |
+| Waste share | waste / data | | The data is 0 |
+| Overhead share | overhead / data, shown beyond the data | | The data is 0 |
 | File size quartiles | From the files: `sorted[n/4]`, `sorted[n/2]`, `sorted[3n/4]`, rounded down, as the collector computes `fileSizes`. Otherwise the `fileSizes` distribution. | `files.fileSize`, or `tables.fileSizes` | Neither is there |
 | V-Order share | From the files: V-Ordered files / files with a known `isVOrdered`, and the same in bytes. Otherwise `vOrderedFileCount / fileCount`. | `files.isVOrdered`, or `tables.vOrderedFileCount` and `fileCount` | Neither is there |
-| Small files | From the files: the count below the threshold. Otherwise a lower bound of the share from the quartiles: 1 when the maximum is below, 0.75 for the third quartile, 0.5 for the median, 0.25 for the first quartile, one file for the minimum. | `files.fileSize`, or `tables.fileSizes` | No quartile is known |
-| Commits per day | commits / max(1, days from `oldestCommitAt` to the reference). The commits are `commitsRead`, since `oldestCommitAt` is the oldest of them, else `commitCount`. The reference is the end of the collection, else its start, else `snapshotTimestamp`. | `commitsRead` or `commitCount`, `oldestCommitAt`, `manifest.collection.completedAt` | A value is missing |
+| Small files, very small files | Two thresholds, 128 MiB and 8 MiB by default. From the files: the count below each, and its share. Otherwise a lower bound of the share from the quartiles: 1 when the maximum is below, 0.75 for the third quartile, 0.5 for the median, 0.25 for the first quartile, one file for the minimum. | `files.fileSize`, or `tables.fileSizes` | No quartile is known |
+| Last commit | The newest commit read: `snapshotTimestamp`, else the latest `lastAt` of the operations of the table, else `lastModifiedAt` | | None is there |
+| Commits per day | commits / max(1, days from `oldestCommitAt` to the last commit). The commits are `commitsRead`, since `oldestCommitAt` is the oldest of them, else `commitCount`. | `commitsRead` or `commitCount`, `oldestCommitAt`, the last commit | A value is missing |
+| Days since the last commit | Whole days from the last commit to the end of the collection, else its start, at least 0 | The last commit, `manifest.collection.completedAt` or `startedAt` | A value is missing |
+| Non-live files removed | From `nonLiveOldestRemovedAt` to `nonLiveNewestRemovedAt` | Format 0.2 | They are missing |
+| Partitions | `partitionCount`, else the rows of the `partitions` table; their last change from the earliest to the latest `partitions.lastModifiedAt` | `partitionCount`, `partitions`, and from format 0.2 `lastModifiedAt` | Neither count is there |
 | VACUUM, OPTIMIZE | Whether an operation of the table has the word in its name, and the latest `lastAt` | `operations` | The file has no `operations` table |
 | Compression ratio | `uncompressedSize / compressedSize`, of a table or of a column | The two sizes | A size is missing or `compressedSize` is 0 |
 | Deleted row share | `deletedRowCount / rowCount` | | |
@@ -148,9 +166,15 @@ Keys: a table is `t:<id>`, a column `c:<id>`, a source `s:<id>`. A row without a
 | Average value length | `unencodedByteArrayDataBytes / (valueCount - nullCount)` of a column | | |
 | Files without the column | `fileCountWithoutColumn / fileCount` of its table | | |
 
-These values follow the prototype of the storage views of 7 October 2026. The object model does not define derived measures yet; the [backlog](../../../docs/backlog.md) plans it, and this table is the definition until then.
+These values follow the prototype of the storage views of 7 October 2026 and the decisions of the maintainer of 21 October 2026. The object model does not define derived measures yet; the [backlog](../../../docs/backlog.md) plans it, and this table is the definition until then.
 
-The model reads the fields of format 0.1. The reader leaves out the fields that it does not know, so a file of a later version gives the same views; the [backlog](../../../docs/backlog.md) lists the unreferenced files and the age of the non-live files for when the format and the reader have them.
+### Non-live and unreferenced files
+
+The two sets overlap. The non-live files are those that left the table and that the log still tracks, whether a VACUUM deleted them or not. The unreferenced files are the data files that a listing of the storage finds and that the version described does not reference: the non-live files still stored, and files that no commit ever referenced or whose remove the log no longer holds. A summary does not say which files are in both.
+
+The stack draws each byte once. With a file of format 0.2 whose listing worked, the two segments sum to `unreferencedFileSize`, what the storage holds: the non-live segment takes as much of it as the non-live files can account for, `min(nonLiveFileSize, unreferencedFileSize)`, and the unreferenced segment the rest. The non-live files beyond that are already deleted and are not drawn; the tooltip gives both counts. With a file of format 0.1, or when the listing failed, the non-live segment is `nonLiveFileSize`, an upper bound, and the unreferenced segment is marked as not in the file.
+
+The model reads the fields of format 0.1 and 0.2. The reader leaves out the fields that it does not know, so a file of a later version gives the same views.
 
 ## Styling
 
@@ -167,37 +191,44 @@ Every color is a custom property on `.pqax-view`, with a light and a dark value.
 | `--pqax-grid`, `--pqax-axis`, `--pqax-border` | Gridlines, axes, borders |
 | `--pqax-surface`, `--pqax-gap` | The tooltip background, and the gap between segments and tiles |
 | `--pqax-focus` | The focus ring |
-| `--pqax-live`, `--pqax-non-live`, `--pqax-deleted`, `--pqax-metadata`, `--pqax-stale` | The segments of the stack |
+| `--pqax-live`, `--pqax-non-live`, `--pqax-unreferenced`, `--pqax-deleted`, `--pqax-stale`, `--pqax-overhead` | The segments of the stack |
 | `--pqax-absent`, `--pqax-no-totals`, `--pqax-no-totals-ink` | Absent marks, and the tiles without totals |
 | `--pqax-seq-0` to `--pqax-seq-5`, `--pqax-seq-ink-0` to `--pqax-seq-ink-5` | The classes of the null share, and the text on them |
 | `--pqax-strip-range`, `--pqax-strip-box`, `--pqax-strip-median`, `--pqax-strip-dot` | The marks of the file strip |
 | `--pqax-vorder`, `--pqax-vorder-track` | The V-Order bar |
 
-The palette is the reference palette of the dataviz method used for the prototype: a gray for the live data, which is context, four categorical hues in a validated order for the waste, and one blue ramp for the null share. No color is set in the code.
+The palette is the reference palette of the dataviz method used for the prototype: a gray for the live data, which is context, the first five categorical hues in their validated order for the four segments of the waste and the overhead, and one blue ramp for the null share. No color is set in the code.
 
 The classes and attributes that a page or a test can rely on:
 
 | View | Elements |
 |---|---|
 | All | `.pqax-item[data-key]` for each item, `.pqax-tooltip`, `.pqax-legend`, `.pqax-empty` for an empty model |
-| Stack | `[data-mode]` on the root, `.pqax-toggle button[data-mode]`, `.pqax-row`, `.pqax-segment[data-component]`, `.pqax-absent[data-component]`, `.pqax-value` |
+| Stack | `[data-mode]` on the root, `.pqax-toggle button[data-mode]`, `.pqax-row`, `.pqax-segment[data-component]` with `live`, `nonLive`, `unreferenced`, `deleted`, `stale`, `overhead`, `.pqax-overhead`, `.pqax-absent[data-component]`, `.pqax-value` |
 | Treemap | `[data-focus]` on the root, `.pqax-tile[data-kind][data-bin]`, `.pqax-absent`, `nav.pqax-breadcrumb button[data-key]` |
 | Strip | `.pqax-strip-row`, `.pqax-range`, `.pqax-box`, `.pqax-median`, `.pqax-dot`, `.pqax-threshold`, `.pqax-vorder-fill`, `.pqax-absent` |
 
 ## Decisions
 
-Taken while building the package, without the maintainer, and open to review:
+The maintainer decided four questions on 21 October 2026:
+
+| Question | Decision |
+|---|---|
+| Waste | The non-live files, the unreferenced files, the deleted rows, and the stale columns. The metadata and the footers are overhead: drawn, but outside the waste that sorts the tables and outside the denominator of the shares. |
+| Small files | Two shares: below 8 MiB and below 128 MiB, both options of `buildModel` |
+| Commits per day | Over the span of the commits read, which ends at the newest of them, with the days since the last commit beside it, counted to the collection |
+| Treemap on a phone | As tall as it is wide, at most 60% of the height of the window, below the width where the views take their phone layout |
+
+The others were taken while building the package, and are open to review:
 
 | Question | Decision | Why |
 |---|---|---|
 | Bundling of the page | None. ES modules and an import map, the packages copied next to the page | Import maps work in Chrome and Edge 89, Firefox 108, and Safari 16.4, all older than what the reader needs |
 | Treemap layout | Squarified, written here in about a hundred lines | No dependency |
 | What the views take | The whole model, built once, for the three views | The page builds it once and updates the three |
-| Waste | Everything but the live data, metadata and footers included | As the prototype |
 | Metadata and footers | One segment in the stack, two components in the model | As the prototype; both are small next to the others |
+| Non-live and unreferenced files | Drawn once: their sum is what the storage holds, the non-live part as large as it can be | A summary does not say which files are in both sets |
 | Tiles without totals | 1% of their parent each, hatched | As the prototype; a tile of size 0 would not show |
-| Small file threshold | 128 MiB, an option of `buildModel` | A common lower target for the size of a Parquet file in a lakehouse; the maintainer may prefer another |
-| Commits per day | Over the commits read, to the end of the collection, at least one day | `oldestCommitAt` is the oldest of the commits read, and a table that stopped changing shows a low rate |
 | Null share colors | Six classes rather than a continuous scale | `color-mix` is not in Chrome 103, and classes give a readable legend |
 | Tests | In `tests/typescript-views`, beside the tests of the reader | The vitest configuration of the reader collects every test file of `tests/typescript` |
 | A focus on a column | The treemap shows its table | A leaf has no children to show |
@@ -236,11 +267,12 @@ The page was checked in the browser pane of the Claude desktop app, a Chromium, 
 
 ## Build and test
 
-The reader is a file dependency. Install it and build it first, since the build of this package takes its declarations from `../pqax/dist`:
+The two npm packages are workspaces of the `package.json` at the root of the repository: `npm ci` there installs both and links this package to the reader of the same folder. Build the reader first, since the build of this package takes its declarations from `../pqax/dist`. The scripts run from the folder of the package:
 
 ```bash
-cd ../pqax && npm ci && npm run build && cd ../views
-npm ci
+npm ci                  # at the root of the repository
+npm run build --workspace src/typescript/pqax
+cd src/typescript/views
 npm run typecheck
 npm run build           # tsc, into dist/
 npm test                # vitest in Node, on the tests in tests/typescript-views at the root of the repository
