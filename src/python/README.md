@@ -4,8 +4,8 @@
 
 | | |
 |---|---|
-| Version | 0.1.2 |
-| Format | Reads every version 0.x. Writes version 0.1. |
+| Version | 0.2.0 |
+| Format | Reads 0.1 and 0.2, writes 0.2. Reads every other version 0.x. |
 | Python | 3.10 or later |
 | Dependencies | None. `to_dataframe` uses pandas, or polars 1.0 or later, when one is installed. |
 
@@ -108,7 +108,7 @@ The fields are named as in the file. An `add_` method refuses a field that its t
 
 `write` lays out the file as the serialization says: `manifest.json` first, then `summary.json`, always present, then one part for each detail table, named after it, as `files.json`. A table with more than `rows_per_part` rows, 250,000 by default and at most, continues in parts numbered from 1, as `columnChunks.1.json`. A field with no value in any row of a part is left out of that part, and so is a table with no rows. The JSON is compact UTF-8 with no byte order mark, the entries are deflated at level 9 by default (`compression_level`), and every entry has the same date, so the same footprint gives the same bytes. A path is written through a temporary file.
 
-`from_document` keeps the ids, the collection, the obfuscation fields, the other members of the manifest, and the fields and tables that this version does not define. It loses what the reader does not keep: the entries that the manifest does not list, the members of a table that are not arrays, and the members of an element of `parts` other than `name` and `tables`. It writes format version 0.1, and its own part names.
+`from_document` keeps the ids, the collection, the obfuscation fields, the other members of the manifest, and the fields and tables that this version does not define. It loses what the reader does not keep: the entries that the manifest does not list, the members of a table that are not arrays, and the members of an element of `parts` other than `name` and `tables`. It writes format version 0.2, and its own part names.
 
 ## Command line
 

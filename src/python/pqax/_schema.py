@@ -1,13 +1,13 @@
 """The names of the format: tables, fields, required fields, references, and timestamps.
 
-They follow docs/object-model.md and docs/serialization.md, format version 0.1.
+They follow docs/object-model.md and docs/serialization.md, format version 0.2.
 """
 from __future__ import annotations
 
 import re
 
 FORMAT = "pqax"
-FORMAT_VERSION = "0.1"
+FORMAT_VERSION = "0.2"
 KNOWN_MAJOR_VERSIONS = frozenset({0})
 MANIFEST_PART = "manifest.json"
 SUMMARY_PART = "summary.json"
@@ -36,7 +36,8 @@ FIELDS = {
         "snapshotId", "snapshotTimestamp", "delta", "iceberg", "clusteringColumns", "collectedLevel", "detailDepth",
         "fileCount", "fileSize", "rowCount", "deletedRowCount", "lastModifiedAt", "vOrderedFileCount", "partitionCount",
         "deleteFileCount", "deleteFileSize", "commitCount", "commitsRead", "oldestCommitAt", "nonLiveFileCount",
-        "nonLiveFileSize", "metadataFileCount", "metadataSize", "footerCount", "rowGroupCount", "compressedSize",
+        "nonLiveFileSize", "nonLiveOldestRemovedAt", "nonLiveNewestRemovedAt", "unreferencedFileCount",
+        "unreferencedFileSize", "metadataFileCount", "metadataSize", "footerCount", "rowGroupCount", "compressedSize",
         "uncompressedSize", "footerSize", "staleColumnSize", "columnTotalsSource", "fileSizes", "rowGroupRowCounts",
         "partitionSizes",
     ),
@@ -62,7 +63,10 @@ FIELDS = {
     "modelBindings": ("id", "modelName", "serverName"),
     "tableBindings": ("id", "modelBinding", "modelTable", "table"),
     "columnBindings": ("tableBinding", "modelColumn", "column"),
-    "partitions": ("id", "table", "partitionSpec", "values", "fileCount", "fileSize", "rowCount", "deletedRowCount"),
+    "partitions": (
+        "id", "table", "partitionSpec", "values", "fileCount", "fileSize", "rowCount", "deletedRowCount",
+        "lastModifiedAt",
+    ),
     "files": (
         "id", "table", "path", "format", "fileSize", "modifiedAt", "rowCount", "deletedRowCount", "deletionVectorSize",
         "partition", "sortOrder", "clusteringProvider", "isVOrdered", "footerSize", "physicalSchema", "writer",
@@ -121,8 +125,9 @@ INTEGERS = {
     "tables": (
         "id", "source", "clusteringColumns", "collectedLevel", "fileCount", "fileSize", "rowCount", "deletedRowCount",
         "vOrderedFileCount", "partitionCount", "deleteFileCount", "deleteFileSize", "commitCount", "commitsRead",
-        "nonLiveFileCount", "nonLiveFileSize", "metadataFileCount", "metadataSize", "footerCount", "rowGroupCount",
-        "compressedSize", "uncompressedSize", "footerSize", "staleColumnSize",
+        "nonLiveFileCount", "nonLiveFileSize", "unreferencedFileCount", "unreferencedFileSize", "metadataFileCount",
+        "metadataSize", "footerCount", "rowGroupCount", "compressedSize", "uncompressedSize", "footerSize",
+        "staleColumnSize",
     ),
     "columns": (
         "id", "table", "fieldId", "compressedSize", "uncompressedSize", "valueCount", "nullCount", "chunkCount",
@@ -161,8 +166,12 @@ INTEGERS = {
 
 # The fields of type timestamp.
 TIMESTAMPS = {
-    "tables": ("createdAt", "snapshotTimestamp", "lastModifiedAt", "oldestCommitAt"),
+    "tables": (
+        "createdAt", "snapshotTimestamp", "lastModifiedAt", "oldestCommitAt", "nonLiveOldestRemovedAt",
+        "nonLiveNewestRemovedAt",
+    ),
     "operations": ("lastAt",),
+    "partitions": ("lastModifiedAt",),
     "files": ("modifiedAt",),
     "commits": ("timestamp",),
 }
