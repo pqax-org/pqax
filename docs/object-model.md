@@ -102,7 +102,7 @@ An object that can lose its detail stores totals. They are the fields marked `To
 3. The totals of level 2 cover the files whose footer was read. `FooterCount` and `FileCount` say how complete they are. A collector does not extrapolate.
 4. A total is absent when a value it needs is unknown.
 
-The fields of `Table` that count the non-live and the unreferenced files follow rules 1 and 4 as well, although no detail list holds those files, so rule 2 has nothing to compare. UnreferencedFileSize is the one exception to rule 4: a file whose size the listing does not give counts in UnreferencedFileCount and not in the size, and the size is still present. The removal times are taken over the remove actions that have a timestamp, as `LastModifiedAt` is over the files that have a modification time.
+The fields of `Table` that count the non-live and the unreferenced files follow rules 1 and 4 as well, although no detail list holds those files, so rule 2 has nothing to compare. UnreferencedFileSize is the one exception to rule 4: a file whose size the listing does not give counts in UnreferencedFileCount and not in the size, and the size is still present. NonLiveOldestRemovedAt and NonLiveNewestRemovedAt are an exception too: they are taken over the remove actions that have a timestamp, and they are absent only when none has one.
 
 ### 4.3 Distributions
 
