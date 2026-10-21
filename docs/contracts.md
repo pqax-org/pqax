@@ -57,6 +57,8 @@ research/prototype                the prototype that tested the serialization
 research/detail-encoding          the experiment that compared encodings of a large table
 .github/workflows/ci.yml          builds and runs every suite
 .github/workflows/publish.yml     publishes a release to NuGet, npm, and PyPI
+.github/workflows/pages.yml       deploys site/ to GitHub Pages, the site of pqax.org
+site/                             the one-page site of pqax.org
 ```
 
 Nothing under `src/`, `tests/`, and `conformance/` depends on a path outside those three folders. `research/` holds the experiments that the documents cite.

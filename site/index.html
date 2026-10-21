@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PQAX</title>
+<meta name="description" content="PQAX is a file format for the storage footprint of Parquet and Delta tables: files, row groups, column chunks, and their sizes, without the data. Documents, conformance kit, and packages for .NET, JavaScript, and Python.">
+<meta name="color-scheme" content="light dark">
+<link rel="canonical" href="https://pqax.org/">
+<style>
+:root { --bg: #ffffff; --fg: #1f2328; --muted: #59636e; --line: #d0d7de; --accent: #0a5aa6; --code-bg: #f6f8fa; }
+@media (prefers-color-scheme: dark) {
+  :root { --bg: #0d1117; --fg: #e6edf3; --muted: #9198a1; --line: #3d444d; --accent: #79b8ff; --code-bg: #161b22; }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--fg); font: 17px/1.55 -apple-system, "Segoe UI", system-ui, Roboto, "Helvetica Neue", Arial, sans-serif; }
+main { max-width: 46rem; margin: 0 auto; padding: 2.5rem 1rem 4rem; }
+header { margin-bottom: 2rem; }
+.wordmark { font-size: 3rem; font-weight: 800; letter-spacing: .12em; margin: 0; line-height: 1; }
+.tagline { font-size: 1.25rem; margin: .6rem 0 0; color: var(--muted); }
+h2 { font-size: 1.2rem; margin: 2.2rem 0 .6rem; }
+p { margin: .6rem 0; }
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+table { border-collapse: collapse; width: 100%; margin: .6rem 0; font-size: .95rem; }
+th, td { text-align: left; vertical-align: top; padding: .45rem .6rem; border-bottom: 1px solid var(--line); }
+th { color: var(--muted); font-weight: 600; }
+code, pre { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .9em; }
+code { background: var(--code-bg); padding: .1em .35em; border-radius: 4px; }
+pre { background: var(--code-bg); padding: .9rem 1rem; border-radius: 6px; overflow-x: auto; }
+pre code { background: none; padding: 0; font-size: 1em; }
+footer { margin-top: 3rem; padding-top: 1rem; border-top: 1px solid var(--line); color: var(--muted); font-size: .9rem; }
+@media (max-width: 40rem) {
+  .wordmark { font-size: 2.4rem; }
+  th, td { padding: .4rem .4rem; }
+}
+</style>
+</head>
+<body>
+<main>
+<header>
+<p class="wordmark">PQAX</p>
+<p class="tagline">The footprint of Parquet and Delta tables. Pronounced "pickax".</p>
+</header>
+
+<p>PQAX is a file format that holds the storage footprint of the tables of a lakehouse: the files, row groups, and column chunks of each table, with their sizes, and nothing of the data. A <code>.pqax</code> file is a zip of JSON tables, so any zip tool opens it and any language reads it. It can also travel inside a VPAX file, the format of VertiPaq Analyzer, so that a semantic model and the lakehouse it reads are analyzed together.</p>
+
+<p>The format is at version 0.1, a draft that can change until 1.0. The repository <a href="https://github.com/pqax-org/pqax">pqax-org/pqax</a> holds the documents, the conformance kit, and the reference implementations, under the MIT license.</p>
+
+<h2>Documents</h2>
+<table>
+<tr><th>Document</th><th>Content</th></tr>
+<tr><td><a href="https://github.com/pqax-org/pqax/blob/main/docs/object-model.md">Object model</a></td><td>The objects of a footprint, their fields, the totals, and the depth of detail. Draft 0.4.</td></tr>
+<tr><td><a href="https://github.com/pqax-org/pqax/blob/main/docs/serialization.md">Serialization</a></td><td>How a file is written: the zip, the JSON tables, the manifest, and the rules for readers and writers. Draft 0.2.</td></tr>
+<tr><td><a href="https://github.com/pqax-org/pqax/blob/main/conformance/README.md">Conformance kit</a></td><td>The validation rules with their codes, a JSON Schema, sample files with their expected results, invalid samples, and a synthetic lakehouse for collectors.</td></tr>
+<tr><td><a href="https://github.com/pqax-org/pqax/blob/main/docs/contracts.md">Contracts</a></td><td>How the implementations are organized and what each one must offer.</td></tr>
+<tr><td><a href="https://github.com/pqax-org/pqax/blob/main/docs/backlog.md">Backlog</a></td><td>What changes after 0.1, by area and by stage.</td></tr>
+</table>
+
+<h2>Packages</h2>
+<p>Version 0.1.0, one number for all of them. The <a href="https://github.com/pqax-org/pqax/blob/main/CHANGELOG.md">changelog</a> says what each release holds.</p>
+<table>
+<tr><th>Package</th><th>Registry</th><th>What it does</th></tr>
+<tr><td><a href="https://github.com/pqax-org/pqax/blob/main/src/dotnet/Pqax/README.md"><code>Pqax</code></a></td><td>NuGet</td><td>Reads, writes, and validates PQAX files in .NET, also inside a VPAX file. netstandard2.0 and net8.0.</td></tr>
+<tr><td><a href="https://github.com/pqax-org/pqax/blob/main/src/dotnet/Pqax.Collector/README.md"><code>Pqax.Collector</code></a></td><td>NuGet</td><td>Collects the footprint of Delta tables from OneLake or from a folder, reading only the Delta log and the Parquet footers. <code>Pqax.Collector.ParquetNet</code> adds the checkpoint reader.</td></tr>
+<tr><td><a href="https://github.com/pqax-org/pqax/blob/main/src/dotnet/Pqax.Cli/README.md"><code>Pqax.Cli</code></a></td><td>NuGet, as a .NET tool</td><td>The command line <code>pqax</code>: <code>check</code>, <code>info</code>, and <code>collect</code>.</td></tr>
+<tr><td><a href="https://github.com/pqax-org/pqax/blob/main/src/typescript/pqax/README.md"><code>pqax</code></a></td><td>npm</td><td>Reads and validates PQAX files in a browser and in Node, with no dependency.</td></tr>
+<tr><td><a href="https://github.com/pqax-org/pqax/blob/main/src/python/README.md"><code>pqax</code></a></td><td>PyPI</td><td>Reads, validates, and writes PQAX files with the standard library, with a command line and data frames through pandas or polars.</td></tr>
+</table>
+
+<pre><code>dotnet add package Pqax
+dotnet tool install -g Pqax.Cli
+npm install pqax
+pip install pqax</code></pre>
+
+<h2>A first look at a file</h2>
+<pre><code>pqax info footprint.pqax
+pqax check model.vpax</code></pre>
+<p><code>info</code> prints the format version, the collector, the collection level, the parts with the rows of each table, and the totals: tables, columns, files, bytes, rows. <code>check</code> validates a file against every rule of the conformance kit and prints each issue with the code of its rule. Both commands take a <code>.pqax</code> file or a <code>.vpax</code> file that embeds one.</p>
+
+<h2>What comes next</h2>
+<p>The <a href="https://github.com/pqax-org/pqax/blob/main/docs/backlog.md">backlog</a> lists the work before 1.0: files from more engines and table formats, the derived measures, and the view model. A web reader with storage views will live at pqax.tools. Questions and proposals go to the <a href="https://github.com/pqax-org/pqax/issues">issues</a> of the repository.</p>
+
+<footer>
+<p>PQAX is a project of <a href="https://www.sqlbi.com/">SQLBI</a>, released under the MIT license. &copy; 2026 SQLBI.</p>
+</footer>
+</main>
+</body>
+</html>
