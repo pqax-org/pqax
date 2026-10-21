@@ -234,6 +234,53 @@ public class StorageTests
         Assert.Equal(remote.StorageBytes, a.Manifest.Collection.BytesRead);
         Assert.Contains(calls, call => call.PathAndQuery.Contains("continuation=", StringComparison.Ordinal));
         Assert.Contains(calls, call => call.Range != null);
+
+        // The data files of each table are listed with recursive listings, in pages, and every page is a request.
+        List<HttpCall> recursive = calls.Where(call => call.PathAndQuery.Contains("recursive=true", StringComparison.Ordinal)).ToList();
+        Assert.NotEmpty(recursive);
+        Assert.Contains(recursive, call => call.PathAndQuery.Contains("continuation=", StringComparison.Ordinal));
+        foreach (DumpTable dump in Fixture.Tables)
+        {
+            Assert.Contains(recursive, call => call.PathAndQuery.Contains("&directory=" + Uri.EscapeDataString(dump.TablePath), StringComparison.Ordinal));
+            TableRow table = Fixture.TableOf(a, dump);
+            Assert.Equal(Dump.Long(dump.Dump["unreferencedFileCount"]), table.UnreferencedFileCount);
+            Assert.Equal(Dump.Long(dump.Dump["unreferencedFileSize"]), table.UnreferencedFileSize);
+        }
+    }
+
+    [Fact]
+    public async Task The_fake_endpoint_lists_every_descendant_in_pages_when_the_listing_is_recursive()
+    {
+        var handler = new FakeOneLake(Fixture.Folder, Workspace) { PageSize = 3 };
+        using var http = new HttpClient(handler);
+        string table = Fixture.CheckpointTable.TablePath;
+        var names = new List<(string Name, bool IsDirectory)>();
+        string? continuation = null;
+        int pages = 0;
+        do
+        {
+            string url = "/Test%20Workspace?resource=filesystem&recursive=true&directory=" + Uri.EscapeDataString(table)
+                + (continuation == null ? "" : "&continuation=" + continuation);
+            using HttpResponseMessage response = await http.GetAsync(new Uri(Endpoint, url));
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+            JsonNode body = JsonNode.Parse(await response.Content.ReadAsStringAsync())!;
+            JsonArray paths = body["paths"]!.AsArray();
+            Assert.InRange(paths.Count, 1, 3);
+            names.AddRange(paths.Select(path => ((string)path!["name"]!, (string?)path["isDirectory"] == "true")));
+            continuation = response.Headers.TryGetValues("x-ms-continuation", out IEnumerable<string>? values) ? values.Single() : null;
+            pages++;
+        }
+        while (continuation != null);
+
+        string full = Fixture.LocalPath(table);
+        var expected = Directory.EnumerateFileSystemEntries(full, "*", SearchOption.AllDirectories)
+            .Select(path => (table + "/" + Path.GetRelativePath(full, path).Replace('\\', '/'), Directory.Exists(path)))
+            .OrderBy(entry => entry.Item1, StringComparer.Ordinal)
+            .ToList();
+        Assert.Equal(expected, names);
+        Assert.Contains(names, entry => entry.Name == table + "/Year=2024/part-0004.parquet");
+        Assert.Contains(names, entry => entry.Name == table + "/_delta_log" && entry.IsDirectory);
+        Assert.Equal((expected.Count + 2) / 3, pages);
     }
 
     [Fact]

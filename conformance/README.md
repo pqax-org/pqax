@@ -142,7 +142,7 @@ These facts are not in the expected files, and a test can check them too:
 |---|---|
 | `sample.pqax` | `commits.metrics` of the second commit is `{}`, a known empty map, not `null`. `tables.delta` of the second table has `readerFeatures` `[]`. |
 | `sample.pqax` | `tables.unreferencedFileCount` is `[1, 0]` and `tables.unreferencedFileSize` is `[737, 0]`. `tables.nonLiveOldestRemovedAt` and `tables.nonLiveNewestRemovedAt` are both `["2023-11-14T22:14:10.000Z", null]`. `partitions.lastModifiedAt` is `["2023-11-14T22:15:00.000Z", "2023-11-14T22:15:10.000Z"]`. |
-| `format-0.1.pqax` | The same results as `sample.pqax`, apart from `formatVersion` `0.1`. `tables` has no `unreferencedFileCount`, `unreferencedFileSize`, `nonLiveOldestRemovedAt`, or `nonLiveNewestRemovedAt`, and `partitions` has no `lastModifiedAt`: a reader returns `null` for them. |
+| `format-0.1.pqax` | The same results as `sample.pqax`, apart from `formatVersion` `0.1`. `tables` has no `unreferencedFileCount`, `unreferencedFileSize`, `nonLiveOldestRemovedAt`, or `nonLiveNewestRemovedAt`, and `partitions` has no `lastModifiedAt`: a reader reads them as a missing field: `null` in C# and `None` in Python, and the field is `undefined` on the table in TypeScript. |
 | `multipart.pqax` | `files.deletionVectorSize` is `[40, null, null, null, null]` and `files.partition` is `[1, 1, 2, null, null]` |
 | `extensions.pqax` | The same results as `sample.pqax`, apart from `parts` and `rows`. `columnChunks` has no `encodings`. Where the API returns unknown fields, `tables.acme_score` is `[7, 9]`. Where it returns unknown members of the manifest, `acme_build` is there. |
 | `later-depth.pqax` | `detailDepth` is `Pages` for both tables, as written |

@@ -129,3 +129,50 @@ describe("the validator", () => {
     expect(result.isValid).toBe(true);
   });
 });
+
+describe("the fields of format 0.2", () => {
+  it.each(["sample.pqax", "format-0.1.pqax"])("%s, of format 0.2 and of format 0.1, is valid", async (file) => {
+    const result = await validate(bytesOf(join(SAMPLES, file)));
+    expect(result.issues.map((issue) => `${issue.code}: ${issue.message}`)).toEqual([]);
+    expect(result.isValid).toBe(true);
+  });
+
+  it.each(["json.type.unreferencedFileCount.pqax", "json.timestamp.nonLiveOldestRemovedAt.pqax",
+    "json.timestamp.partitionLastModifiedAt.pqax"])("the invalid sample %s reports its codes", async (file) => {
+    expect(Object.keys(CASES)).toContain(file);
+    const reported = codes(await validate(bytesOf(join(INVALID, file))));
+    for (const code of CASES[file]!.codes) {
+      expect(reported).toContain(code);
+    }
+  });
+
+  const WRONG: [string, string, string, unknown, string][] = [
+    ["summary.json", "tables", "unreferencedFileCount", "1", "json.type"],
+    ["summary.json", "tables", "unreferencedFileCount", true, "json.type"],
+    ["summary.json", "tables", "unreferencedFileSize", "737", "json.type"],
+    ["summary.json", "tables", "unreferencedFileSize", [737], "json.type"],
+    ["summary.json", "tables", "nonLiveOldestRemovedAt", 1700000050000, "json.type"],
+    ["summary.json", "tables", "nonLiveNewestRemovedAt", { at: "2023-11-14T22:14:10.000Z" }, "json.type"],
+    ["partitions.json", "partitions", "lastModifiedAt", 1700000100000, "json.type"],
+    ["summary.json", "tables", "nonLiveOldestRemovedAt", "2023-11-14T22:14:10Z", "json.timestamp"],
+    ["summary.json", "tables", "nonLiveNewestRemovedAt", "2023-11-14 22:14:10.000", "json.timestamp"],
+    ["partitions.json", "partitions", "lastModifiedAt", "2023-11-14T22:15:00.000+00:00", "json.timestamp"],
+  ];
+
+  it.each(WRONG)("%s: %s.%s of %j gives %s with its table and field", async (part, table, field, value, code) => {
+    const bytes = await rewriteZip(bytesOf(join(SAMPLES, "sample.pqax")), (name, data) => {
+      if (name !== part) {
+        return undefined;
+      }
+      const content = json(data);
+      content[table][field][0] = value;
+      return toBytes(content);
+    });
+    const result = await validate(bytes);
+    expect(result.isValid).toBe(false);
+    const matching = result.issues.filter((issue) => issue.code === code);
+    expect(matching.length, result.issues.map((issue) => issue.code).join(", ")).toBeGreaterThan(0);
+    expect(matching.some((issue) => issue.table === table && issue.field === field && issue.part === part),
+      JSON.stringify(matching)).toBe(true);
+  });
+});

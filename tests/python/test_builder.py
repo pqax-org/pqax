@@ -61,7 +61,7 @@ def test_round_trip_through_from_document(name, tmp_path):
         pqax.Builder.from_document(original).write(str(target))
         with pqax.open(str(target)) as copy:
             assert copy.manifest["format"] == "pqax"
-            assert copy.manifest["formatVersion"] == "0.1"
+            assert copy.manifest["formatVersion"] == "0.2"
             assert copy.manifest["parts"][0]["name"] == "summary.json"
             for member, value in original.manifest.items():
                 if member not in ("parts", "formatVersion"):
@@ -155,8 +155,10 @@ def build_everything():
                      collectedLevel=2, detailDepth="Column chunks", fileCount=2, fileSize=3000, rowCount=150,
                      deletedRowCount=5, lastModifiedAt=datetime(2026, 1, 2, 3, 0, 0, tzinfo=UTC),
                      vOrderedFileCount=0, partitionCount=1, deleteFileCount=1, deleteFileSize=100, commitCount=2,
-                     commitsRead=2, oldestCommitAt=datetime(2026, 1, 1, 0, 0, 0, tzinfo=UTC), nonLiveFileCount=0,
-                     nonLiveFileSize=0, metadataFileCount=4, metadataSize=4096, footerCount=2, rowGroupCount=3,
+                     commitsRead=2, oldestCommitAt=datetime(2026, 1, 1, 0, 0, 0, tzinfo=UTC), nonLiveFileCount=2,
+                     nonLiveFileSize=700, nonLiveOldestRemovedAt=datetime(2025, 12, 1, 0, 0, 0, 250000, tzinfo=UTC),
+                     nonLiveNewestRemovedAt=datetime(2025, 12, 31, 23, 59, 59, tzinfo=UTC), unreferencedFileCount=3,
+                     unreferencedFileSize=900, metadataFileCount=4, metadataSize=4096, footerCount=2, rowGroupCount=3,
                      compressedSize=total_chunks, uncompressedSize=2 * total_chunks, footerSize=500,
                      staleColumnSize=0, columnTotalsSource="Footers", fileSizes=distribution,
                      rowGroupRowCounts={"count": 3, "sum": 150, "minimum": 40, "firstQuartile": 40, "median": 50,
@@ -231,10 +233,14 @@ def build_everything():
         assert builder.add_column_binding(tableBinding=binding, modelColumn=name, column=column) == position
         rows["columnBindings"].append({"tableBinding": binding, "modelColumn": name, "column": column})
 
+    # lastModifiedAt is the latest modifiedAt of the two files of the partition, below.
+    partition_modified = datetime(2026, 1, 2, 3, 0, 0, 999000, tzinfo=UTC)
     partition = builder.add_partition(table=ids["table1"], partitionSpec=spec, values=["3"], fileCount=2,
-                                      fileSize=3000, rowCount=150, deletedRowCount=5)
+                                      fileSize=3000, rowCount=150, deletedRowCount=5,
+                                      lastModifiedAt=partition_modified)
     rows["partitions"].append({"id": partition, "table": ids["table1"], "partitionSpec": spec, "values": ["3"],
-                               "fileCount": 2, "fileSize": 3000, "rowCount": 150, "deletedRowCount": 5})
+                               "fileCount": 2, "fileSize": 3000, "rowCount": 150, "deletedRowCount": 5,
+                               "lastModifiedAt": partition_modified})
     group_sizes = {group: sum(chunk_sizes[(group, physical)] for physical in (1, 2)) for group in (1, 2, 3)}
     files = [dict(table=ids["table1"], path="data/f1.parquet", format="Parquet", fileSize=2000,
                   modifiedAt=datetime(2026, 1, 2, 3, 0, 0, 999000, tzinfo=UTC), rowCount=100, deletedRowCount=5,
@@ -311,6 +317,63 @@ def test_a_footprint_with_every_table_is_written_read_and_valid(tmp_path):
         assert [part["name"] for part in doc.manifest["parts"]][0] == "summary.json"
         for part in doc.manifest["parts"][1:]:
             assert len(part["tables"]) == 1
+    assert_valid(target)
+    assert_schema_valid(target)
+
+
+# ---- the fields of format 0.2 ----
+
+TABLE_FIELDS_0_2 = ("unreferencedFileCount", "unreferencedFileSize", "nonLiveOldestRemovedAt", "nonLiveNewestRemovedAt")
+
+
+def test_a_footprint_with_the_fields_of_format_0_2_writes_0_2_and_reads_them_back(tmp_path):
+    builder = pqax.Builder({"collectorApp": "pqax-tests", "level": 1})
+    builder.add_source(kind="Storage folder")
+    table = builder.add_table(source=1, name="a", format="Delta", detailDepth="Files", fileCount=2, fileSize=30,
+                              nonLiveFileCount=2, nonLiveFileSize=50,
+                              nonLiveOldestRemovedAt=datetime(2025, 3, 1, 8, 0, 0, 5000, tzinfo=UTC),
+                              nonLiveNewestRemovedAt=datetime(2025, 3, 2, 10, 0, 0, tzinfo=timezone(timedelta(hours=2))),
+                              unreferencedFileCount=4, unreferencedFileSize=0)
+    builder.add_table(source=1, name="b", format="Delta", detailDepth="Summary", unreferencedFileCount=0,
+                      unreferencedFileSize=0)
+    partition = builder.add_partition(table=table, fileCount=2, fileSize=30,
+                                      lastModifiedAt=datetime(2025, 3, 3, 0, 0, 0, tzinfo=UTC))
+    builder.add_file(table=table, fileSize=10, partition=partition, modifiedAt=datetime(2025, 3, 2, 0, 0, 0, tzinfo=UTC))
+    builder.add_file(table=table, fileSize=20, partition=partition, modifiedAt=datetime(2025, 3, 3, 0, 0, 0, tzinfo=UTC))
+    target = tmp_path / "fields.pqax"
+    builder.write(str(target))
+    with pqax.open(str(target)) as doc:
+        assert doc.manifest["formatVersion"] == "0.2"
+        tables = doc.summary["tables"]
+        assert tables["unreferencedFileCount"] == [4, 0]
+        assert tables["unreferencedFileSize"] == [0, 0]
+        assert tables["nonLiveOldestRemovedAt"] == ["2025-03-01T08:00:00.005Z", None]
+        assert tables["nonLiveNewestRemovedAt"] == ["2025-03-02T08:00:00.000Z", None]
+        assert doc.table("partitions")["lastModifiedAt"] == ["2025-03-03T00:00:00.000Z"]
+        first = tmp_path / "again.pqax"
+        pqax.Builder.from_document(doc).write(str(first))
+    with pqax.open(str(target)) as doc, pqax.open(str(first)) as again:
+        assert again.manifest["formatVersion"] == "0.2"
+        assert again.summary["tables"] == doc.summary["tables"]
+        assert again.table("partitions") == doc.table("partitions")
+    assert_valid(target)
+    assert_schema_valid(target)
+    assert_valid(first)
+
+
+def test_a_rewrite_of_a_file_of_format_0_1_writes_0_2_and_keeps_the_tables(tmp_path):
+    target = tmp_path / "rewritten.pqax"
+    with pqax.open(str(SAMPLES / "format-0.1.pqax")) as original:
+        assert original.manifest["formatVersion"] == "0.1"
+        pqax.Builder.from_document(original).write(str(target))
+        with pqax.open(str(target)) as copy:
+            assert copy.manifest["formatVersion"] == "0.2"
+            assert copy.manifest["collection"] == original.manifest["collection"]
+            for table in stated_rows(original.manifest):
+                assert copy.table(table) == original.table(table), table
+            for row in copy.rows("tables"):
+                assert all(row.get(name) is None for name in TABLE_FIELDS_0_2), row["id"]
+            assert all(row.get("lastModifiedAt") is None for row in copy.rows("partitions"))
     assert_valid(target)
     assert_schema_valid(target)
 

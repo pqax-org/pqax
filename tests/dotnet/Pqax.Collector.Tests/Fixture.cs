@@ -68,13 +68,29 @@ public static class Fixture
             (string)node["name"]!,
             ParseFile(Path.Combine(DumpFolder, (string)node["id"]! + ".json")))).ToList();
 
-    /// <summary>The data files of the fixture, relative to its root with forward slashes: every Parquet file outside a Delta log.</summary>
-    public static IReadOnlyList<string> DataFiles() =>
+    /// <summary>
+    /// Every Parquet file of the fixture outside a Delta log, relative to its root with forward slashes: the data files
+    /// of the logs, and the one that no commit references.
+    /// </summary>
+    public static IReadOnlyList<string> AllDataFiles() =>
         Directory.EnumerateFiles(Folder, "*.parquet", SearchOption.AllDirectories)
             .Select(path => Path.GetRelativePath(Folder, path).Replace('\\', '/'))
             .Where(path => !path.Contains("/_delta_log/", StringComparison.Ordinal))
             .Order(StringComparer.Ordinal)
             .ToList();
+
+    /// <summary>
+    /// The data files of the fixture that the logs reference, relative to its root with forward slashes: those of
+    /// <see cref="AllDataFiles"/> whose size is the size of a file of the probe dump, which lists the live files only.
+    /// </summary>
+    public static IReadOnlyList<string> DataFiles()
+    {
+        var sizes = Tables.SelectMany(table => table.Files).Select(file => Dump.Long(file["size"])).ToHashSet();
+        return AllDataFiles().Where(path => sizes.Contains(new FileInfo(LocalPath(path)).Length)).ToList();
+    }
+
+    /// <summary>The Parquet files of the fixture that no commit references: those of <see cref="AllDataFiles"/> that the dump does not have.</summary>
+    public static IReadOnlyList<string> UnreferencedDataFiles() => AllDataFiles().Except(DataFiles()).ToList();
 
     /// <summary>The dump of a data file, found by its size, which is distinct for every file of the fixture.</summary>
     public static (DumpTable Table, JsonObject File) DumpFileOfSize(long size)
