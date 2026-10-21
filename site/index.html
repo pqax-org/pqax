@@ -45,7 +45,7 @@ footer { margin-top: 3rem; padding-top: 1rem; border-top: 1px solid var(--line);
 
 <p>PQAX is a file format that holds the storage footprint of the tables of a lakehouse: the files, row groups, and column chunks of each table, with their sizes, and nothing of the data. A <code>.pqax</code> file is a zip of JSON tables, so any zip tool opens it and any language reads it. It can also travel inside a VPAX file, the format of VertiPaq Analyzer, so that a semantic model and the lakehouse it reads are analyzed together.</p>
 
-<p>The format is at version 0.1, a draft that can change until 1.0. The repository <a href="https://github.com/pqax-org/pqax">pqax-org/pqax</a> holds the documents, the conformance kit, and the reference implementations, under the MIT license.</p>
+<p>The format is at version 0.2, a draft that can change until 1.0. The repository <a href="https://github.com/pqax-org/pqax">pqax-org/pqax</a> holds the documents, the conformance kit, and the reference implementations, under the MIT license.</p>
 
 <h2>Documents</h2>
 <table>
@@ -58,7 +58,7 @@ footer { margin-top: 3rem; padding-top: 1rem; border-top: 1px solid var(--line);
 </table>
 
 <h2>Packages</h2>
-<p>Version 0.1.0, one number for all of them. The <a href="https://github.com/pqax-org/pqax/blob/main/CHANGELOG.md">changelog</a> says what each release holds.</p>
+<p>Version 0.2.0, one number for all of them. The <a href="https://github.com/pqax-org/pqax/blob/main/CHANGELOG.md">changelog</a> says what each release holds.</p>
 <table>
 <tr><th>Package</th><th>Registry</th><th>What it does</th></tr>
 <tr><td><a href="https://github.com/pqax-org/pqax/blob/main/src/dotnet/Pqax/README.md"><code>Pqax</code></a></td><td>NuGet</td><td>Reads, writes, and validates PQAX files in .NET, also inside a VPAX file. netstandard2.0 and net8.0.</td></tr>
