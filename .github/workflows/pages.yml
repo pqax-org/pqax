@@ -1,12 +1,16 @@
 name: Pages
 
-# Deploys site/, the one-page site of pqax.org, to GitHub Pages on every push to main that changes it. The custom
-# domain and HTTPS are set in the repository settings, Pages, with the source "GitHub Actions".
+# Deploys pqax.org to GitHub Pages on every push to main that changes the site, the two TypeScript packages that the
+# storage views at /tools/ load, or this workflow. The published folder is site/ plus the built packages under
+# tools/lib/, which src/typescript/views/scripts/site.mjs assembles; built files are not committed. The custom domain
+# and HTTPS are set in the repository settings, Pages, with the source "GitHub Actions".
 on:
   push:
     branches: [main]
     paths:
       - site/**
+      - src/typescript/pqax/**
+      - src/typescript/views/**
       - .github/workflows/pages.yml
   workflow_dispatch:
 
@@ -29,9 +33,24 @@ jobs:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+      - name: Build the reader
+        working-directory: src/typescript/pqax
+        run: |
+          npm ci
+          npm run build
+      - name: Build the views
+        working-directory: src/typescript/views
+        run: |
+          npm ci
+          npm run build
+      - name: Assemble the site
+        run: node src/typescript/views/scripts/site.mjs _site
       - uses: actions/configure-pages@v6
       - uses: actions/upload-pages-artifact@v5
         with:
-          path: site
+          path: _site
       - id: deployment
         uses: actions/deploy-pages@v5

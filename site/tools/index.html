@@ -1,0 +1,236 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PQAX storage views</title>
+<meta name="description" content="Open a PQAX file, or the footprint inside a VPAX file, and see where the bytes of each table go. The file is read in the browser and nothing is uploaded.">
+<meta name="color-scheme" content="light dark">
+<link rel="canonical" href="https://pqax.org/tools/">
+<link rel="stylesheet" href="lib/views/styles.css">
+<style>
+:root { --bg: #ffffff; --fg: #1f2328; --muted: #59636e; --line: #d0d7de; --accent: #0a5aa6; --code-bg: #f6f8fa; --error: #b42318; }
+@media (prefers-color-scheme: dark) {
+  :root { --bg: #0d1117; --fg: #e6edf3; --muted: #9198a1; --line: #3d444d; --accent: #79b8ff; --code-bg: #161b22; --error: #ff8a80; }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--fg); font: 17px/1.55 -apple-system, "Segoe UI", system-ui, Roboto, "Helvetica Neue", Arial, sans-serif; }
+main { max-width: 64rem; margin: 0 auto; padding: 2.5rem 1rem 4rem; }
+header { margin-bottom: 1.5rem; }
+.wordmark { font-size: 2.2rem; font-weight: 800; letter-spacing: .12em; margin: 0; line-height: 1; }
+.wordmark a { color: inherit; }
+.tagline { font-size: 1.15rem; margin: .5rem 0 0; color: var(--muted); }
+h2 { font-size: 1.2rem; margin: 2.4rem 0 .4rem; }
+p { margin: .6rem 0; }
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .9em; background: var(--code-bg); padding: .1em .35em; border-radius: 4px; }
+.note { color: var(--muted); font-size: .95rem; }
+#drop { border: 2px dashed var(--line); border-radius: 8px; padding: 1.4rem 1rem; text-align: center; transition: border-color .15s, background .15s; }
+#drop.over { border-color: var(--accent); background: var(--code-bg); }
+#drop p { margin: .4rem 0 0; color: var(--muted); }
+#pick { font: inherit; font-weight: 600; padding: .45rem 1rem; border: 1px solid var(--line); border-radius: 6px; background: var(--code-bg); color: var(--fg); cursor: pointer; }
+#pick:hover { border-color: var(--accent); }
+#pick:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+#status { min-height: 1.6em; }
+#status.error { color: var(--error); }
+#collection { border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); padding: .7rem 0; margin-top: 1rem; }
+#collection p { margin: .2rem 0; }
+#collection .file { font-weight: 600; overflow-wrap: anywhere; }
+.figures { display: flex; flex-wrap: wrap; gap: .2rem 1.4rem; margin: .4rem 0 0; padding: 0; list-style: none; }
+.figures b { font-weight: 600; }
+.warnings { color: var(--error); }
+.view { margin-top: .6rem; }
+footer { margin-top: 3rem; padding-top: 1rem; border-top: 1px solid var(--line); color: var(--muted); font-size: .9rem; }
+/* The views take the colors of this page where the two meet. */
+.pqax-view { --pqax-gap: var(--bg); --pqax-focus: var(--accent); --pqax-font: inherit; }
+@media (max-width: 40rem) {
+  main { padding-top: 1.5rem; }
+  .wordmark { font-size: 1.9rem; }
+}
+</style>
+<script type="importmap">
+{ "imports": { "@pqax/pqax": "./lib/pqax/index.js", "@pqax/views": "./lib/views/index.js" } }
+</script>
+</head>
+<body>
+<main>
+<header>
+<p class="wordmark"><a href="../">PQAX</a></p>
+<p class="tagline">Storage views of a footprint: where the bytes of each table go.</p>
+</header>
+
+<section id="drop" aria-labelledby="drop-title">
+<h2 id="drop-title" hidden>Open a file</h2>
+<input type="file" id="file" accept=".pqax,.vpax" hidden>
+<button type="button" id="pick">Choose a .pqax or .vpax file</button>
+<p>or drop it here.</p>
+</section>
+<p class="note">The file is read in this browser. Nothing is uploaded, and nothing is kept after the page closes.</p>
+<p id="status" role="status" aria-live="polite"></p>
+
+<div id="result" hidden>
+<section id="collection" aria-label="Collection">
+<p class="file" id="file-name"></p>
+<p id="collected"></p>
+<ul class="figures" id="totals"></ul>
+<p class="warnings" id="warnings" hidden></p>
+</section>
+
+<section aria-labelledby="stack-title">
+<h2 id="stack-title">Storage by table</h2>
+<p class="note">One bar per table, the most waste first: the live data, the files that left the table and the log still tracks, an estimate of the space of the deleted rows, the metadata and the footers, and the stale columns. Shares split each table by its own total.</p>
+<div class="view" id="stack"></div>
+</section>
+
+<section aria-labelledby="treemap-title">
+<h2 id="treemap-title">Columns by compressed size</h2>
+<p class="note">Sources, tables, and columns, sized by compressed bytes and colored by the share of nulls. Click a tile, or press Enter on it, to open it. A hatched tile has no totals in the file.</p>
+<div class="view" id="treemap"></div>
+</section>
+
+<section aria-labelledby="strip-title">
+<h2 id="strip-title">File sizes</h2>
+<p class="note">The sizes of the data files of each table on a log scale: the line goes from the smallest to the largest file, the box from the first to the third quartile, the mark is the median, and a dot is a file when the footprint keeps the files. The share of V-Ordered files is on the right.</p>
+<div class="view" id="strip"></div>
+</section>
+</div>
+
+<footer>
+<p>The views use the packages <code>@pqax/pqax</code> and <code>@pqax/views</code> of <a href="https://github.com/pqax-org/pqax">pqax-org/pqax</a>. PQAX is a project of <a href="https://www.sqlbi.com/">SQLBI</a>, released under the MIT license.</p>
+</footer>
+</main>
+
+<script type="module">
+import { PqaxError, openEmbedded, openPqax } from "@pqax/pqax";
+import {
+  buildModel, formatBytes, formatCount, formatTime, readFootprint, renderColumnTreemap, renderFileStrip, renderTableStack,
+} from "@pqax/views";
+
+const $ = (id) => document.getElementById(id);
+const status = $("status");
+const handles = {};
+
+function say(text, isError = false) {
+  status.textContent = text;
+  status.classList.toggle("error", isError);
+}
+
+/** Opens a .vpax as a package that embeds a footprint, and anything else as a PQAX file, then as a package. */
+async function open(file) {
+  if (/\.vpax$/i.test(file.name)) {
+    return openEmbedded(file);
+  }
+  try {
+    return await openPqax(file);
+  } catch (error) {
+    if (!(error instanceof PqaxError) || error.code !== "container.manifestMissing") {
+      throw error;
+    }
+    // A package renamed to .pqax still opens. Anything else keeps the error of the PQAX file.
+    try {
+      return await openEmbedded(file);
+    } catch {
+      throw error;
+    }
+  }
+}
+
+function explain(error) {
+  if (error instanceof PqaxError) {
+    switch (error.code) {
+      case "embedded.partMissing": return "This package has no footprint: it has no Footprint.pqax part.";
+      case "container.manifestMissing": return "This is not a PQAX file: it is not a zip archive, or it has no manifest.json.";
+      case "manifest.versionUnknown": return "This file has a format version that this page does not read.";
+      default: return `This file cannot be read (${error.code}).`;
+    }
+  }
+  return `This file cannot be read: ${error instanceof Error ? error.message : String(error)}`;
+}
+
+function item(label, value) {
+  const li = document.createElement("li");
+  li.append(`${label} `);
+  const b = document.createElement("b");
+  b.textContent = value;
+  li.append(b);
+  return li;
+}
+
+function showCollection(file, model) {
+  const c = model.collection;
+  $("file-name").textContent = c.embeddedPart ? `${file.name}, part ${c.embeddedPart}` : file.name;
+  const parts = [];
+  if (c.collector) parts.push(`Collected by ${c.collector}`);
+  if (c.library) parts.push(`with ${c.library}`);
+  const when = c.completedAt ?? c.startedAt;
+  if (when) parts.push(`on ${formatTime(when)}`);
+  if (c.level !== null) parts.push(`at level ${c.level}`);
+  if (c.formatVersion) parts.push(`in format ${c.formatVersion}`);
+  const depths = Object.entries(c.depths).map(([depth, n]) => `${formatCount(n)} at ${depth}`).join(", ");
+  $("collected").textContent = `${parts.join(" ") || "No collection information"}.${depths ? ` Detail: ${depths}.` : ""}`;
+  const t = c.totals;
+  $("totals").replaceChildren(
+    item("Sources", formatCount(t.sources)), item("Tables", formatCount(t.tables)), item("Columns", formatCount(t.columns)),
+    item("Files", formatCount(t.files)), item("Data", formatBytes(t.fileSize)), item("Rows", formatCount(t.rowCount)),
+    item("Footprint", formatBytes(t.footprint)), item("Waste", formatBytes(t.waste)),
+  );
+  const warnings = $("warnings");
+  warnings.hidden = model.warnings.length === 0;
+  warnings.textContent = model.warnings.join(" ");
+}
+
+function show(model) {
+  const views = [
+    ["stack", renderTableStack, { label: "Storage by table" }],
+    ["treemap", renderColumnTreemap, { label: "Columns by compressed size", focus: "root" }],
+    ["strip", renderFileStrip, { label: "File sizes" }],
+  ];
+  for (const [id, render, options] of views) {
+    if (handles[id]) {
+      handles[id].update(model, options);
+    } else {
+      handles[id] = render($(id), model, options);
+    }
+  }
+}
+
+async function load(file) {
+  if (!file) return;
+  say(`Reading ${file.name}…`);
+  try {
+    const doc = await open(file);
+    const model = buildModel(await readFootprint(doc));
+    $("result").hidden = false;
+    showCollection(file, model);
+    show(model);
+    say(model.tables.length === 0 ? "The footprint has no table." : "");
+  } catch (error) {
+    $("result").hidden = true;
+    say(`${file.name}: ${explain(error)}`, true);
+  }
+}
+
+const input = $("file");
+$("pick").addEventListener("click", () => input.click());
+input.addEventListener("change", () => load(input.files[0]));
+const drop = $("drop");
+for (const name of ["dragenter", "dragover"]) {
+  document.addEventListener(name, (event) => {
+    event.preventDefault();
+    drop.classList.add("over");
+  });
+}
+for (const name of ["dragleave", "dragend"]) {
+  document.addEventListener(name, (event) => {
+    if (event.relatedTarget === null) drop.classList.remove("over");
+  });
+}
+document.addEventListener("drop", (event) => {
+  event.preventDefault();
+  drop.classList.remove("over");
+  load(event.dataTransfer?.files?.[0]);
+});
+</script>
+</body>
+</html>

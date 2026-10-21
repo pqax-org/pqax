@@ -33,6 +33,13 @@ jobs:
         run: |
           npm ci
           npm test
+          npm run build
+      - name: TypeScript storage views and tests
+        working-directory: src/typescript/views
+        run: |
+          npm ci
+          npm run typecheck
+          npm test
       - name: Cross-implementation check
         run: python conformance/cross_check.py
 
@@ -57,7 +64,7 @@ jobs:
           python -m pip install -e "src/python[${{ matrix.extras }}]"
           python -m pytest tests/python -q -rs
 
-  # The TypeScript suite in the three browser engines, through Playwright.
+  # The TypeScript suites in the three browser engines, through Playwright.
   browsers:
     runs-on: ubuntu-latest
     steps:
@@ -70,4 +77,9 @@ jobs:
         run: |
           npm ci
           npx playwright install --with-deps chromium firefox webkit
+          npm run test:browsers
+      - name: Storage views tests in Chromium, Firefox, and WebKit
+        working-directory: src/typescript/views
+        run: |
+          npm ci
           npm run test:browsers

@@ -31,6 +31,7 @@ The packages are published from GitHub releases, as [RELEASING.md](RELEASING.md)
 | [src/dotnet/Pqax.Cli](src/dotnet/Pqax.Cli/README.md) | `pqax check`, `pqax info`, and `pqax collect` |
 | [src/dotnet/Pqax.Collector](src/dotnet/Pqax.Collector/README.md) | C#: collects Delta tables from a folder or from OneLake, with its own Parquet footer parser |
 | [src/typescript/pqax](src/typescript/pqax/README.md) | TypeScript: reads and validates, in browsers and in Node, no dependency |
+| [src/typescript/views](src/typescript/views/README.md) | TypeScript: the view model and three storage views of a footprint, in plain DOM and SVG. Private, not published. The page at [pqax.org/tools](https://pqax.org/tools/) uses it. |
 | [src/python](src/python/README.md) | Python: reads, validates, and writes, with a command line, no dependency |
 | [research/](research/) | The prototype and the encoding experiment that the serialization document cites |
 
@@ -42,7 +43,8 @@ Requirements: the .NET 10 SDK, Node 20 or later, Python 3.10 or later.
 dotnet test Pqax.slnx
 pip install -e src/python pytest jsonschema
 python -m pytest tests/python -q
-cd src/typescript/pqax && npm ci && npm test && cd ../../..
+cd src/typescript/pqax && npm ci && npm test && npm run build && cd ../../..
+cd src/typescript/views && npm ci && npm run typecheck && npm test && cd ../../..
 python conformance/cross_check.py
 ```
 

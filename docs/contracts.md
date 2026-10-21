@@ -47,18 +47,20 @@ src/dotnet/Pqax.Cli               the command line
 src/dotnet/Pqax.Collector         the collector
 src/dotnet/Pqax.Collector.ParquetNet
 src/typescript/pqax               the TypeScript package
+src/typescript/views              the storage views: a view model and three views, private
 src/python/pqax                   the Python package
 tests/dotnet/Pqax.Tests           xunit
 tests/dotnet/Pqax.Collector.Tests
 tests/dotnet/Pqax.Cli.Tests
 tests/typescript                  vitest
+tests/typescript-views            vitest, in Node and in browsers
 tests/python                      pytest
 research/prototype                the prototype that tested the serialization
 research/detail-encoding          the experiment that compared encodings of a large table
 .github/workflows/ci.yml          builds and runs every suite
 .github/workflows/publish.yml     publishes a release to NuGet, npm, and PyPI
-.github/workflows/pages.yml       deploys site/ to GitHub Pages, the site of pqax.org
-site/                             the one-page site of pqax.org
+.github/workflows/pages.yml       deploys site/ with the built packages to GitHub Pages, the site of pqax.org
+site/                             the one-page site of pqax.org, and the storage views at tools/
 ```
 
 Nothing under `src/`, `tests/`, and `conformance/` depends on a path outside those three folders. `research/` holds the experiments that the documents cite.
