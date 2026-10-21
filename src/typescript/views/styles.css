@@ -2,7 +2,7 @@
    value. A page overrides a property on .pqax-view or on an ancestor. The dark values apply under
    prefers-color-scheme: dark, under an ancestor with data-theme="dark", or with the theme option "dark"; the light
    values under data-theme="light" or the option "light". The palette is the reference palette of the dataviz method:
-   one categorical order for the stack, one blue ramp for the null share. */
+   the first five categorical hues in their validated order for the stack, one blue ramp for the null share. */
 
 .pqax-view {
   --pqax-font: inherit;
@@ -17,8 +17,9 @@
   --pqax-gap: #fcfcfb;
   --pqax-live: #c3c2b7;
   --pqax-non-live: #2a78d6;
-  --pqax-deleted: #eb6834;
-  --pqax-metadata: #1baf7a;
+  --pqax-unreferenced: #eb6834;
+  --pqax-deleted: #1baf7a;
+  --pqax-overhead: #e87ba4;
   --pqax-stale: #eda100;
   --pqax-no-totals: #e1e0d9;
   --pqax-absent: #898781;
@@ -56,8 +57,9 @@
     --pqax-gap: #1a1a19;
     --pqax-live: #5f5e59;
     --pqax-non-live: #3987e5;
-    --pqax-deleted: #d95926;
-    --pqax-metadata: #199e70;
+    --pqax-unreferenced: #d95926;
+    --pqax-deleted: #199e70;
+    --pqax-overhead: #d55181;
     --pqax-stale: #c98500;
     --pqax-no-totals: #2c2c2a;
     --pqax-absent: #898781;
@@ -96,8 +98,9 @@
   --pqax-gap: #fcfcfb;
   --pqax-live: #c3c2b7;
   --pqax-non-live: #2a78d6;
-  --pqax-deleted: #eb6834;
-  --pqax-metadata: #1baf7a;
+  --pqax-unreferenced: #eb6834;
+  --pqax-deleted: #1baf7a;
+  --pqax-overhead: #e87ba4;
   --pqax-stale: #eda100;
   --pqax-no-totals: #e1e0d9;
   --pqax-absent: #898781;
@@ -135,8 +138,9 @@
   --pqax-gap: #1a1a19;
   --pqax-live: #5f5e59;
   --pqax-non-live: #3987e5;
-  --pqax-deleted: #d95926;
-  --pqax-metadata: #199e70;
+  --pqax-unreferenced: #d95926;
+  --pqax-deleted: #199e70;
+  --pqax-overhead: #d55181;
   --pqax-stale: #c98500;
   --pqax-no-totals: #2c2c2a;
   --pqax-absent: #898781;
@@ -222,8 +226,9 @@
 /* The fills by role, shared by the HTML and the SVG of the views. */
 .pqax-view [data-component="live"] { --pqax-fill: var(--pqax-live); }
 .pqax-view [data-component="nonLive"] { --pqax-fill: var(--pqax-non-live); }
+.pqax-view [data-component="unreferenced"] { --pqax-fill: var(--pqax-unreferenced); }
 .pqax-view [data-component="deleted"] { --pqax-fill: var(--pqax-deleted); }
-.pqax-view [data-component="metadata"] { --pqax-fill: var(--pqax-metadata); }
+.pqax-view [data-component="overhead"] { --pqax-fill: var(--pqax-overhead); }
 .pqax-view [data-component="stale"] { --pqax-fill: var(--pqax-stale); }
 .pqax-view [data-bin="0"] { --pqax-fill: var(--pqax-seq-0); --pqax-fill-ink: var(--pqax-seq-ink-0); }
 .pqax-view [data-bin="1"] { --pqax-fill: var(--pqax-seq-1); --pqax-fill-ink: var(--pqax-seq-ink-1); }
@@ -315,6 +320,8 @@
 .pqax-stack .pqax-segment[data-thin] { min-width: 0; margin-left: 0; }
 .pqax-stack .pqax-segment:first-child { border-top-left-radius: 4px; border-bottom-left-radius: 4px; }
 .pqax-stack .pqax-segment:last-child { border-top-right-radius: 4px; border-bottom-right-radius: 4px; }
+/* The overhead is outside the data: a wider gap sets it apart, thin or not. */
+.pqax-stack .pqax-segment.pqax-overhead { margin-left: 6px; border-radius: 4px; }
 
 .pqax-stack .pqax-marks { grid-area: marks; display: flex; gap: 0.25rem; align-items: center; }
 .pqax-stack .pqax-absent {

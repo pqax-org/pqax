@@ -1,20 +1,22 @@
-// The storage stack per table: one horizontal bar per table, split into the live data, the non-live files, the
-// deleted rows, the metadata with the footers, and the stale columns. In bytes, the bars share one scale and the
-// largest table fills the width. In shares, every bar fills the width. The tables come by waste, largest first. The
-// view is plain HTML, a grid per row, so that the bars stretch with the width and the label goes above the bar on a
-// phone. A component that the file does not have is never drawn as a zero: a dashed mark after the bar shows it.
-import { applyBaseOptions, attachKeyboard, attachTooltip, createRoot, html, makeItem, observeWidth, widthOf } from "./dom.js";
-import { formatBytes, formatShare } from "./format.js";
+// The storage stack per table: one horizontal bar per table, split into the live data and the waste (the non-live
+// files, the unreferenced files, the deleted rows, the stale columns), with the overhead (the metadata and the footers)
+// after a gap. The tables come by waste, largest first. In bytes, the bars share one scale and the largest table fills
+// the width. In shares, the live data and the waste of every table fill the same width, and the overhead goes beyond
+// it, since it is outside the denominator of the shares. The view is plain HTML, a grid per row, so that the bars
+// stretch with the width and the label goes above the bar on a phone. A component that the file does not have is never
+// drawn as a zero: a dashed mark after the bar shows it.
+import { NARROW_WIDTH, applyBaseOptions, attachKeyboard, attachTooltip, createRoot, html, makeItem, observeWidth, widthOf } from "./dom.js";
+import { formatBytes, formatCount, formatNumber, formatShare, formatTime } from "./format.js";
 import { sortTables } from "./model.js";
 import type { BaseOptions, ViewHandle } from "./dom.js";
 import type { StackComponent, StackComponentKey, StorageModel, TableModel, TableOrder } from "./model.js";
 
-/** The scale of the bars: bytes, to the scale of the largest table, or shares, each bar filling the width. */
+/** The scale of the bars: bytes, to the scale of the largest table, or shares of the data of each table. */
 export type StackMode = "bytes" | "shares";
 
 /** Options of {@link renderTableStack}. */
 export interface StackOptions extends BaseOptions {
-  /** Bytes: bars to the scale of the largest table. Shares: every bar fills the width, split by the shares of its table. Default "bytes". */
+  /** Bytes: bars to the scale of the largest table. Shares: the live data and the waste of every bar fill the same width, the overhead beyond it. Default "bytes". */
   readonly mode?: StackMode;
   /** The order of the tables. Default "waste". */
   readonly order?: TableOrder;
@@ -26,38 +28,37 @@ export interface StackOptions extends BaseOptions {
   readonly onModeChange?: (mode: StackMode) => void;
 }
 
-/** The segments of a bar, in the order of the bar. `metadata` sums the `metadata` and `footers` components. */
-const SEGMENTS = ["live", "nonLive", "deleted", "metadata", "stale"] as const;
+/** The segments of a bar, in the order of the bar. `overhead` sums the `metadata` and `footers` components. */
+const SEGMENTS = ["live", "nonLive", "unreferenced", "deleted", "stale", "overhead"] as const;
 
 type SegmentKey = (typeof SEGMENTS)[number];
 
 const NAMES: Readonly<Record<SegmentKey, string>> = {
   live: "Live data",
   nonLive: "Non-live files",
+  unreferenced: "Unreferenced files",
   deleted: "Deleted rows (estimate)",
-  metadata: "Metadata and footers",
   stale: "Stale columns",
+  overhead: "Overhead: metadata and footers",
 };
 
-/** What the parts of the metadata segment are called when one of them is missing. */
-const METADATA_PARTS: Readonly<Record<"metadata" | "footers", string>> = {
+/** What the parts of the overhead segment are called when one of them is missing. */
+const OVERHEAD_PARTS: Readonly<Record<"metadata" | "footers", string>> = {
   metadata: "the metadata size",
   footers: "the footer size",
 };
-
-/** Below this width in pixels, the label goes above the bar. */
-const NARROW = 480;
 
 /** One segment of a bar. */
 interface Segment {
   readonly key: SegmentKey;
   readonly bytes: number;
+  /** The share of the data of the table: the live data and the waste. */
   readonly share: number | null;
   /** Whether a field that the segment needs is missing. */
   readonly absent: boolean;
   /** Whether nothing of the segment is known. */
   readonly unknown: boolean;
-  /** For the metadata segment, the parts that are missing. */
+  /** For the overhead segment, the parts that are missing. */
   readonly missing: readonly string[];
   readonly source?: "files" | "table";
 }
@@ -66,18 +67,18 @@ function componentOf(table: TableModel, key: StackComponentKey): StackComponent 
   return table.stack.components.find((c) => c.key === key) ?? { key, bytes: 0, share: null, absent: true };
 }
 
-/** The five segments of a table, from its six components. */
+/** The six segments of a table, from its seven components. */
 function segmentsOf(table: TableModel): Segment[] {
-  const total = table.stack.total;
+  const data = table.stack.data;
   return SEGMENTS.map((key): Segment => {
-    if (key === "metadata") {
+    if (key === "overhead") {
       const metadata = componentOf(table, "metadata");
       const footers = componentOf(table, "footers");
       const bytes = metadata.bytes + footers.bytes;
-      const missing = [metadata.absent ? METADATA_PARTS.metadata : null, footers.absent ? METADATA_PARTS.footers : null]
+      const missing = [metadata.absent ? OVERHEAD_PARTS.metadata : null, footers.absent ? OVERHEAD_PARTS.footers : null]
         .filter((part): part is string => part !== null);
       return {
-        key, bytes, share: total > 0 ? bytes / total : null, absent: missing.length > 0, unknown: missing.length === 2, missing,
+        key, bytes, share: data > 0 ? bytes / data : null, absent: missing.length > 0, unknown: missing.length === 2, missing,
       };
     }
     const component = componentOf(table, key);
@@ -96,6 +97,63 @@ function absentText(segment: Segment): string {
   return `${NAMES[segment.key]}: ${segment.missing.join(" and ")} not in the file`;
 }
 
+/** "between A and B", or "on A" when the two times read the same to the minute or one is missing. Null when both are missing. */
+function range(from: string | null, to: string | null): string | null {
+  if (from === null && to === null) {
+    return null;
+  }
+  const start = formatTime(from ?? to);
+  const end = formatTime(to ?? from);
+  return start === end ? `on ${start}` : `between ${start} and ${end}`;
+}
+
+/** A count with its noun, singular for one. */
+function counted(count: number | null, noun: string, locale: string | undefined): string {
+  return `${formatCount(count, locale)} ${noun}${count === 1 ? "" : "s"}`;
+}
+
+/** The lines on the files that the table no longer uses: what the log says, what the listing says, and when. */
+function storageLines(table: TableModel, locale: string | undefined): string[] {
+  const lines: string[] = [];
+  if (table.nonLiveFileSize !== null || table.nonLiveFileCount !== null) {
+    const tracked = `The log tracks ${counted(table.nonLiveFileCount, "file", locale)} that left the table, ${formatBytes(table.nonLiveFileSize, locale)}`;
+    lines.push(table.stack.listed ? tracked : `${tracked}; a VACUUM may have deleted some of them`);
+  }
+  if (table.unreferencedFileCount !== null || table.unreferencedFileSize !== null) {
+    lines.push(`The storage holds ${counted(table.unreferencedFileCount, "file", locale)} that the table does not reference, ${formatBytes(table.unreferencedFileSize, locale)}`);
+  }
+  const removed = range(table.nonLiveOldestRemovedAt, table.nonLiveNewestRemovedAt);
+  if (removed !== null) {
+    lines.push(`Non-live files removed ${removed}`);
+  }
+  return lines;
+}
+
+/** The lines on the history: the rate of the commits, the last one, the maintenance operations, and the partitions. */
+function historyLines(table: TableModel, locale: string | undefined): string[] {
+  const m = table.maintenance;
+  const lines: string[] = [];
+  const last = m.daysSinceLastCommit !== null ? `last commit ${counted(m.daysSinceLastCommit, "day", locale)} ago` : null;
+  if (m.commitsPerDay !== null) {
+    const read = m.commitsRead ?? m.commitCount;
+    lines.push(`${formatNumber(m.commitsPerDay, locale)} commits a day over the ${counted(read, "commit", locale)} read${last !== null ? `, ${last}` : ""}`);
+  } else if (last !== null) {
+    lines.push(`Last commit ${counted(m.daysSinceLastCommit, "day", locale)} ago`);
+  }
+  if (m.hasOptimize !== null) {
+    lines.push(m.hasOptimize ? `OPTIMIZE last ${range(m.lastOptimizeAt, null) ?? "at an unknown time"}` : "No OPTIMIZE in the commits read");
+  }
+  if (m.hasVacuum !== null) {
+    lines.push(m.hasVacuum ? `VACUUM last ${range(m.lastVacuumAt, null) ?? "at an unknown time"}` : "No VACUUM in the commits read");
+  }
+  const p = table.partitions;
+  if (p.count !== null && p.count > 0) {
+    const changed = range(p.oldestModifiedAt, p.newestModifiedAt);
+    lines.push(`${counted(p.count, "partition", locale)}${changed !== null ? `, changed ${changed}` : ""}`);
+  }
+  return lines;
+}
+
 /** The figures of a table for the tooltip, the first line being the title. */
 function linesOf(table: TableModel, segments: readonly Segment[], model: StorageModel, locale: string | undefined): string[] {
   const lines = [table.label];
@@ -103,15 +161,28 @@ function linesOf(table: TableModel, segments: readonly Segment[], model: Storage
   if (source !== undefined) {
     lines.push(`Source ${source.label}`);
   }
-  lines.push(`Total ${formatBytes(table.stack.total, locale)}`);
+  lines.push(`Total ${formatBytes(table.stack.total, locale)}: data ${formatBytes(table.stack.data, locale)}, overhead ${formatBytes(table.stack.overhead, locale)}`);
   for (const segment of segments) {
     if (segment.unknown) {
       lines.push(absentText(segment));
       continue;
     }
+    if (segment.key === "overhead") {
+      const metadata = componentOf(table, "metadata");
+      const footers = componentOf(table, "footers");
+      const logFiles = table.metadataFileCount !== null ? ` in ${counted(table.metadataFileCount, "file", locale)} of the log` : "";
+      const parts = [
+        metadata.absent ? "metadata not in the file" : `metadata ${formatBytes(metadata.bytes, locale)}${logFiles}`,
+        footers.absent ? "footers not in the file" : `footers ${formatBytes(footers.bytes, locale)}`,
+      ];
+      lines.push(`Overhead ${formatBytes(segment.bytes, locale)} (${formatShare(segment.share, locale)} beyond the data): ${parts.join(", ")}`);
+      continue;
+    }
     let line = `${NAMES[segment.key]} ${formatBytes(segment.bytes, locale)} (${formatShare(segment.share, locale)})`;
-    if (segment.missing.length > 0) {
-      line += `, ${segment.missing.join(" and ")} not in the file`;
+    if (segment.key === "nonLive") {
+      line += table.stack.listed ? ", at most, still in the storage" : ", as the log gives them";
+    } else if (segment.key === "unreferenced") {
+      line += ", beyond the non-live files";
     }
     if (segment.source === "files") {
       line += ", estimated from the files table";
@@ -120,7 +191,8 @@ function linesOf(table: TableModel, segments: readonly Segment[], model: Storage
     }
     lines.push(line);
   }
-  lines.push(`Waste ${formatBytes(table.stack.waste, locale)} (${formatShare(table.stack.wasteShare, locale)})`);
+  lines.push(`Waste ${formatBytes(table.stack.waste, locale)} (${formatShare(table.stack.wasteShare, locale)} of the data)`);
+  lines.push(...storageLines(table, locale), ...historyLines(table, locale));
   return lines;
 }
 
@@ -140,13 +212,25 @@ function toolbar(mode: StackMode): HTMLElement {
     html("div", { class: "pqax-toggle", role: "group", "aria-label": "Scale" }, button("bytes", "Bytes"), button("shares", "Shares")));
 }
 
-/** The legend: the five segments, and the mark of a component that the file does not have. */
+/** The legend: the six segments, and the mark of a component that the file does not have. */
 function legend(): HTMLElement {
   return html("div", { class: "pqax-legend" },
     ...SEGMENTS.map((key) => html("span", { class: "pqax-legend-item", "data-component": key },
       html("span", { class: "pqax-swatch", "aria-hidden": "true" }), NAMES[key])),
     html("span", { class: "pqax-legend-item pqax-legend-absent" },
       html("span", { class: "pqax-absent-mark", "aria-hidden": "true" }), "Not in the file"));
+}
+
+/**
+ * The scale of the bars. In bytes, the largest total. In shares, the width that the data of every table takes, so that
+ * the table whose overhead is the largest share of its data still fits.
+ */
+function scaleOf(tables: readonly TableModel[], mode: StackMode): number {
+  if (mode === "shares") {
+    const widest = tables.reduce((most, t) => (t.stack.data > 0 ? Math.max(most, t.stack.total / t.stack.data) : most), 1);
+    return 1 / widest;
+  }
+  return tables.reduce((largest, t) => Math.max(largest, t.stack.total), 0);
 }
 
 /** One row: the label, the bar, the marks of the missing components, and the value. */
@@ -161,8 +245,9 @@ function row(table: TableModel, model: StorageModel, mode: StackMode, scale: num
     if (segment.bytes <= 0) {
       continue;
     }
-    const width = mode === "shares" ? segment.share ?? 0 : scale > 0 ? segment.bytes / scale : 0;
-    bar.append(html("span", { class: "pqax-segment", "data-component": segment.key, style: `width: ${percent(width)}` }));
+    const width = mode === "shares" ? (segment.share ?? 0) * scale : scale > 0 ? segment.bytes / scale : 0;
+    const overhead = segment.key === "overhead" ? " pqax-overhead" : "";
+    bar.append(html("span", { class: `pqax-segment${overhead}`, "data-component": segment.key, style: `width: ${percent(width)}` }));
   }
   const marks = html("span", { class: "pqax-marks" },
     ...segments.filter((s) => s.absent).map((s) =>
@@ -209,8 +294,8 @@ function focusSelector(root: HTMLElement): string | null {
 
 /**
  * Draws the storage stack of each table: one row per table, sorted by waste, with a bar split into the live data, the
- * non-live files, the deleted rows, the metadata and footers, and the stale columns. A toggle switches the bars between
- * bytes and shares.
+ * non-live files, the unreferenced files, the deleted rows, and the stale columns, then the overhead of the metadata and
+ * the footers. A toggle switches the bars between bytes and shares.
  * @param container The element that receives the view.
  * @param model The model from `buildModel`.
  * @param options The mode, the order, and the common options.
@@ -242,11 +327,11 @@ export function renderTableStack(container: HTMLElement, model: StorageModel, op
       return;
     }
     detachTooltip ??= attachTooltip(root);
-    root.toggleAttribute("data-narrow", widthOf(root, container) < NARROW);
+    root.toggleAttribute("data-narrow", widthOf(root, container) < NARROW_WIDTH);
 
     const limit = opts.maxTables !== undefined && Number.isFinite(opts.maxTables) ? Math.max(0, Math.floor(opts.maxTables)) : Infinity;
     const tables = sortTables(current.tables, opts.order ?? "waste").slice(0, limit);
-    const scale = tables.reduce((largest, t) => Math.max(largest, t.stack.total), 0);
+    const scale = scaleOf(tables, mode);
     const showSource = current.sources.length > 1;
     const rows = html("div", { class: "pqax-rows" }, ...tables.map((t) => row(t, current, mode, scale, showSource, locale)));
     const marks = tables.reduce((most, t) => Math.max(most, segmentsOf(t).filter((s) => s.absent).length), 0);

@@ -1,0 +1,16 @@
+{
+  "name": "pqax-typescript",
+  "private": true,
+  "description": "The npm workspaces of the two TypeScript packages of PQAX: npm ci here installs both and links the views to the reader",
+  "license": "MIT",
+  "workspaces": [
+    "src/typescript/pqax",
+    "src/typescript/views"
+  ],
+  "scripts": {
+    "build": "npm run build --workspace src/typescript/pqax && npm run build --workspace src/typescript/views",
+    "typecheck": "npm run typecheck --workspaces",
+    "test": "npm test --workspaces",
+    "test:browsers": "npm run test:browsers --workspaces"
+  }
+}

@@ -1,12 +1,14 @@
 // The three views in the DOM of a browser: the storage stack, the column treemap, and the file strip, each mounted on
 // the samples of the kit and on synthetic footprints, checked against the DOM contract of the views: the root and its
 // theme, the items with their keys, focus, roles, and names, the tooltip, the keyboard, the callbacks, update and
-// dispose, the empty model, a narrow container, and what each view draws. It runs in the browsers only.
+// dispose, the empty model, a narrow container, and what each view draws: the six segments of the stack with the
+// overhead beyond the data, the two thresholds of the strip, and the height of the treemap on a phone. It runs in the
+// browsers only.
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { openEmbedded, openPqax } from "@pqax/pqax";
 import {
   type BaseOptions, type StorageModel, type TableModel, type TreeNode, type ViewHandle, buildModel, columnTree, findPath,
-  formatBytes, formatShare, readFootprint, sortTables,
+  formatBytes, formatCount, formatNumber, formatShare, formatTime, readFootprint, sortTables,
 } from "@pqax/views";
 import "@pqax/views/styles.css";
 import { type StackOptions, renderTableStack } from "@pqax/views";
@@ -25,7 +27,7 @@ const RENDER: Readonly<Record<Kind, Render>> = {
 };
 const KINDS: readonly Kind[] = ["stack", "treemap", "strip"];
 
-const FILES = ["sample.pqax", "summary-only.pqax", "files.pqax", "multipart.pqax", "embedded-stored.vpax"];
+const FILES = ["sample.pqax", "format-0.1.pqax", "summary-only.pqax", "files.pqax", "multipart.pqax", "embedded-stored.vpax"];
 /** A synthetic footprint whose fields of an early 0.1 producer, distributions, and footers are missing. */
 const ABSENT = "synthetic without fields";
 const SYNTHETIC = "synthetic";
@@ -38,7 +40,10 @@ const models = new Map<string, StorageModel>();
 
 const LIGHT_LIVE = "#c3c2b7";
 const DARK_LIVE = "#5f5e59";
-const SEGMENTS = ["live", "nonLive", "deleted", "metadata", "stale"];
+const SEGMENTS = ["live", "nonLive", "unreferenced", "deleted", "stale", "overhead"];
+/** The segments of the data of a table: every segment but the overhead. */
+const DATA_SEGMENTS = SEGMENTS.filter((k) => k !== "overhead");
+const MIB = 1024 * 1024;
 
 beforeAll(async () => {
   for (const file of FILES) {
@@ -307,13 +312,19 @@ describe("the storage stack", () => {
       expect(row.querySelector(".pqax-label")!.textContent).toContain(table.label);
       expect(row.querySelector(".pqax-bar")).not.toBeNull();
       const bytes: Record<string, number> = {
-        live: component(table, "live").bytes, nonLive: component(table, "nonLive").bytes, deleted: component(table, "deleted").bytes,
-        metadata: component(table, "metadata").bytes + component(table, "footers").bytes, stale: component(table, "stale").bytes,
+        live: component(table, "live").bytes, nonLive: component(table, "nonLive").bytes,
+        unreferenced: component(table, "unreferenced").bytes, deleted: component(table, "deleted").bytes,
+        stale: component(table, "stale").bytes, overhead: component(table, "metadata").bytes + component(table, "footers").bytes,
       };
       const segments = [...row.querySelectorAll(".pqax-bar > span.pqax-segment")].map((s) => s.getAttribute("data-component"));
       expect(segments).toEqual(SEGMENTS.filter((k) => bytes[k]! > 0));
       expect(sum(widths(row))).toBeCloseTo(scale > 0 ? (table.stack.total / scale) * 100 : 0, 1);
-      const absent = SEGMENTS.filter((k) => (k === "metadata"
+      for (const segment of row.querySelectorAll<HTMLElement>(".pqax-bar > span.pqax-segment")) {
+        const k = segment.getAttribute("data-component")!;
+        expect(Number.parseFloat(segment.style.width)).toBeCloseTo((bytes[k]! / scale) * 100, 2);
+        expect(segment.classList.contains("pqax-overhead")).toBe(k === "overhead");
+      }
+      const absent = SEGMENTS.filter((k) => (k === "overhead"
         ? component(table, "metadata").absent || component(table, "footers").absent
         : component(table, k).absent));
       expect([...row.querySelectorAll("span.pqax-absent[data-component]")].map((m) => m.getAttribute("data-component"))).toEqual(absent);
@@ -326,14 +337,16 @@ describe("the storage stack", () => {
   it("draws absent marks for the components that the file does not have", () => {
     const root = stack(modelOf(ABSENT)).element;
     for (const row of rowsOf(root)) {
-      expect([...row.querySelectorAll("span.pqax-absent")].map((m) => m.getAttribute("data-component"))).toEqual(["nonLive", "metadata", "stale"]);
-      expect([...row.querySelectorAll(".pqax-segment")].map((m) => m.getAttribute("data-component"))).not.toContain("metadata");
+      expect([...row.querySelectorAll("span.pqax-absent")].map((m) => m.getAttribute("data-component"))).toEqual(["nonLive", "unreferenced", "stale", "overhead"]);
+      expect([...row.querySelectorAll(".pqax-segment")].map((m) => m.getAttribute("data-component"))).not.toContain("overhead");
+      expect(row.querySelector('span.pqax-absent[data-component="overhead"]')!.getAttribute("title")).toBe("Overhead: metadata and footers not in the file");
     }
-    // At level 1 the footers are missing but the metadata is there: the metadata segment is drawn, and marked.
+    // At level 1 the footers are missing but the metadata is there: the overhead segment is drawn, and marked.
     const level1 = stack(modelOf(LEVEL1)).element;
     for (const row of rowsOf(level1)) {
-      expect([...row.querySelectorAll("span.pqax-absent")].map((m) => m.getAttribute("data-component"))).toEqual(["metadata", "stale"]);
-      expect([...row.querySelectorAll(".pqax-segment")].map((m) => m.getAttribute("data-component"))).toContain("metadata");
+      expect([...row.querySelectorAll("span.pqax-absent")].map((m) => m.getAttribute("data-component"))).toEqual(["stale", "overhead"]);
+      expect([...row.querySelectorAll(".pqax-segment")].map((m) => m.getAttribute("data-component"))).toContain("overhead");
+      expect(row.querySelector('span.pqax-absent[data-component="overhead"]')!.getAttribute("title")).toBe("Overhead: metadata and footers: the footer size not in the file");
     }
     // Without any field of the stack, every component is marked and no segment is drawn.
     const bare = stack(modelOf(BARE)).element;
@@ -343,7 +356,73 @@ describe("the storage stack", () => {
     }
   });
 
-  it("switches to shares with the toggle: data-mode, aria-pressed, onModeChange, bars of 100%, and the waste share", () => {
+  it.each(FILES)("on %s, marks the unreferenced files absent only in a file of format 0.1", (name) => {
+    const root = stack(modelOf(name)).element;
+    const rows = rowsOf(root);
+    expect(rows).toHaveLength(2);
+    for (const row of rows) {
+      const marks = [...row.querySelectorAll("span.pqax-absent")].map((m) => m.getAttribute("data-component"));
+      expect(marks).toEqual(name === "format-0.1.pqax" ? ["unreferenced"] : []);
+    }
+    if (name === "format-0.1.pqax") {
+      expect(root.querySelector('span.pqax-absent[data-component="unreferenced"]')!.getAttribute("title")).toBe("Unreferenced files not in the file");
+    }
+  });
+
+  it("draws six segments in the legend and the overhead last, apart from the data by a gap of 6 pixels", () => {
+    const root = stack(modelOf("sample.pqax")).element;
+    const legend = [...root.querySelectorAll(".pqax-legend .pqax-legend-item[data-component]")];
+    expect(legend.map((e) => e.textContent)).toEqual([
+      "Live data", "Non-live files", "Unreferenced files", "Deleted rows (estimate)", "Stale columns", "Overhead: metadata and footers",
+    ]);
+    for (const row of rowsOf(root)) {
+      const segments = [...row.querySelectorAll<HTMLElement>(".pqax-bar > span.pqax-segment")];
+      const overhead = segments.at(-1)!;
+      expect(overhead.getAttribute("data-component")).toBe("overhead");
+      expect(overhead.classList.contains("pqax-overhead")).toBe(true);
+      expect(row.querySelectorAll(".pqax-overhead")).toHaveLength(1);
+      expect(getComputedStyle(overhead).marginLeft).toBe("6px");
+      // The overhead has a fill of its own.
+      expect(getComputedStyle(overhead).getPropertyValue("--pqax-fill").trim()).not.toBe(getComputedStyle(segments[0]!).getPropertyValue("--pqax-fill").trim());
+      const before = segments.at(-2)!.getBoundingClientRect();
+      expect(overhead.getBoundingClientRect().left - before.right).toBeGreaterThanOrEqual(5.5);
+    }
+  });
+
+  it.each([SYNTHETIC, "sample.pqax", "format-0.1.pqax", LEVEL1])("on %s, gives the data of every row the same width in shares, and draws the overhead beyond it", (name) => {
+    const model = modelOf(name);
+    const root = stack(model, { mode: "shares" }).element;
+    const drawn = model.tables.filter((t) => t.stack.data > 0);
+    expect(drawn.length).toBeGreaterThan(0);
+    const scale = 1 / Math.max(...drawn.map((t) => t.stack.total / t.stack.data));
+    expect(scale).toBeLessThan(1);
+    const dataWidths: number[] = [];
+    for (const row of rowsOf(root)) {
+      const table = model.tables.find((t) => t.key === row.getAttribute("data-key"))!;
+      const segments = [...row.querySelectorAll<HTMLElement>(".pqax-bar > span.pqax-segment")];
+      const width = (s: HTMLElement) => Number.parseFloat(s.style.width);
+      const data = sum(segments.filter((s) => DATA_SEGMENTS.includes(s.getAttribute("data-component")!)).map(width));
+      dataWidths.push(data);
+      expect(data).toBeCloseTo(scale * 100, 1);
+      for (const segment of segments) {
+        const k = segment.getAttribute("data-component")!;
+        const share = k === "overhead" ? table.stack.overheadShare! : component(table, k).share!;
+        expect(width(segment)).toBeCloseTo(share * scale * 100, 2);
+      }
+      const overhead = segments.find((s) => s.getAttribute("data-component") === "overhead");
+      if (table.stack.overhead > 0) {
+        expect(width(overhead!)).toBeCloseTo(table.stack.overheadShare! * scale * 100, 2);
+        expect(data + width(overhead!)).toBeLessThanOrEqual(100 + 1e-3);
+      }
+      expect(row.querySelector("span.pqax-value")!.textContent).toBe(`${formatShare(table.stack.wasteShare)} waste`);
+    }
+    // Every row the same data width, and the row whose overhead is the largest share of its data fills the bar.
+    expect(Math.max(...dataWidths) - Math.min(...dataWidths)).toBeLessThan(0.01);
+    const widest = drawn.reduce((a, b) => (b.stack.total / b.stack.data > a.stack.total / a.stack.data ? b : a));
+    expect(sum(widths(root.querySelector(`.pqax-row[data-key="${widest.key}"]`)!))).toBeCloseTo(100, 1);
+  });
+
+  it("switches to shares with the toggle: data-mode, aria-pressed, onModeChange, the same data width, and the waste share", () => {
     const onModeChange = vi.fn();
     const model = modelOf(SYNTHETIC);
     const root = stack(model, { onModeChange }).element;
@@ -352,9 +431,12 @@ describe("the storage stack", () => {
     expect(onModeChange).toHaveBeenCalledWith("shares");
     expect(root.querySelector('.pqax-toggle button[data-mode="shares"]')!.getAttribute("aria-pressed")).toBe("true");
     expect(root.querySelector('.pqax-toggle button[data-mode="bytes"]')!.getAttribute("aria-pressed")).toBe("false");
+    const scale = 1 / Math.max(...model.tables.map((t) => t.stack.total / t.stack.data));
     for (const row of rowsOf(root)) {
       const table = model.tables.find((t) => t.key === row.getAttribute("data-key"))!;
-      expect(sum(widths(row))).toBeCloseTo(100, 1);
+      const data = [...row.querySelectorAll<HTMLElement>(".pqax-bar > span.pqax-segment:not(.pqax-overhead)")].map((s) => Number.parseFloat(s.style.width));
+      expect(sum(data)).toBeCloseTo(scale * 100, 1);
+      expect(sum(widths(row))).toBeCloseTo((table.stack.total / table.stack.data) * scale * 100, 1);
       expect(row.querySelector("span.pqax-value")!.textContent).toBe(`${formatShare(table.stack.wasteShare)} waste`);
     }
     click(root.querySelector('.pqax-toggle button[data-mode="shares"]')!);
@@ -378,6 +460,97 @@ describe("the storage stack", () => {
     handle.update(modelOf("sample.pqax"));
     expect(rowsOf(root).map((r) => r.getAttribute("data-key"))).toEqual(["t:2", "t:1"]);
     expect(container.children.length).toBe(1);
+  });
+
+  /** The lines of the tooltip of a row, after the title, with the focus on the row. */
+  function tooltipLines(root: HTMLElement, rowKey: string): string[] {
+    root.querySelector<HTMLElement>(`.pqax-row[data-key="${rowKey}"]`)!.focus();
+    const tip = tooltipOf(root);
+    expect(tip.hidden).toBe(false);
+    return [tip.querySelector("strong")!.textContent!, ...[...tip.querySelectorAll("span")].map((s) => s.textContent!)];
+  }
+
+  it("writes in the tooltip of sales the total, the overhead with the files of the log, the storage, and the history", () => {
+    const model = modelOf("sample.pqax");
+    const sales = model.tables[0]!;
+    const lines = tooltipLines(stack(model).element, "t:1");
+    const data = 159121 - 3847 + 737;
+    expect(lines[0]).toBe("sales");
+    expect(lines).toContain("Source Fix_Lakehouse");
+    expect(lines).toContain(`Total ${formatBytes(172327)}: data ${formatBytes(data)}, overhead ${formatBytes(16316)}`);
+    expect(lines).toContain(`Overhead ${formatBytes(16316)} (${formatShare(16316 / data)} beyond the data): metadata ${formatBytes(12469)} in ${formatCount(6)} files of the log, footers ${formatBytes(3847)}`);
+    expect(lines).toContain(`Non-live files ${formatBytes(737)} (${formatShare(737 / data)}), at most, still in the storage`);
+    expect(lines).toContain(`Unreferenced files ${formatBytes(0)} (${formatShare(0)}), beyond the non-live files`);
+    expect(lines).toContain(`Deleted rows (estimate) ${formatBytes(239.1)} (${formatShare(239.1 / data)}), estimated from the files table`);
+    expect(lines).toContain(`Waste ${formatBytes(sales.stack.waste)} (${formatShare(sales.stack.wasteShare)} of the data)`);
+    expect(lines).toContain(`The log tracks 1 file that left the table, ${formatBytes(12345)}`);
+    expect(lines).toContain(`The storage holds 1 file that the table does not reference, ${formatBytes(737)}`);
+    expect(lines).toContain(`Non-live files removed on ${formatTime("2023-11-14T22:14:10.000Z")}`);
+    expect(lines).toContain(`${formatNumber(4)} commits a day over the 4 commits read, last commit ${formatCount(1055)} days ago`);
+    expect(lines).toContain(`OPTIMIZE last on ${formatTime("2023-11-14T22:14:50.000Z")}`);
+    expect(lines).toContain("No VACUUM in the commits read");
+    expect(lines.some((line) => line.startsWith("2 partitions, changed "))).toBe(true);
+    // The order: the total first, then the segments, the waste, the storage, and the history.
+    const at = (start: string) => lines.findIndex((line) => line.startsWith(start));
+    expect(at("Total")).toBeLessThan(at("Live data"));
+    expect(at("Live data")).toBeLessThan(at("Overhead"));
+    expect(at("Overhead")).toBeLessThan(at("Waste"));
+    expect(at("Waste")).toBeLessThan(at("The log tracks"));
+    expect(at("The log tracks")).toBeLessThan(at("Non-live files removed"));
+    expect(at("Non-live files removed")).toBeLessThan(at(formatNumber(4)));
+    expect(at("No VACUUM")).toBeLessThan(at("2 partitions"));
+  });
+
+  it("writes in the tooltip a range of times between two different times, and the partitions without a range", () => {
+    const base = modelOf("sample.pqax");
+    const sales = base.tables[0]!;
+    const model: StorageModel = {
+      ...base,
+      tables: [{
+        ...sales, nonLiveFileCount: 3, nonLiveOldestRemovedAt: "2026-09-01T08:00:00.000Z", nonLiveNewestRemovedAt: "2026-09-20T17:30:00.000Z",
+        partitions: { count: 12, kept: 12, oldestModifiedAt: "2026-08-01T00:00:00.000Z", newestModifiedAt: "2026-10-01T00:00:00.000Z" },
+      }, { ...base.tables[1]!, partitions: { count: 1, kept: 0, oldestModifiedAt: null, newestModifiedAt: null } }],
+    };
+    const root = stack(model).element;
+    const lines = tooltipLines(root, "t:1");
+    expect(lines).toContain(`The log tracks 3 files that left the table, ${formatBytes(12345)}`);
+    expect(lines).toContain(`Non-live files removed between ${formatTime("2026-09-01T08:00:00.000Z")} and ${formatTime("2026-09-20T17:30:00.000Z")}`);
+    expect(lines).toContain(`12 partitions, changed between ${formatTime("2026-08-01T00:00:00.000Z")} and ${formatTime("2026-10-01T00:00:00.000Z")}`);
+    const orders = tooltipLines(root, "t:2");
+    expect(orders).toContain("1 partition");
+    expect(orders).toContain("No OPTIMIZE in the commits read");
+    expect(orders.some((line) => line.startsWith("Non-live files removed"))).toBe(false);
+    expect(orders).toContain(`The log tracks 0 files that left the table, ${formatBytes(0)}`);
+  });
+
+  it("writes one time, with on, when the two times of a range read the same to the minute", () => {
+    // The two partitions of sales changed at 22:15:00 and 22:15:10: the tooltip writes the minute once.
+    const lines = tooltipLines(stack(modelOf("sample.pqax")).element, "t:1");
+    expect(formatTime("2023-11-14T22:15:00.000Z")).toBe(formatTime("2023-11-14T22:15:10.000Z"));
+    expect(lines).toContain(`2 partitions, changed on ${formatTime("2023-11-14T22:15:00.000Z")}`);
+  });
+
+  it("writes in the tooltip of format-0.1.pqax the non-live files of the log, and no line of format 0.2", () => {
+    const lines = tooltipLines(stack(modelOf("format-0.1.pqax")).element, "t:1");
+    expect(lines).toContain(`The log tracks 1 file that left the table, ${formatBytes(12345)}; a VACUUM may have deleted some of them`);
+    expect(lines).toContain(`Non-live files ${formatBytes(12345)} (${formatShare(12345 / (159121 - 3847 + 12345))}), as the log gives them`);
+    expect(lines).toContain("Unreferenced files not in the file");
+    expect(lines.some((line) => line.startsWith("The storage holds"))).toBe(false);
+    expect(lines.some((line) => line.startsWith("Non-live files removed"))).toBe(false);
+    expect(lines).toContain("2 partitions");
+  });
+
+  it("writes the last commit without the rate, and the overhead without the files of the log, when they are missing", () => {
+    const base = modelOf("sample.pqax");
+    const sales = base.tables[0]!;
+    const model: StorageModel = {
+      ...base,
+      tables: [{ ...sales, metadataFileCount: null, maintenance: { ...sales.maintenance, commitsPerDay: null, daysSinceLastCommit: 1 } }],
+    };
+    const lines = tooltipLines(stack(model).element, "t:1");
+    expect(lines).toContain("Last commit 1 day ago");
+    expect(lines.some((line) => line.includes("commits a day"))).toBe(false);
+    expect(lines.find((line) => line.startsWith("Overhead"))).toContain(`metadata ${formatBytes(12469)}, footers`);
   });
 });
 
@@ -505,6 +678,26 @@ describe("the column treemap", () => {
     expectTiles(root, modelOf(SYNTHETIC), "s:2");
   });
 
+  it("is 420 pixels tall from 480 pixels of width, and on a phone as tall as wide, at most 60% of the window", () => {
+    const heightAt = (width: number, options: TreemapOptions = {}) => {
+      container.style.width = `${width}px`;
+      const handle = treemap(modelOf("sample.pqax"), options);
+      const svgElement = handle.element.querySelector("svg")!;
+      return { handle, width: num(svgElement, "width"), height: num(svgElement, "height") };
+    };
+    expect(heightAt(800).height).toBe(420);
+    expect(heightAt(480).height).toBe(420);
+    const phone = heightAt(360);
+    expect(phone.width).toBeLessThanOrEqual(360);
+    expect(phone.height).toBe(Math.max(120, Math.round(Math.min(phone.width, 0.6 * window.innerHeight))));
+    expect(phone.height).toBe(Math.max(120, Math.round(Math.min(360, 0.6 * window.innerHeight))));
+    expectTiles(phone.handle.element, modelOf("sample.pqax"), "root");
+    // The height of the options wins on a phone too.
+    expect(heightAt(360, { height: 300 }).height).toBe(300);
+    // At least 120 pixels on a very narrow container.
+    expect(heightAt(100).height).toBe(120);
+  });
+
   it("draws every tile of a collection at level 1 as absent, with equal weights", () => {
     const model = modelOf(LEVEL1);
     const root = treemap(model).element;
@@ -607,25 +800,75 @@ describe("the file strip", () => {
     expect(xs[2]).toBeCloseTo(num(row.querySelector("line.pqax-range")!, "x2"), 6);
   });
 
-  it("draws the threshold line only when the threshold is in the domain", () => {
-    // The files of sample.pqax are below 100 KB, far from the default threshold of 128 MiB.
-    expect(modelOf("sample.pqax").tables[0]!.files.smallFiles.threshold).toBe(128 * 1024 * 1024);
+  it("draws the threshold lines only when the thresholds are in the domain", () => {
+    // The files of sample.pqax are below 100 KB, far from the default thresholds of 8 MiB and 128 MiB.
+    expect(modelOf("sample.pqax").tables[0]!.files.tinyFiles.threshold).toBe(8 * MIB);
+    expect(modelOf("sample.pqax").tables[0]!.files.smallFiles.threshold).toBe(128 * MIB);
     expect(strip(modelOf("sample.pqax")).element.querySelector("line.pqax-threshold")).toBeNull();
     expect(strip(modelOf(SYNTHETIC)).element.querySelector("line.pqax-threshold")).not.toBeNull();
     const handle = strip(modelOf(SYNTHETIC), { showThreshold: false });
     expect(handle.element.querySelector("line.pqax-threshold")).toBeNull();
+    expect(handle.element.querySelector("text.pqax-threshold-label")).toBeNull();
+  });
+
+  it("draws the two thresholds, 8 MiB then 128 MiB, on files from 1 MB to 1 GB, between the dots of their sizes", () => {
+    const model = buildModel(syntheticFootprint({ tables: 4, columns: 12, files: 40, sizeRange: [MIB, 1024 * MIB] }).data);
+    const sizes = model.tables.flatMap((t) => t.files.sizes!);
+    expect(Math.min(...sizes)).toBeGreaterThanOrEqual(MIB);
+    expect(Math.max(...sizes)).toBeLessThanOrEqual(1024 * MIB);
+    expect(sizes.some((s) => s < 8 * MIB) && sizes.some((s) => s > 128 * MIB)).toBe(true);
+    const root = strip(model).element;
+    const lines = [...root.querySelectorAll("line.pqax-threshold")];
+    expect(lines).toHaveLength(2);
+    expect(x1(lines[0]!)).toBeLessThan(x1(lines[1]!));
+    const labels = [...root.querySelectorAll("text.pqax-threshold-label")].map((t) => t.textContent);
+    expect(labels).toHaveLength(2);
+    expect(labels.every((label) => label!.startsWith("< "))).toBe(true);
+    // Every dot of a file below a threshold is left of its line, every other dot right of it.
+    for (const row of rowsOf(root)) {
+      const table = model.tables.find((t) => t.key === row.getAttribute("data-key"))!;
+      const xs = [...row.querySelectorAll("circle.pqax-dot")].map((d) => num(d, "cx"));
+      table.files.sizes!.forEach((size, i) => {
+        expect(xs[i]! < x1(lines[0]!)).toBe(size < 8 * MIB);
+        expect(xs[i]! < x1(lines[1]!)).toBe(size < 128 * MIB);
+      });
+    }
+    // With only the small threshold in the domain, one line and its long label.
+    const one = buildModel(syntheticFootprint({ tables: 4, columns: 12, files: 40, sizeRange: [32 * MIB, 1024 * MIB] }).data);
+    const single = strip(one).element;
+    expect(single.querySelectorAll("line.pqax-threshold")).toHaveLength(1);
+    expect(single.querySelector("text.pqax-threshold-label")!.textContent).toBe(`small files below ${formatBytes(128 * MIB)}`);
+  });
+
+  it("writes the tiny and the small files in the tooltip of a row, exact from the files and bounded from the quartiles", () => {
+    const lineOf = (root: HTMLElement, rowKey: string) => {
+      root.querySelector<SVGGElement>(`g.pqax-strip-row[data-key="${rowKey}"]`)!.focus();
+      return [...tooltipOf(root).querySelectorAll("span")].map((s) => s.textContent!);
+    };
+    const sample = lineOf(strip(modelOf("sample.pqax")).element, "t:1");
+    const tiny = sample.indexOf(`3 files below ${formatBytes(8 * MIB)} (${formatShare(1)})`);
+    const small = sample.indexOf(`3 files below ${formatBytes(128 * MIB)} (${formatShare(1)})`);
+    expect(tiny).toBeGreaterThanOrEqual(0);
+    expect(small).toBe(tiny + 1);
+    const summaryOnly = lineOf(strip(modelOf("summary-only.pqax")).element, "t:2");
+    expect(summaryOnly).toContain(`At least ${formatShare(1)} of the files below ${formatBytes(8 * MIB)}`);
+    expect(summaryOnly).toContain(`At least ${formatShare(1)} of the files below ${formatBytes(128 * MIB)}`);
   });
 
   it("draws the threshold of a model built with a smaller threshold between the sizes of the files", async () => {
     const doc = await openPqax(bytesOf(join(SAMPLES, "sample.pqax")));
     const model = buildModel(await readFootprint(doc), { smallFileSize: 40000 });
     const root = strip(model).element;
+    expect(root.querySelectorAll("line.pqax-threshold")).toHaveLength(1);
     const line = root.querySelector("line.pqax-threshold")!;
     expect(line).not.toBeNull();
     const row = root.querySelector('g[data-key="t:1"]')!;
     const [small, medium] = [...row.querySelectorAll("circle.pqax-dot")].map((d) => num(d, "cx"));
     expect(x1(line)).toBeGreaterThan(small!);
     expect(x1(line)).toBeLessThan(medium!);
+    // Both thresholds of the options between the sizes: two lines.
+    const both = strip(buildModel(await readFootprint(doc), { tinyFileSize: 30000, smallFileSize: 60000 })).element;
+    expect(both.querySelectorAll("line.pqax-threshold")).toHaveLength(2);
   });
 
   it("takes the order, the dots, and the row height from the options and from update", () => {

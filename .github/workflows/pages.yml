@@ -11,6 +11,8 @@ on:
       - site/**
       - src/typescript/pqax/**
       - src/typescript/views/**
+      - package.json
+      - package-lock.json
       - .github/workflows/pages.yml
   workflow_dispatch:
 
@@ -36,13 +38,8 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: 24
-      - name: Build the reader
-        working-directory: src/typescript/pqax
-        run: |
-          npm ci
-          npm run build
-      - name: Build the views
-        working-directory: src/typescript/views
+      # npm ci at the root installs the two workspaces and links the views to the reader.
+      - name: Build the reader and the views
         run: |
           npm ci
           npm run build

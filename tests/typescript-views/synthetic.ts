@@ -1,9 +1,11 @@
 // A synthetic footprint for the tests of the views: a deterministic builder, from a seeded generator, of the data that
-// the view model reads. By default 3 sources, 40 tables, 1,000 columns, and 5,000 files, with every field that the model
-// reads, and a `files` table whose sums are the totals of the tables. Options drop fields or tables, to look like a file
-// of an early 0.1 producer or a collection at level 1. Every name is made up: source_a, table_017, col_0042. Nothing here
-// imports a module of Node, so that the tests run in browsers too.
-import type { FilesTable, Manifest, Summary } from "@pqax/pqax";
+// the view model reads. By default 3 sources, 40 tables, 1,000 columns, and 5,000 files in format 0.2, with every field
+// that the model reads, a `files` table whose sums are the totals of the tables, and a `partitions` table for the
+// partitioned tables. The unreferenced files of a table are more than its non-live files, fewer, as many, or none, so
+// that the overlap rule of the model meets every case. Options drop fields or tables, to look like a file of format 0.1,
+// of an early 0.1 producer, or of a collection at level 1. Every name is made up: source_a, table_017, col_0042. Nothing
+// here imports a module of Node, so that the tests run in browsers too.
+import type { FilesTable, Manifest, PartitionsTable, Summary } from "@pqax/pqax";
 import type { FootprintData } from "@pqax/views";
 
 /** The reference time of the synthetic collection: when it completed. */
@@ -11,10 +13,18 @@ export const COMPLETED_AT = "2026-10-05T20:55:12.749Z";
 /** When the synthetic collection started. */
 export const STARTED_AT = "2026-10-05T20:50:00.000Z";
 
-/** The fields of `tables` that the model reads and that an early 0.1 producer could leave out. */
+/** The fields of `tables` that format 0.2 added: the removal times of the non-live files and the unreferenced files. */
+export const FORMAT_02_TABLE_FIELDS = [
+  "nonLiveOldestRemovedAt", "nonLiveNewestRemovedAt", "unreferencedFileCount", "unreferencedFileSize",
+] as const;
+
+/** The fields of `partitions` that format 0.2 added. */
+export const FORMAT_02_PARTITION_FIELDS = ["lastModifiedAt"] as const;
+
+/** The fields of `tables` that the model reads and that an early 0.1 producer could leave out, the fields of 0.2 included. */
 export const EARLY_TABLE_FIELDS = [
   "nonLiveFileCount", "nonLiveFileSize", "metadataFileCount", "metadataSize", "staleColumnSize", "vOrderedFileCount",
-  "commitsRead", "oldestCommitAt",
+  "commitsRead", "oldestCommitAt", ...FORMAT_02_TABLE_FIELDS,
 ] as const;
 
 /** The fields of `tables` that only the footers give, left out at level 1. */
@@ -49,6 +59,12 @@ export interface SyntheticOptions {
   readonly level?: 1 | 2;
   /** Whether the result has the `files` table. Default true. */
   readonly withFiles?: boolean;
+  /** Whether the result has the `partitions` table. Default true. */
+  readonly withPartitions?: boolean;
+  /** "0.1" leaves out the fields that format 0.2 added, in `tables` and in `partitions`. Default "0.2". */
+  readonly formatVersion?: "0.1" | "0.2";
+  /** The smallest and the largest file size: the sizes are spread evenly on a log scale between them. Default each table around a size of its own, from 4 KB to 1 GB. */
+  readonly sizeRange?: readonly [number, number];
   /** Fields of `tables` to leave out, such as {@link EARLY_TABLE_FIELDS}. */
   readonly dropTableFields?: readonly string[];
   /** Fields of `columns` to leave out. */
@@ -75,6 +91,12 @@ export interface SyntheticTable {
   /** Whether its operations include OPTIMIZE and VACUUM. */
   readonly optimized: boolean;
   readonly vacuumed: boolean;
+  /** `nonLiveFileSize` of the table. */
+  readonly nonLiveFileSize: number;
+  /** `unreferencedFileSize` of the table, in format 0.2. */
+  readonly unreferencedFileSize: number;
+  /** The rows of `partitions` of the table, in order: none when it is not partitioned. */
+  readonly partitionRows: readonly number[];
 }
 
 /** The synthetic footprint and what the builder knows of it. */
@@ -158,6 +180,7 @@ export function syntheticFootprint(options: SyntheticOptions = {}): Synthetic {
   const T: Record<string, unknown[]> = {};
   const C: Record<string, unknown[]> = {};
   const F: Record<string, unknown[]> = {};
+  const P: Record<string, unknown[]> = {};
   const O: Record<string, unknown[]> = { table: [], name: [], commitCount: [], lastAt: [] };
   const push = (table: Record<string, unknown[]>, field: string, value: unknown) => (table[field] ??= []).push(value);
 
@@ -166,6 +189,7 @@ export function syntheticFootprint(options: SyntheticOptions = {}): Synthetic {
   const info: SyntheticTable[] = [];
   let fileId = 0;
   let columnId = 0;
+  let partitionId = 0;
 
   for (let t = 0; t < tableCount; t++) {
     const id = t + 1;
@@ -192,10 +216,18 @@ export function syntheticFootprint(options: SyntheticOptions = {}): Synthetic {
     let deletedSum = 0;
     let rowGroupSum = 0;
     let vOrdered = 0;
-    const partitionCount = partitioned ? 2 + Math.floor(random() * 9) : null;
+    // Every partition holds a file at least, as the rows of `partitions` do.
+    const partitionCount = partitioned ? Math.min(filesPerTable[t]!, 2 + Math.floor(random() * 9)) : null;
     const partitionBytes = new Array<number>(partitionCount ?? 0).fill(0);
+    const partitionFiles = new Array<number>(partitionCount ?? 0).fill(0);
+    const partitionRowCounts = new Array<number>(partitionCount ?? 0).fill(0);
+    const partitionDeleted = new Array<number>(partitionCount ?? 0).fill(0);
+    const partitionModified = new Array<number>(partitionCount ?? 0).fill(-Infinity);
+    const [low, high] = options.sizeRange ?? [0, 0];
     for (let f = 0; f < filesPerTable[t]!; f++) {
-      const fileSize = Math.round(Math.min(1024 ** 3, Math.max(4096, center * Math.exp((random() - 0.5) * 3))));
+      const fileSize = options.sizeRange !== undefined
+        ? Math.round(Math.exp(Math.log(low) + random() * (Math.log(high) - Math.log(low))))
+        : Math.round(Math.min(1024 ** 3, Math.max(4096, center * Math.exp((random() - 0.5) * 3))));
       const footerSize = Math.max(100, Math.min(Math.floor(fileSize * 0.05), 200 + nColumns * 60 + Math.floor(random() * 500)));
       const compressedSize = fileSize - footerSize - 12;
       const uncompressedSize = Math.round(compressedSize * compression);
@@ -217,15 +249,20 @@ export function syntheticFootprint(options: SyntheticOptions = {}): Synthetic {
       rowGroupSum += rowGroupCount;
       vOrdered += isVOrdered ? 1 : 0;
       const partition = partitionCount === null ? null : f % partitionCount;
+      const modifiedAt = completed - Math.floor(random() * 300) * DAY_MS;
       if (partition !== null) {
         partitionBytes[partition]! += fileSize;
+        partitionFiles[partition]! += 1;
+        partitionRowCounts[partition]! += rowCount;
+        partitionDeleted[partition]! += deletedRowCount;
+        partitionModified[partition] = Math.max(partitionModified[partition]!, modifiedAt);
       }
       push(F, "id", fileId);
       push(F, "table", id);
       push(F, "path", `${partition === null ? "" : `part_col=${partition}/`}part-${pad(fileId, 5)}.parquet`);
       push(F, "format", "Parquet");
       push(F, "fileSize", fileSize);
-      push(F, "modifiedAt", new Date(completed - Math.floor(random() * 300) * DAY_MS).toISOString());
+      push(F, "modifiedAt", new Date(modifiedAt).toISOString());
       push(F, "rowCount", rowCount);
       push(F, "deletedRowCount", deletedRowCount);
       push(F, "deletionVectorSize", deletedRowCount > 0 ? 40 + Math.floor(deletedRowCount / 8) : null);
@@ -236,6 +273,19 @@ export function syntheticFootprint(options: SyntheticOptions = {}): Synthetic {
       push(F, "uncompressedSize", uncompressedSize);
     }
     const fileSize = sizes.reduce((a, b) => a + b, 0);
+    const partitionRows: number[] = [];
+    for (let p = 0; p < (partitionCount ?? 0); p++) {
+      partitionId++;
+      partitionRows.push(partitionId - 1);
+      push(P, "id", partitionId);
+      push(P, "table", id);
+      push(P, "partitionSpec", null);
+      push(P, "fileCount", partitionFiles[p]);
+      push(P, "fileSize", partitionBytes[p]);
+      push(P, "rowCount", partitionRowCounts[p]);
+      push(P, "deletedRowCount", partitionDeleted[p]);
+      push(P, "lastModifiedAt", new Date(partitionModified[p]!).toISOString());
+    }
     const staleColumnSize = t % 7 === 3 ? Math.floor(compressedSum * 0.1) : 0;
 
     // The columns of the table: the partition column, the last one, has no totals.
@@ -299,6 +349,16 @@ export function syntheticFootprint(options: SyntheticOptions = {}): Synthetic {
     const commitCount = 10 + Math.floor(random() * 500);
     const oldestDays = t % 6 === 5 ? random() * 0.9 : 0.5 + random() * 400;
     const nonLiveFileCount = t % 5 < 3 ? 1 + Math.floor(random() * 50) : 0;
+    const nonLiveFileSize = nonLiveFileCount === 0 ? 0 : Math.floor(fileSize * random() * 0.5);
+    // The unreferenced files: more than the non-live files, fewer, as many, or none.
+    const unreferencedFileSize = [
+      nonLiveFileSize + 1000 + Math.floor(fileSize * random() * 0.2), Math.floor(nonLiveFileSize * random() * 0.8), 0, nonLiveFileSize,
+    ][t % 4]!;
+    const unreferencedFileCount = unreferencedFileSize === 0 ? 0 : 1 + Math.floor(random() * 20);
+    // The removal times of the non-live files: one time for a single file.
+    const newestRemoved = nonLiveFileCount === 0 ? null : completed - Math.floor(random() * 30 * DAY_MS);
+    const oldestRemoved = newestRemoved === null ? null : nonLiveFileCount === 1 ? newestRemoved : newestRemoved - Math.floor(random() * 60 * DAY_MS);
+    const iso = (value: number | null) => (value === null ? null : new Date(value).toISOString());
     const distribution = distributionOf(sizes)!;
     const rowGroupDistribution = distributionOf(rowGroupRows);
     const partitionDistribution = partitionCount === null ? null : distributionOf(partitionBytes);
@@ -311,7 +371,8 @@ export function syntheticFootprint(options: SyntheticOptions = {}): Synthetic {
       lastModifiedAt: new Date(completed - DAY_MS).toISOString(), vOrderedFileCount: vOrdered,
       partitionCount, commitCount, commitsRead: Math.min(commitCount, 100),
       oldestCommitAt: new Date(completed - oldestDays * DAY_MS).toISOString(),
-      nonLiveFileCount, nonLiveFileSize: nonLiveFileCount === 0 ? 0 : Math.floor(fileSize * random() * 0.5),
+      nonLiveFileCount, nonLiveFileSize, nonLiveOldestRemovedAt: iso(oldestRemoved), nonLiveNewestRemovedAt: iso(newestRemoved),
+      unreferencedFileCount, unreferencedFileSize,
       metadataFileCount: 2 + Math.min(commitCount, 100), metadataSize: 1000 + Math.min(commitCount, 100) * 800,
       footerCount: sizes.length, rowGroupCount: rowGroupSum, compressedSize: compressedSum,
       uncompressedSize: uncompressedSum, footerSize: footerSum, staleColumnSize, columnTotalsSource: "Footers",
@@ -320,13 +381,20 @@ export function syntheticFootprint(options: SyntheticOptions = {}): Synthetic {
     for (const [field, value] of Object.entries(values)) {
       push(T, field, value);
     }
-    info.push({ id, name, source, fileRows, columnRows, partitioned, staleColumnSize, optimized, vacuumed });
+    info.push({
+      id, name, source, fileRows, columnRows, partitioned, staleColumnSize, optimized, vacuumed, nonLiveFileSize,
+      unreferencedFileSize, partitionRows,
+    });
   }
 
   if (level === 1) {
     for (const field of FOOTER_TABLE_FIELDS) delete T[field];
     for (const field of FOOTER_COLUMN_FIELDS) delete C[field];
     for (const field of FOOTER_FILE_FIELDS) delete F[field];
+  }
+  if (options.formatVersion === "0.1") {
+    for (const field of FORMAT_02_TABLE_FIELDS) delete T[field];
+    for (const field of FORMAT_02_PARTITION_FIELDS) delete P[field];
   }
   for (const field of options.dropTableFields ?? []) delete T[field];
   for (const field of options.dropColumnFields ?? []) delete C[field];
@@ -342,9 +410,10 @@ export function syntheticFootprint(options: SyntheticOptions = {}): Synthetic {
     delete summary[name];
   }
   const files = options.withFiles === false ? null : ({ length: fileId, ...F } as unknown as FilesTable);
+  const partitions = options.withPartitions === false || partitionId === 0 ? null : ({ length: partitionId, ...P } as unknown as PartitionsTable);
   const manifest: Partial<Manifest> = {
     format: "pqax",
-    formatVersion: "0.1",
+    formatVersion: options.formatVersion ?? "0.2",
     collection: {
       collectorApp: "synthetic-collector", collectorAppVersion: "1.0", collectorLib: "synthetic-lib",
       collectorLibVersion: "2.0", startedAt: STARTED_AT, completedAt: COMPLETED_AT, level, requestCount: 1234,
@@ -352,5 +421,5 @@ export function syntheticFootprint(options: SyntheticOptions = {}): Synthetic {
     },
     parts: [],
   };
-  return { data: { manifest, summary: summary as Summary, files, embeddedPart: null, warnings: [] }, tables: info };
+  return { data: { manifest, summary: summary as Summary, files, partitions, embeddedPart: null, warnings: [] }, tables: info };
 }

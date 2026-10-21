@@ -255,6 +255,9 @@ export function observeWidth(element: HTMLElement, callback: (width: number) => 
   };
 }
 
+/** Below this width in pixels, a view takes its phone layout: the stack puts the label above the bar, and the treemap is as tall as it is wide. */
+export const NARROW_WIDTH = 480;
+
 /** The width available to a view: the width of its root, else of the container, else 640. */
 export function widthOf(root: HTMLElement, container: HTMLElement): number {
   return Math.round(root.clientWidth || container.clientWidth || 640);

@@ -5,7 +5,7 @@
 // with children moves the focus down; the breadcrumb, Backspace, and Escape move it up. No color is set here: the
 // fills come from `data-bin` and the custom properties of styles.css, the rest from css/treemap.css.
 import {
-  applyBaseOptions, attachKeyboard, attachTooltip, createRoot, html, makeItem, observeWidth, svg, widthOf,
+  NARROW_WIDTH, applyBaseOptions, attachKeyboard, attachTooltip, createRoot, html, makeItem, observeWidth, svg, widthOf,
 } from "./dom.js";
 import type { BaseOptions, ViewHandle } from "./dom.js";
 import { formatBytes, formatCount, formatNumber, formatShare } from "./format.js";
@@ -16,7 +16,7 @@ import type { LayoutRect } from "./squarify.js";
 
 /** The options of {@link renderColumnTreemap}. */
 export interface TreemapOptions extends BaseOptions {
-  /** The height of the plot in pixels. Default 420. */
+  /** The height of the plot in pixels. Default 420, and on a phone, below 480 pixels of width, the width, at most 60% of the height of the window. */
   readonly height?: number;
   /** The key of the node whose children are shown. Default "root". An unknown key falls back to the root. */
   readonly focus?: string;
@@ -57,6 +57,18 @@ const DEFAULT_ABSENT_SHARE = 0.01;
 const INSET = 1;
 /** The left padding of a label. */
 const PAD = 6;
+/**
+ * The height of the plot when the options do not set one: 420 pixels, and below the phone breakpoint the width, at most
+ * 60% of the height of the window, so that the tiles keep their shape and the plot fits on the screen.
+ */
+function defaultHeight(width: number): number {
+  if (width >= NARROW_WIDTH) {
+    return DEFAULT_HEIGHT;
+  }
+  const viewport = typeof window !== "undefined" && window.innerHeight > 0 ? window.innerHeight : Infinity;
+  return Math.max(120, Math.round(Math.min(width, viewport * 0.6)));
+}
+
 /** The height of the header strip of a tile with nested children. */
 const HEADER = 20;
 const LABEL_SIZE = 12;
@@ -295,7 +307,7 @@ export function renderColumnTreemap(container: HTMLElement, model: StorageModel,
 
     const width = Math.max(1, widthOf(root, container));
     const requested = current.height;
-    const height = requested !== undefined && Number.isFinite(requested) && requested > 0 ? Math.round(requested) : DEFAULT_HEIGHT;
+    const height = requested !== undefined && Number.isFinite(requested) && requested > 0 ? Math.round(requested) : defaultHeight(width);
     const measure = measurer(root);
     const share = absentShare();
     const locale = current.locale;

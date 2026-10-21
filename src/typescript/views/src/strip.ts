@@ -1,12 +1,12 @@
 // The distribution of the file sizes per table: one row per table on a log scale that every row shares, with the
 // range from the smallest to the largest file, a box from the first to the third quartile, the median, and one dot per
 // file when the files table gives the sizes. A column on the right shows the share of the files that are V-Ordered. A
-// dashed line marks the small file threshold of the model. The view is one SVG, drawn again when the width changes;
-// on a phone the label goes above the plot.
-import { applyBaseOptions, attachKeyboard, attachTooltip, createRoot, html, makeItem, observeWidth, svg, widthOf } from "./dom.js";
+// dashed line marks each of the two small file thresholds of the model, 8 MiB and 128 MiB by default. The view is one
+// SVG, drawn again when the width changes; on a phone the label goes above the plot.
+import { NARROW_WIDTH, applyBaseOptions, attachKeyboard, attachTooltip, createRoot, html, makeItem, observeWidth, svg, widthOf } from "./dom.js";
 import { formatBytes, formatCount, formatShare } from "./format.js";
 import type { BaseOptions, ViewHandle } from "./dom.js";
-import type { StorageModel, TableModel } from "./model.js";
+import type { SmallFilesModel, StorageModel, TableModel } from "./model.js";
 
 /** Options of {@link renderFileStrip}. */
 export interface StripOptions extends BaseOptions {
@@ -18,12 +18,10 @@ export interface StripOptions extends BaseOptions {
   readonly maxDots?: number;
   /** The height of a row in pixels. Default 28. */
   readonly rowHeight?: number;
-  /** Whether to draw the small file threshold of the model as a dashed line. Default true. */
+  /** Whether to draw the two small file thresholds of the model as dashed lines. Default true. */
   readonly showThreshold?: boolean;
 }
 
-/** Below this width in pixels, the label goes above the plot. */
-const NARROW = 480;
 /** The least width of the label column, about 7rem. */
 const LABEL_MIN = 112;
 /** The width of the V-Order column, about 5.5rem. */
@@ -184,14 +182,22 @@ function linesOf(table: TableModel, locale: string | undefined): string[] {
     const bytes = v.bytesShare !== null ? `, ${formatShare(v.bytesShare, locale)} of the bytes` : "";
     lines.push(`${formatCount(v.files, locale)} of ${formatCount(v.knownFiles, locale)} files V-Ordered (${formatShare(v.share, locale)})${bytes}`);
   }
-  const small = f.smallFiles;
-  const threshold = formatBytes(small.threshold, locale);
-  if (small.count !== null) {
-    lines.push(`${formatCount(small.count, locale)} ${small.count === 1 ? "file" : "files"} below ${threshold}`);
-  } else if (small.shareAtLeast !== null) {
-    lines.push(`At least ${formatShare(small.shareAtLeast, locale)} of the files below ${threshold}`);
+  for (const small of [f.tinyFiles, f.smallFiles]) {
+    const line = smallLine(small, locale);
+    if (line !== null) {
+      lines.push(line);
+    }
   }
   return lines;
+}
+
+/** The files below a threshold: the exact count with its share, or the lower bound of the share. */
+function smallLine(small: SmallFilesModel, locale: string | undefined): string | null {
+  const threshold = formatBytes(small.threshold, locale);
+  if (small.count !== null) {
+    return `${formatCount(small.count, locale)} ${small.count === 1 ? "file" : "files"} below ${threshold} (${formatShare(small.shareAtLeast, locale)})`;
+  }
+  return small.shareAtLeast !== null ? `At least ${formatShare(small.shareAtLeast, locale)} of the files below ${threshold}` : null;
 }
 
 /** A selector that finds again the item with the focus after a new render, null when the focus is elsewhere. */
@@ -236,7 +242,7 @@ export function renderFileStrip(container: HTMLElement, model: StorageModel, opt
 
     // The geometry: three columns, or on a phone the label above the plot and the V-Order column.
     const width = Math.max(240, widthOf(root, container));
-    const narrow = width < NARROW;
+    const narrow = width < NARROW_WIDTH;
     root.toggleAttribute("data-narrow", narrow);
     const rowHeight = opts.rowHeight !== undefined && Number.isFinite(opts.rowHeight) && opts.rowHeight >= 12 ? opts.rowHeight : 28;
     const labelWidth = narrow ? 0 : Math.max(LABEL_MIN, Math.round(width * 0.3));
@@ -248,9 +254,10 @@ export function renderFileStrip(container: HTMLElement, model: StorageModel, opt
     const [lo, hi] = domainOf(tables);
     const span = Math.log(hi) - Math.log(lo);
     const x = (value: number) => plotLeft + ((Math.log(Math.min(hi, Math.max(lo, value))) - Math.log(lo)) / span) * (plotRight - plotLeft);
-    const threshold = current.tables[0]!.files.smallFiles.threshold;
-    const showThreshold = opts.showThreshold !== false && Number.isFinite(threshold) && threshold >= lo && threshold <= hi;
-    const axisY = showThreshold ? 34 : 20;
+    const first = current.tables[0]!.files;
+    const thresholds = opts.showThreshold === false ? [] : [first.tinyFiles.threshold, first.smallFiles.threshold]
+      .filter((t) => Number.isFinite(t) && t >= lo && t <= hi);
+    const axisY = thresholds.length > 0 ? 34 : 20;
     const top = axisY + 4;
     const height = top + tables.length * stride + 4;
 
@@ -275,10 +282,11 @@ export function renderFileStrip(container: HTMLElement, model: StorageModel, opt
     axis.append(
       svg("line", { class: "pqax-axis-line", x1: plotLeft, x2: plotRight, y1: axisY, y2: axisY }),
       svg("text", { class: "pqax-vorder-head", x: vorderLeft, y: 12 }, "V-Order"));
-    if (showThreshold) {
+    for (const threshold of thresholds) {
       const tx = x(threshold);
       axis.append(svg("line", { class: "pqax-threshold", x1: tx, x2: tx, y1: 18, y2: height - 4 }));
-      const label = svg("text", { class: "pqax-threshold-label", x: tx + 4, y: 29 }, `small files below ${formatBytes(threshold, locale)}`);
+      const text = thresholds.length > 1 ? `< ${tickText(threshold, locale)}` : `small files below ${formatBytes(threshold, locale)}`;
+      const label = svg("text", { class: "pqax-threshold-label", x: tx + 4, y: 29 }, text);
       axis.append(label);
       if (tx + 4 + textWidth(label) > plotRight && tx - 4 - textWidth(label) >= (narrow ? 0 : plotLeft - GAP)) {
         label.setAttribute("x", String(tx - 4));

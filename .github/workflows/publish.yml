@@ -1,6 +1,7 @@
 name: Publish
 
-# Publishes one tag to NuGet, npm, and PyPI. RELEASING.md has the prerequisites and the steps.
+# Publishes one tag to NuGet, npm, and PyPI: seven packages with one version. RELEASING.md has the prerequisites and
+# the steps.
 on:
   release:
     types: [published]
@@ -35,7 +36,7 @@ jobs:
       - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
-      - name: Check that the four versions equal the tag
+      - name: Check that the five versions equal the tag
         shell: python
         run: |
           import json, os, pathlib, re, sys, tomllib
@@ -45,9 +46,11 @@ jobs:
 
           tag = os.environ["TAG"]
           props = re.findall(r"<Version>\s*([^<\s]+)\s*</Version>", read("src/dotnet/Directory.Build.props"))
+          views = json.loads(read("src/typescript/views/package.json"))
           versions = {
               "src/dotnet/Directory.Build.props": props[0] if len(props) == 1 else f"{len(props)} <Version> elements",
               "src/typescript/pqax/package.json": json.loads(read("src/typescript/pqax/package.json"))["version"],
+              "src/typescript/views/package.json": views["version"],
               "src/python/pyproject.toml": tomllib.loads(read("src/python/pyproject.toml"))["project"]["version"],
               "src/python/pqax/__init__.py": (re.findall(r'__version__\s*=\s*"([^"]+)"', read("src/python/pqax/__init__.py")) or ["no __version__"])[0],
           }
@@ -58,7 +61,11 @@ jobs:
           wrong = [path for path, version in versions.items() if version != tag[1:]]
           if wrong:
               sys.exit(f"Not {tag[1:]}, the version of the tag {tag}: {', '.join(wrong)}")
-          print(f"The four versions equal the tag {tag}")
+          # The views must ask for the reader of the same release, which the npm job publishes first.
+          reader = views.get("dependencies", {}).get("@pqax/pqax")
+          if reader != f"^{tag[1:]}":
+              sys.exit(f"src/typescript/views/package.json depends on @pqax/pqax {reader}, not ^{tag[1:]}")
+          print(f"The five versions equal the tag {tag}, and the views depend on @pqax/pqax ^{tag[1:]}")
       - uses: actions/setup-dotnet@v6
         with:
           dotnet-version: 10.0.x
@@ -73,21 +80,23 @@ jobs:
         run: |
           pip install -e "src/python[dev]"
           python -m pytest tests/python -q
-      - name: TypeScript package and tests
-        working-directory: src/typescript/pqax
+      # npm ci at the root installs the two workspaces and links the views to the reader of this tag.
+      - name: TypeScript packages and tests
         run: |
           npm ci
-          npm test
+          npm run build --workspace src/typescript/pqax
+          npm run typecheck --workspace src/typescript/views
+          npm test --workspaces
       - name: Cross-implementation check
         run: python conformance/cross_check.py
       - name: NuGet packages and their symbol packages
         run: dotnet pack Pqax.slnx -c Release --no-build --nologo -p:ContinuousIntegrationBuild=true -o out/nuget
-      - name: npm tarball
-        working-directory: src/typescript/pqax
+      - name: npm tarballs
         run: |
           npm run build
-          mkdir -p ../../../out/npm
-          npm pack --pack-destination ../../../out/npm
+          mkdir -p out/npm
+          npm pack --workspace src/typescript/pqax --pack-destination out/npm
+          npm pack --workspace src/typescript/views --pack-destination out/npm
       - name: Python sdist and wheel
         run: |
           pip install build twine
@@ -148,14 +157,17 @@ jobs:
           dotnet nuget push "*.nupkg" --api-key "$NUGET_API_KEY" --source "$SOURCE" --skip-duplicate --no-symbols
           dotnet nuget push "*.snupkg" --api-key "$NUGET_API_KEY" --source "$SOURCE" --skip-duplicate
 
-  # Trusted publishing, with no token. --ignore-scripts leaves out prepublishOnly, which would build again and run the
-  # tests that verify ran.
+  # The reader first, then the views, which depend on it. Trusted publishing, with no token, but for the first publish
+  # of @pqax/views: npm attaches a trusted publisher only to a package that exists, so the secret NPM_TOKEN_VIEWS, when
+  # set, goes to npm for the views alone. Remove it, and the step that reads it, after the first publish, as
+  # RELEASING.md says. A version that npm already has is skipped, so that a re-run publishes only what is missing.
+  # --ignore-scripts leaves out prepublishOnly, which would build again and run the tests that verify ran.
   npm:
     needs: verify
     runs-on: ubuntu-latest
     environment:
       name: npm
-      url: https://www.npmjs.com/package/@pqax/pqax
+      url: https://www.npmjs.com/org/pqax
     permissions:
       id-token: write
       contents: read
@@ -170,19 +182,47 @@ jobs:
           registry-url: https://registry.npmjs.org
           package-manager-cache: false
       - name: Build
-        working-directory: src/typescript/pqax
         run: |
           npm ci
           npm run build
-      - name: Publish with trusted publishing
-        working-directory: src/typescript/pqax
+      - name: Check npm
         run: |
           version=$(npm --version)
           if [ "$(printf '%s\n' 11.5.1 "$version" | sort -V | head -n 1)" != 11.5.1 ]; then
             echo "::error::npm $version is older than 11.5.1, the first version with trusted publishing"
             exit 1
           fi
-          npm publish --provenance --access public --ignore-scripts
+      - name: Publish the reader with trusted publishing
+        working-directory: src/typescript/pqax
+        run: |
+          if [ "$(npm view "@pqax/pqax@${TAG#v}" version 2>/dev/null)" = "${TAG#v}" ]; then
+            echo "@pqax/pqax ${TAG#v} is already on npm"
+          else
+            npm publish --provenance --access public --ignore-scripts
+          fi
+      - name: Publish the views with the token, first publish only
+        if: env.NPM_TOKEN_VIEWS != ''
+        working-directory: src/typescript/views
+        env:
+          NPM_TOKEN_VIEWS: ${{ secrets.NPM_TOKEN_VIEWS }}
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN_VIEWS }}
+        run: |
+          if [ "$(npm view "@pqax/views@${TAG#v}" version 2>/dev/null)" = "${TAG#v}" ]; then
+            echo "@pqax/views ${TAG#v} is already on npm"
+          else
+            npm publish --provenance --access public --ignore-scripts
+          fi
+      - name: Publish the views with trusted publishing
+        if: env.NPM_TOKEN_VIEWS == ''
+        working-directory: src/typescript/views
+        env:
+          NPM_TOKEN_VIEWS: ${{ secrets.NPM_TOKEN_VIEWS }}
+        run: |
+          if [ "$(npm view "@pqax/views@${TAG#v}" version 2>/dev/null)" = "${TAG#v}" ]; then
+            echo "@pqax/views ${TAG#v} is already on npm"
+          else
+            npm publish --provenance --access public --ignore-scripts
+          fi
 
   # Trusted publishing only, with no token.
   pypi:

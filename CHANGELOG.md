@@ -29,13 +29,17 @@ A reader of format 0.1 ignores the new fields. A reader of format 0.2 opens a fi
 
 `@pqax/pqax` has the five fields in its types. Reads 0.1 and 0.2.
 
+`@pqax/views` is a new package, published for the first time with this release: the storage views of a footprint in a browser, with no dependency but `@pqax/pqax` of the same release. A view model computes the derived values that its README defines, and three views draw it in plain DOM and SVG: the storage stack of each table sorted by waste, a treemap of the columns by compressed size colored by the share of nulls, and the distribution of the file sizes of each table with the V-Order share. It reads files of format 0.1 and 0.2: from 0.2 the stack has the unreferenced files, and the tooltips the removal times of the non-live files and the last change of the partitions. The page at [pqax.org/tools](https://pqax.org/tools/) uses it. Reads 0.1 and 0.2, writes nothing.
+
+The two npm packages are workspaces of a `package.json` at the root of the repository. The first publish of `@pqax/views` uses the secret `NPM_TOKEN_VIEWS`, since npm attaches a trusted publisher only to a package that exists; the secret and its step leave the publish workflow after this release, as [RELEASING.md](RELEASING.md) says.
+
 ### PyPI
 
 `pqax` has the five fields, and `Builder`, also through `from_document`, writes format 0.2. Reads 0.1 and 0.2, writes 0.2.
 
 ### Release text
 
-Format version 0.2 adds five optional fields: the files in storage that a table no longer references, the removal times of its non-live files, and when each partition last changed. The packages read files of format 0.1 and 0.2 and write format 0.2. `CHANGELOG.md` lists what changes in each package.
+Format version 0.2 adds five optional fields: the files in storage that a table no longer references, the removal times of its non-live files, and when each partition last changed. The packages read files of format 0.1 and 0.2 and write format 0.2. A new npm package, `@pqax/views`, draws the storage views of a footprint in a browser. `CHANGELOG.md` lists what changes in each package.
 
 ```
 dotnet add package Pqax
