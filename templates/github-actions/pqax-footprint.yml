@@ -1,0 +1,154 @@
+# Collects the PQAX footprint of a Fabric workspace every day, and keeps it as a workflow artifact and, optionally,
+# in the footprints/ folder of the repository. Copy this file to .github/workflows/ of a private repository and set
+# the variables that templates/github-actions/README.md lists. The workflow reads OneLake and writes nothing there.
+name: PQAX footprint
+
+on:
+  schedule:
+    - cron: "23 4 * * *"   # every day at 04:23 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pqax-footprint
+  cancel-in-progress: false
+
+env:
+  PQAX_VERSION: ${{ vars.PQAX_VERSION }}
+  PQAX_WORKSPACE: ${{ vars.PQAX_WORKSPACE }}
+  PQAX_ITEMS: ${{ vars.PQAX_ITEMS }}
+  PQAX_SIGN_IN: ${{ vars.PQAX_SIGN_IN || 'oidc' }}
+  PQAX_OPTIONS: ${{ vars.PQAX_OPTIONS }}
+  PQAX_RETENTION_DAYS: ${{ vars.PQAX_RETENTION_DAYS || '30' }}
+  PQAX_KEEP_DAYS: ${{ vars.PQAX_KEEP_DAYS || '90' }}
+
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    # With an environment, the subject of the federated credential is repo:<owner>/<repo>:environment:<name>.
+    # environment: pqax
+    permissions:
+      contents: read
+      id-token: write   # the OpenID Connect token that azure/login exchanges
+    outputs:
+      name: ${{ steps.name.outputs.name }}
+    env:
+      AZURE_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}
+      AZURE_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+    steps:
+      - name: Check the variables
+        run: |
+          missing=""
+          for variable in PQAX_VERSION PQAX_WORKSPACE PQAX_ITEMS AZURE_CLIENT_ID AZURE_TENANT_ID; do
+            [ -n "${!variable}" ] || missing="$missing $variable"
+          done
+          if [ -n "$missing" ]; then
+            echo "::error::Set the repository variables:$missing"
+            exit 1
+          fi
+          case "$PQAX_SIGN_IN" in
+            oidc|secret) ;;
+            *) echo "::error::PQAX_SIGN_IN is oidc or secret, not '$PQAX_SIGN_IN'"; exit 1 ;;
+          esac
+
+      - name: Name the footprint
+        id: name
+        run: |
+          # The workspace in lowercase letters, digits, and hyphens, then the date: sales-analytics-2026-10-22.pqax
+          slug=$(printf '%s' "$PQAX_WORKSPACE" | tr '[:upper:]' '[:lower:]' | tr -cs 'a-z0-9' '-' | sed 's/^-*//; s/-*$//')
+          echo "name=${slug:-workspace}-$(date -u +%Y-%m-%d).pqax" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Install pqax
+        run: |
+          dotnet tool install Pqax.Cli --version "$PQAX_VERSION" --tool-path "$RUNNER_TEMP/pqax"
+          echo "$RUNNER_TEMP/pqax" >> "$GITHUB_PATH"
+
+      - name: Sign in to Azure with OpenID Connect
+        if: env.PQAX_SIGN_IN == 'oidc'
+        uses: azure/login@v3
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          allow-no-subscriptions: true
+
+      - name: Collect
+        env:
+          NAME: ${{ steps.name.outputs.name }}
+          PQAX_CLIENT_SECRET: ${{ secrets.PQAX_CLIENT_SECRET }}
+        run: |
+          mkdir -p out
+          args=(collect --workspace "$PQAX_WORKSPACE" --output "out/$NAME")
+          IFS=',' read -ra items <<< "$PQAX_ITEMS"
+          for item in "${items[@]}"; do
+            item="${item#"${item%%[![:space:]]*}"}"
+            item="${item%"${item##*[![:space:]]}"}"
+            if [ -n "$item" ]; then args+=(--item "$item"); fi
+          done
+          if [ "$PQAX_SIGN_IN" = oidc ]; then
+            args+=(--azure-cli --tenant "$AZURE_TENANT_ID")
+          else
+            args+=(--client-id "$AZURE_CLIENT_ID" --tenant "$AZURE_TENANT_ID" --client-secret-env PQAX_CLIENT_SECRET)
+          fi
+          read -ra extra <<< "$PQAX_OPTIONS"
+          pqax "${args[@]}" "${extra[@]}"
+
+      - name: Check and describe the footprint
+        env:
+          NAME: ${{ steps.name.outputs.name }}
+        run: |
+          pqax check "out/$NAME"
+          pqax info "out/$NAME"
+          pqax tables "out/$NAME" --top 20
+
+      - name: Keep the footprint as an artifact
+        if: ${{ !cancelled() && steps.name.outputs.name != '' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ steps.name.outputs.name }}
+          path: out/${{ steps.name.outputs.name }}
+          retention-days: ${{ env.PQAX_RETENTION_DAYS }}
+          compression-level: 0   # a PQAX file is a zip already
+          if-no-files-found: ignore
+
+  commit:
+    needs: collect
+    if: vars.PQAX_COMMIT == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write   # to push the footprint
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: ${{ needs.collect.outputs.name }}
+          path: footprints
+
+      - name: Prune old footprints and commit
+        env:
+          NAME: ${{ needs.collect.outputs.name }}
+        run: |
+          # The date in the name decides, not the time of the file, which a checkout resets.
+          cutoff=$(date -u -d "-$PQAX_KEEP_DAYS days" +%Y-%m-%d)
+          for file in footprints/*.pqax; do
+            [ -e "$file" ] || continue
+            date=$(basename "$file" .pqax | grep -oE '[0-9]{4}-[0-9]{2}-[0-9]{2}$') || continue
+            if [[ "$date" < "$cutoff" ]] && git ls-files --error-unmatch "$file" > /dev/null 2>&1; then
+              git rm --quiet "$file"
+            fi
+          done
+          git add footprints
+          if git diff --cached --quiet; then
+            echo "Nothing to commit."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit --quiet -m "PQAX footprint $NAME"
+          git push

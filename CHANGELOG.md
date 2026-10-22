@@ -4,7 +4,7 @@ The packages of a release share its version number, as section 7.1 of the [contr
 
 ## Unreleased
 
-Unattended sign-in for `pqax collect`, and `pqax tables`, with the derived measures of the storage views in C# and in Python. The format does not change.
+Three tools: unattended sign-in for `pqax collect`, templates that collect a footprint on a schedule, and `pqax tables`, with the derived measures of the storage views in C# and in Python. The format does not change.
 
 ### .NET
 
@@ -22,6 +22,10 @@ No change.
 ### PyPI
 
 `pqax` has the module `measures`, the same measures as the storage views, and the command `python -m pqax tables`. Reads 0.1 and 0.2, writes 0.2.
+
+### Templates
+
+A new folder, `templates/`, with files to copy elsewhere. `github-actions/pqax-footprint.yml` collects a workspace every day as a service principal, signed in with OpenID Connect or a client secret, checks the footprint, and keeps it as an artifact and optionally in the repository. `fabric/pqax-footprint.ipynb` collects from a Fabric notebook with the token of the notebook. Neither has run against a real workspace yet: their READMEs say what is verified.
 
 ### Conformance kit
 
