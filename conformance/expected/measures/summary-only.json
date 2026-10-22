@@ -1,0 +1,88 @@
+{
+  "file": "summary-only.pqax",
+  "embeddedPart": null,
+  "smallFileSize": 134217728,
+  "tinyFileSize": 8388608,
+  "filesRead": false,
+  "warnings": [],
+  "tables": [
+    {
+      "id": 1,
+      "name": "sales",
+      "label": "sales",
+      "rowCount": 17000,
+      "fileCount": 3,
+      "fileSize": 159121,
+      "stack": {
+        "live": 155039.99852941177,
+        "nonLive": 737,
+        "unreferenced": 0,
+        "deleted": 234.0014705882353,
+        "stale": 0,
+        "metadata": 12469,
+        "footers": 3847,
+        "deletedSource": "table",
+        "listed": true,
+        "data": 156011,
+        "total": 172327,
+        "waste": 971.0014705882353,
+        "overhead": 16316,
+        "wasteShare": 0.006223929534380494,
+        "overheadShare": 0.10458236919191595
+      },
+      "smallFiles": {"threshold": 134217728, "count": null, "shareAtLeast": 1},
+      "tinyFiles": {"threshold": 8388608, "count": null, "shareAtLeast": 1},
+      "measures": {
+        "compressionRatio": 2.0073306897631222,
+        "deletedRowShare": 0.0014705882352941176,
+        "averageFileSize": 53040.333333333336,
+        "averageRowGroupRows": 1700,
+        "footerCoverage": 1,
+        "staleColumnShare": 0,
+        "nonLiveShare": 0.07199678070287988,
+        "averagePartitionSize": 79560.5,
+        "dictionaryFallbackShare": 0
+      },
+      "maintenance": {"lastCommitAt": "2023-11-14T22:15:20.000Z", "commitsPerDay": 4, "daysSinceLastCommit": 1055}
+    },
+    {
+      "id": 2,
+      "name": "orders",
+      "label": "dbo.orders",
+      "rowCount": 4100,
+      "fileCount": 2,
+      "fileSize": 39884,
+      "stack": {
+        "live": 38630,
+        "nonLive": 0,
+        "unreferenced": 0,
+        "deleted": 0,
+        "stale": 0,
+        "metadata": 1372,
+        "footers": 1254,
+        "deletedSource": "table",
+        "listed": true,
+        "data": 38630,
+        "total": 41256,
+        "waste": 0,
+        "overhead": 2626,
+        "wasteShare": 0,
+        "overheadShare": 0.06797825524203986
+      },
+      "smallFiles": {"threshold": 134217728, "count": null, "shareAtLeast": 1},
+      "tinyFiles": {"threshold": 8388608, "count": null, "shareAtLeast": 1},
+      "measures": {
+        "compressionRatio": 1.961599916179899,
+        "deletedRowShare": 0,
+        "averageFileSize": 19942,
+        "averageRowGroupRows": 1366.6666666666667,
+        "footerCoverage": 1,
+        "staleColumnShare": 0,
+        "nonLiveShare": 0,
+        "averagePartitionSize": null,
+        "dictionaryFallbackShare": 0
+      },
+      "maintenance": {"lastCommitAt": "2023-11-14T22:18:20.000Z", "commitsPerDay": 2, "daysSinceLastCommit": 1055}
+    }
+  ]
+}

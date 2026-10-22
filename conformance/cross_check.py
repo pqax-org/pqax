@@ -18,6 +18,11 @@ table, the length of every table read whole, and tablesFileSize, tablesRowCount,
 and largestColumns of conformance/expected. A written file has format version 0.2. What is not available is skipped
 with a message.
 
+Measures: pqax.measures in Python, StorageMeasures in C#, and the view model of @pqax/views through node compute the
+derived measures of every file, which must equal conformance/expected/measures/<sample>.json, the measures of the
+views, value for value. The file that pqax collect writes must give the measures of expected/measures/sample.json too,
+except daysSinceLastCommit, which counts the days to the time of the collection.
+
 Exit code 0 when every check that ran passed, 1 when one failed, 2 when nothing could run. Standard library only.
 """
 from __future__ import annotations
@@ -33,10 +38,13 @@ from collections import defaultdict
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
+import make_measures
+
 KIT = Path(__file__).resolve().parent
 ROOT = KIT.parent
 SAMPLES = KIT / "samples"
 EXPECTED = KIT / "expected"
+MEASURES = EXPECTED / "measures"
 PYTHON_PACKAGE = ROOT / "src" / "python"
 DOTNET_LIBRARY = ROOT / "src" / "dotnet" / "Pqax" / "Pqax.csproj"
 DOTNET_CLI = ROOT / "src" / "dotnet" / "Pqax.Cli" / "Pqax.Cli.csproj"
@@ -150,6 +158,48 @@ def stated_tables(manifest: Dict[str, Any]) -> List[str]:
     return names
 
 
+def instant(value: Any) -> Any:
+    """A timestamp as a moment, so that 2023-11-14T22:15:20Z and 2023-11-14T22:15:20.000Z compare equal."""
+    if not isinstance(value, str):
+        return value
+    from datetime import datetime
+    try:
+        return datetime.fromisoformat(value[:-1] + "+00:00" if value.endswith("Z") else value)
+    except ValueError:
+        return value
+
+
+def differences(actual: Any, expected: Any, path: str) -> List[str]:
+    """Where two measures differ, value for value; numbers compare exactly, and lastCommitAt as a moment."""
+    if isinstance(expected, dict) and isinstance(actual, dict):
+        problems = [f"{path}.{key} is missing" for key in expected if key not in actual]
+        problems += [f"{path}.{key} is extra" for key in actual if key not in expected]
+        for key in expected:
+            if key in actual:
+                problems += differences(actual[key], expected[key], f"{path}.{key}")
+        return problems
+    if isinstance(expected, list) and isinstance(actual, list):
+        if len(actual) != len(expected):
+            return [f"{path} has {len(actual)} items, expected {len(expected)}"]
+        return [problem for index, (a, e) in enumerate(zip(actual, expected))
+                for problem in differences(a, e, f"{path}[{index}]")]
+    if path.endswith(".lastCommitAt"):
+        actual, expected = instant(actual), instant(expected)
+    same = (type(actual) is bool) == (type(expected) is bool) and actual == expected
+    return [] if same else [f"{path} {actual!r}, expected {expected!r}"]
+
+
+def check_measures(measured: Dict[str, Any], expected: Dict[str, Any], collected: bool = False) -> List[str]:
+    """What differs between the measures of an implementation and expected/measures. For a file that pqax collect
+    wrote, the days since the last commit are left out: they count to the time of the collection."""
+    problems = differences(measured.get("tables"), expected["tables"], "tables")
+    if collected:
+        problems = [problem for problem in problems if ".maintenance.daysSinceLastCommit " not in problem]
+    if measured.get("filesRead") != expected["filesRead"]:
+        problems.append(f"filesRead {measured.get('filesRead')!r}, expected {expected['filesRead']!r}")
+    return problems
+
+
 # ---- Python ----
 
 class Python:
@@ -205,6 +255,16 @@ class Python:
                 results[path] = {"error": f"{type(error).__name__}: {error}"}
         return results
 
+    def measures(self, paths: List[Path]) -> Dict[Path, Dict[str, Any]]:
+        results = {}
+        for path in paths:
+            try:
+                with self.pqax.open(str(path)) as document:
+                    results[path] = self.pqax.measures.measure(document)
+            except Exception as error:  # noqa: BLE001 - an error is a result
+                results[path] = {"error": f"{type(error).__name__}: {error}"}
+        return results
+
 
 # ---- C# ----
 
@@ -212,6 +272,7 @@ RUNNER = r"""#:project __LIBRARY__
 // The C# side of conformance/cross_check.py, run by the .NET 10 SDK as a file-based app.
 //   write (source target rowsPerPart)...   rewrites each source with FootprintBuilder.From; rowsPerPart 0 keeps the default
 //   inspect file...                         validates and reads each file, and prints one JSON array
+//   measures file...                        the derived measures of each file, as one JSON array
 using System;
 using System.Collections.Generic;
 using System.Globalization;
@@ -235,9 +296,38 @@ if (args.Length > 0 && args[0] == "write")
     }
     return 0;
 }
+if (args.Length > 0 && args[0] == "measures")
+{
+    using Stream stream = Console.OpenStandardOutput();
+    using var json = new Utf8JsonWriter(stream);
+    json.WriteStartArray();
+    foreach (string path in args.Skip(1))
+    {
+        json.WriteStartObject();
+        try
+        {
+            using PqaxDocument document = PqaxDocument.Open(path);
+            FootprintMeasures measures = StorageMeasures.Compute(document);
+            json.WriteBoolean("filesRead", measures.FilesRead);
+            json.WriteStartArray("tables");
+            foreach (TableStorage table in measures.Tables)
+            {
+                table.WriteTo(json);
+            }
+            json.WriteEndArray();
+        }
+        catch (Exception error)
+        {
+            json.WriteString("error", error.GetType().Name + ": " + error.Message);
+        }
+        json.WriteEndObject();
+    }
+    json.WriteEndArray();
+    return 0;
+}
 if (args.Length == 0 || args[0] != "inspect")
 {
-    Console.Error.WriteLine("usage: write (source target rowsPerPart)... | inspect file...");
+    Console.Error.WriteLine("usage: write (source target rowsPerPart)... | inspect file... | measures file...");
     return 2;
 }
 using (Stream output = Console.OpenStandardOutput())
@@ -498,6 +588,14 @@ class DotNet:
         return {path: self.inspected[path].get("read") or {"error": self.inspected[path].get("error", "no result")}
                 for path in paths}
 
+    def measures(self, paths: List[Path]) -> Dict[Path, Dict[str, Any]]:
+        if not paths:
+            return {}
+        completed = self.call(["measures", *map(str, paths)])
+        if completed.returncode != 0:
+            raise RuntimeError(f"the C# runner failed: {last_lines(completed.stdout + completed.stderr)}")
+        return dict(zip(paths, json.loads(text(completed.stdout))))
+
 
 # ---- TypeScript ----
 
@@ -557,6 +655,8 @@ class Node:
         self.node: Optional[str] = None
         self.script: Optional[Path] = None
         self.inspected: Dict[Path, Dict[str, Any]] = {}
+        self.measures_command: Optional[List[str]] = None
+        self.measures_note = ""
 
     def prepare(self, work: Path, build: bool) -> None:
         self.node = shutil.which("node")
@@ -579,6 +679,10 @@ class Node:
             completed = run([npm, "run", "build"], cwd=TYPESCRIPT_PACKAGE)
             if completed.returncode != 0 or not entry.is_file():
                 raise Skip(f"npm run build failed: {last_lines(completed.stdout + completed.stderr)}")
+        try:
+            self.measures_command = make_measures.prepare(work, build)
+        except make_measures.Unavailable as reason:
+            self.measures_note = f"the measures of the views are skipped: {reason}"
         script = NODE_SCRIPT.replace("__PACKAGE__", json.dumps(entry.as_uri()))
         script = script.replace("__NODE__", json.dumps((entry.parent / "node.js").as_uri()))
         script = script.replace("__FIELDS__", json.dumps(FIELDS))
@@ -611,6 +715,11 @@ class Node:
         self.inspect(paths)
         return {path: self.inspected[path].get("read") or {"error": self.inspected[path].get("error", "no result")}
                 for path in paths}
+
+    def measures(self, paths: List[Path]) -> Dict[Path, Dict[str, Any]]:
+        if self.measures_command is None:
+            return {}
+        return dict(zip(paths, make_measures.node_measures(self.measures_command, paths)))
 
 
 # ---- the check ----
@@ -649,7 +758,8 @@ def check(work: Path, skip: set, build: bool, expected: Dict[str, Dict[str, Any]
             print(f"  {implementation.name:<7} skipped: {reason}")
             continue
         implementations.append(implementation)
-        note = getattr(implementation, "cli_note", "")
+        note = "; ".join(filter(None, (getattr(implementation, "cli_note", ""),
+                                       getattr(implementation, "measures_note", ""))))
         print(f"  {implementation.name:<7} ready; validator: {implementation.validator}" + (f"; {note}" if note else ""))
     if not implementations:
         print("Nothing to run.")
@@ -685,8 +795,11 @@ def check(work: Path, skip: set, build: bool, expected: Dict[str, Dict[str, Any]
         print("  collector: pqax collect on conformance/fixtures/lakehouse, checked against expected/sample.json")
 
     paths = [path for path, _, _, _ in files]
+    expected_measures = {path.stem: json.loads(path.read_text(encoding="utf-8")) for path in MEASURES.glob("*.json")}
+    measured_paths = [path for path, _, name, _ in files if name in expected_measures]
     validations: Dict[str, Dict[Path, Tuple[bool, str]]] = {}
     reads: Dict[str, Dict[Path, Dict[str, Any]]] = {}
+    measured: Dict[str, Dict[Path, Dict[str, Any]]] = {}
     for implementation in implementations:
         try:
             validations[implementation.name] = implementation.validate(paths)
@@ -696,11 +809,15 @@ def check(work: Path, skip: set, build: bool, expected: Dict[str, Dict[str, Any]
             reads[implementation.name] = implementation.read(paths)
         except Exception as error:  # noqa: BLE001
             failures.append(f"{implementation.name} reader: {type(error).__name__}: {error}")
+        try:
+            measured[implementation.name] = implementation.measures(measured_paths)
+        except Exception as error:  # noqa: BLE001
+            failures.append(f"{implementation.name} measures: {type(error).__name__}: {error}")
 
     names = [implementation.name for implementation in implementations]
     width = max(len(label) for _, label, _, _ in files)
     header = f"{'file':<{width}}  " + "".join(f"check:{name:<9}" for name in names) + \
-             "".join(f"read:{name:<10}" for name in names)
+             "".join(f"read:{name:<10}" for name in names) + "".join(f"measures:{name:<9}" for name in names)
     print()
     print(header)
     print("-" * len(header))
@@ -725,6 +842,16 @@ def check(work: Path, skip: set, build: bool, expected: Dict[str, Dict[str, Any]
                 problems = check_read(read, expected[expected_name], written)
             cells.append(f"{'ok' if not problems else 'FAIL':<15}")
             failures += [f"{label}: the {name} reader: {problem}" for problem in problems]
+        for name in names:
+            result = measured.get(name, {}).get(path)
+            if result is None:
+                cells.append(f"{'n/a':<18}")
+                continue
+            collected = label.endswith("/collected.pqax")
+            problems = ([result["error"]] if "error" in result
+                        else check_measures(result, expected_measures[expected_name], collected))
+            cells.append(f"{'ok' if not problems else 'FAIL':<18}")
+            failures += [f"{label}: the {name} measures: {problem}" for problem in problems]
         print(f"{label:<{width}}  " + "".join(cells))
     print()
     if failures:
@@ -733,7 +860,7 @@ def check(work: Path, skip: set, build: bool, expected: Dict[str, Dict[str, Any]
             print(f"  {failure}")
         return 1
     print(f"Every check passed: {len(files)} files, each checked by the validators and the readers of "
-          f"{', '.join(names)}.")
+          f"{', '.join(names)}, and the measures of {len(measured_paths)} of them against expected/measures.")
     return 0
 
 

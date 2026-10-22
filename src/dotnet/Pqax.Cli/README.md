@@ -10,6 +10,7 @@ It is packed as a .NET tool, `Pqax.Cli`, with the command `pqax`. It needs .NET 
 |---|---|
 | `pqax check <file>` | Validates the file and prints one line for each issue, starting with the code of its rule, then a line with the result |
 | `pqax info <file>` | Prints the format and its version, the collection, the parts with the rows of each table, the rows of each table, and the totals of the summary |
+| `pqax tables <file>` | Prints one row per table with its rows, files, live bytes, waste, and waste share, as the storage views compute them. See below. |
 | `pqax collect ...` | Collects the footprint of the tables of OneLake items, or of a folder with the OneLake layout, and writes a PQAX file. See below. |
 | `pqax --version` | Prints the version |
 | `pqax --help` | Prints the usage |
@@ -18,7 +19,7 @@ A file with the extension `.vpax` is read as a VPAX file that holds the footprin
 
 ## Exit codes
 
-| Code | `check` | `info` |
+| Code | `check` | `info` and `tables` |
 |---|---|---|
 | 0 | The file is valid | The file was read |
 | 1 | The file breaks at least one rule | The reader refuses the file: it is not a PQAX file of a version that it reads |
@@ -65,6 +66,33 @@ Summary            2 tables, 10 columns, 5 files, 199005 bytes, 21100 rows
 ```
 
 Numbers are written without separators, so that a script can read them. For a VPAX file, a line such as `Embedded part      Footprint.pqax, deflated` gives the part and whether the package stores or deflates it.
+
+## Tables
+
+```
+pqax tables <file> [--part <name>] [--sort waste|total|rows|files|name] [--top <n>] [--wide] [--json]
+```
+
+One row per table with the derived measures of the [storage views](https://github.com/pqax-org/pqax/blob/main/src/typescript/views/README.md#derived-values), which the `Pqax` library computes with `StorageMeasures`: the same numbers as the views. A `.vpax` file is read as for `info`.
+
+```
+sample.pqax: 2 tables, by waste
+Table         Rows  Files     Live  Non-live  Unreferenced  Deleted  Stale  Waste  Waste share
+sales       17,000      3   151 KB     737 B           0 B    239 B    0 B  976 B         0.6%
+dbo.orders   4,100      2  37.7 KB       0 B           0 B      0 B    0 B    0 B         0.0%
+```
+
+| Option | Default | Meaning |
+|---|---|---|
+| `--sort waste\|total\|rows\|files\|name` | `waste` | The order: the largest first, or by name. Ties go by the total of the stack, the largest first, then by the name, then by the order of the file. A table without rows or files goes last. |
+| `--top <n>` | all | The first n tables of the order |
+| `--wide` | off | Adds the share of the files under 8 MiB and under 128 MiB, and the metadata and the footers, which are overhead and not waste |
+| `--json` | off | Writes one JSON object instead: the file, the format version, the collector, the time and level of the collection, the thresholds, the order, and the array of the tables with every measure, for a tool that reads it |
+| `--part <name>` | `Footprint.pqax` | The part of a VPAX file that holds the footprint |
+
+The columns are those of the storage stack of the views: the live data, the non-live files that the log still tracks, the unreferenced files that a listing found, the bytes of the deleted rows, estimated from their share of the rows, and the stale columns; the waste is their sum, and the waste share is the waste over the live data and the waste. A file of format 0.1 has no unreferenced files, and a value that the file does not have is written `n/a`, never 0. Bytes are in 1024-based units, as the views write them; counts have thousands separators, whatever the culture of the machine. With `--wide`, a share of small files from the quartiles of `fileSizes`, when the footprint does not keep the files, is a lower bound and is written `>=75.0%`.
+
+The JSON of each table has the names of the views: `stack` with `live`, `nonLive`, `unreferenced`, `deleted`, `stale`, `metadata`, `footers`, `waste`, `overhead`, `data`, `total`, `wasteShare`, `overheadShare`; `smallFiles` and `tinyFiles`; `measures` with the ratios; and `maintenance` with the last commit, the commits per day, and the days since the last commit. `python -m pqax tables` writes the same.
 
 ## Collect
 

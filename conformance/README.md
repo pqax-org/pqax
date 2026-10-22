@@ -17,9 +17,11 @@ Everything in the kit is synthetic. No name in it comes from a real lakehouse.
 | `samples/invalid/*.pqax` | Files that break one rule each. Every validator rejects them. |
 | `samples/invalid/expected.json` | The codes that a validator must report for each invalid file |
 | `expected/<sample>.json` | The results that a reader must get from each valid file |
+| `expected/measures/<sample>.json` | The derived measures of the tables of each valid file, as the storage views compute them |
 | `fixtures/lakehouse` | A synthetic lakehouse and warehouse in the OneLake layout: Delta logs and Parquet files written by DuckDB, and one data file that no commit references |
 | `fixtures/probe-dump` | The output of the probe that preceded the collector on the fixture. It is the input of `make_kit.py`, and the oracle of the collector tests. The section on the probe dump describes every field. |
 | `make_kit.py` | Rebuilds `samples/` and `expected/` from `fixtures/probe-dump` |
+| `make_measures.py` | Rebuilds `expected/measures/` with the view model of `@pqax/views` |
 | `check_schema.py` | Validates the samples against the schema |
 | `.gitattributes` | Keeps git from changing the line ends of the fixtures, whose sizes the probe dump records |
 
@@ -125,6 +127,31 @@ Every expected file has all these keys.
 | `largestColumns[].id` | integer | The `id` of the column |
 | `largestColumns[].compressedSize` | integer | The sum of `compressedSize` over its column chunks |
 
+### Expected measures
+
+`expected/measures/<sample>.json` holds the derived measures of every table of a valid sample, as the view model of the storage views computes them: `buildModel(await readFootprint(doc))` of [`@pqax/views`](../src/typescript/views/README.md#derived-values). The C# library (`StorageMeasures`) and the Python package (`pqax.measures`) implement the same measures and must give the same values. In the files of the kit they are equal to the last bit: the three languages add and divide in the same order.
+
+```json
+{"file": "sample.pqax", "embeddedPart": null, "smallFileSize": 134217728, "tinyFileSize": 8388608, "filesRead": true, "warnings": [],
+ "tables": [{"id": 1, "name": "sales", "label": "sales", "rowCount": 17000, "fileCount": 3, "fileSize": 159121,
+             "stack": {"live": 155034.9, "nonLive": 737, "unreferenced": 0, "deleted": 239.1, "stale": 0, "metadata": 12469, "footers": 3847,
+                       "deletedSource": "files", "listed": true, "data": 156011, "total": 172327, "waste": 976.1, "overhead": 16316,
+                       "wasteShare": 0.006256610110825519, "overheadShare": 0.10458236919191595},
+             "smallFiles": {"threshold": 134217728, "count": 3, "shareAtLeast": 1}, "tinyFiles": {"...": "..."},
+             "measures": {"compressionRatio": 2.0073306897631222, "...": "..."},
+             "maintenance": {"lastCommitAt": "2023-11-14T22:15:20.000Z", "commitsPerDay": 4, "daysSinceLastCommit": 1055}}]}
+```
+
+| Key | Content |
+|---|---|
+| `file`, `embeddedPart` | The sample, and for a VPAX the part that holds the footprint |
+| `smallFileSize`, `tinyFileSize` | The thresholds of the small files: the defaults of the views, 128 MiB and 8 MiB |
+| `filesRead` | Whether the `files` table was read and has rows: then the deleted rows and the small files come from the files |
+| `warnings` | What the views could not read |
+| `tables` | One object per row of `tables`, in the order of the file, with the keys of `pqax tables --json`: `stack` with the seven components (`null` when absent) and the sums, `smallFiles` and `tinyFiles`, `measures` with the ratios of the views, and `maintenance`. A missing value is `null`. |
+
+A test compares the numbers exactly, and `lastCommitAt` as a moment, since C# writes it with three decimals and the views keep the text of the file.
+
 ## How to use the kit
 
 ### A reader test
@@ -191,6 +218,16 @@ It reads `fixtures/probe-dump` and builds the tables with `build_pqax.py`, the b
 The output is deterministic: every zip entry has the date 2026-10-07 00:00 and the same attributes, and the entries are written in a fixed order. Two runs with the same Python give the same bytes. Another zlib can compress differently: the samples in the repository were written by Python 3.14 on Windows, whose zlib is zlib-ng 1.3.1. The content and the expected results do not depend on it.
 
 When the format changes, change the documents first, then `rules.md`, the schema, and `make_kit.py`, rebuild, and run `check_schema.py`, the checker of the prototype on every valid sample, and the suites of the three packages.
+
+The expected measures come from the storage views, so they are rebuilt after the samples, and after a change of the view model of `@pqax/views`:
+
+```bash
+npm ci && npm run build                          # at the root: the reader and the views, in dist/
+python conformance/make_measures.py              # rewrites expected/measures/ from the views
+python conformance/make_measures.py --check      # writes nothing; exit code 1 when a file is not up to date
+```
+
+`make_measures.py` runs a small script through `node` on every sample, with the built packages; it runs `npm run build` itself when a `dist/` folder is older than its sources, unless `--no-build` is given. It needs only the standard library of Python. A change of the measures goes to the views first, then to `StorageMeasures` in C# and to `pqax.measures` in Python, until the three agree.
 
 ## The probe dump
 
@@ -355,8 +392,9 @@ python conformance/cross_check.py --skip dotnet    # leaves out an implementatio
 | Collector | | `pqax collect --local fixtures/lakehouse`, when the command line builds | |
 | Validator | `python -m pqax check` | `pqax check`, or `PqaxValidator` when the command line does not build | `validate`, through `node` |
 | Reader | `pqax.open` | `PqaxDocument.Open` | `openPqax`, through `node` |
+| Measures | `pqax.measures.measure` | `StorageMeasures.Compute`, through the runner | `buildModel` of `@pqax/views`, through `node` and `make_measures.py` |
 
-The files are `sample.pqax`, `sample.pqax` with at most 20 rows in a detail part, and `extensions.pqax`, as each writer writes them, the fixture as the collector writes it, which must give the results of `expected/sample.json`, and the samples `sample.pqax`, `multipart.pqax`, `extensions.pqax`, and `format-0.1.pqax` of the kit. Every validator must accept every file. Every reader must get the `rows`, the length of every table read whole, and `tablesFileSize`, `tablesRowCount`, `columnChunksCompressedSize`, `tables`, and `largestColumns` of the expected file of the sample. A written file has format version 0.2 and part names of its writer, so the parts are not compared.
+The files are `sample.pqax`, `sample.pqax` with at most 20 rows in a detail part, and `extensions.pqax`, as each writer writes them, the fixture as the collector writes it, which must give the results of `expected/sample.json`, and the samples `sample.pqax`, `multipart.pqax`, `extensions.pqax`, and `format-0.1.pqax` of the kit. Every validator must accept every file. Every reader must get the `rows`, the length of every table read whole, and `tablesFileSize`, `tablesRowCount`, `columnChunksCompressedSize`, `tables`, and `largestColumns` of the expected file of the sample. A written file has format version 0.2 and part names of its writer, so the parts are not compared. The measures of every file, by the three implementations, must equal `expected/measures/` of its sample value for value; for the collected fixture, the days since the last commit are left out, since they count to the time of the collection.
 
 The script needs only the standard library. It skips, with a message, what is not there: `dotnet` or the .NET 10 SDK, `node`, a build of the TypeScript package, which it runs with `npm run build` when `dist/` is older than the sources unless `--no-build` is given. The exit code is 0 when every check passes, 1 when one fails, and 2 when nothing can run.
 

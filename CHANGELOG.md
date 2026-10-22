@@ -4,14 +4,14 @@ The packages of a release share its version number, as section 7.1 of the [contr
 
 ## Unreleased
 
-Unattended sign-in for `pqax collect`: a service principal with a secret or a certificate, a managed identity, the Azure CLI, an access token, and the variables of the Azure SDK. The format does not change.
+Unattended sign-in for `pqax collect`, and `pqax tables`, with the derived measures of the storage views in C# and in Python. The format does not change.
 
 ### .NET
 
 | Package | What changes | Format |
 |---|---|---|
-| `Pqax` | No change | Reads 0.1 and 0.2, writes 0.2 |
-| `Pqax.Cli` | `pqax collect` signs in with `--client-id` and `--client-secret-env`, `--client-certificate`, `--managed-identity`, `--azure-cli`, `--access-token-env`, or `--env-credential`, besides the device code, still the default, and the browser. A secret is read from an environment variable, never from the command line, and is not printed or written. A refused sign-in or request is one line with its code and the likely cause. | Reads 0.1 and 0.2, writes 0.2 |
+| `Pqax` | `StorageMeasures` computes the derived measures of the tables as the storage views do: the stack with its waste and overhead, the deleted rows, the small files, the ratios, and the pace of the commits. | Reads 0.1 and 0.2, writes 0.2 |
+| `Pqax.Cli` | `pqax collect` signs in with `--client-id` and `--client-secret-env`, `--client-certificate`, `--managed-identity`, `--azure-cli`, `--access-token-env`, or `--env-credential`, besides the device code, still the default, and the browser. A secret is read from an environment variable, never from the command line, and is not printed or written. A refused sign-in or request is one line with its code and the likely cause. `pqax tables` prints one row per table with its rows, files, live bytes, waste, and waste share, or one JSON object with `--json`. | Reads 0.1 and 0.2, writes 0.2 |
 | `Pqax.Collector` | No change of the code. The README shows how to pass any `TokenCredential`, and the permissions of a service principal. | Writes 0.2 |
 | `Pqax.Collector.ParquetNet` | No change | Reads and writes no PQAX file |
 
@@ -21,7 +21,11 @@ No change.
 
 ### PyPI
 
-No change.
+`pqax` has the module `measures`, the same measures as the storage views, and the command `python -m pqax tables`. Reads 0.1 and 0.2, writes 0.2.
+
+### Conformance kit
+
+`expected/measures/` holds the derived measures of every valid sample, as the storage views compute them, and `make_measures.py` rebuilds them. `cross_check.py` computes the measures with the three implementations and compares them with these files.
 
 ## 0.2.0 - 2026-10-21
 

@@ -10,6 +10,9 @@
     result = pqax.validate("footprint.pqax")            # every issue, with the codes of the conformance kit
     print(result.is_valid, [issue.code for issue in result.issues])
 
+    with pqax.open("footprint.pqax") as doc:
+        tables = pqax.measures.measure(doc)["tables"]   # the waste and the other measures of the storage views
+
 The package needs only the standard library. to_dataframe uses pandas or polars when one is installed.
 """
 from __future__ import annotations
@@ -21,6 +24,7 @@ from ._errors import (
 )
 from ._json import format_timestamp, parse_timestamp
 from ._schema import DETAIL_TABLES, FIELDS, FORMAT_VERSION, REFERENCES, REQUIRED, ROWS_PER_PART, SUMMARY_TABLES, TABLES
+from . import measures
 from .builder import Builder, BuilderOptions
 from .dataframe import to_dataframe
 from .reader import PqaxDocument, open, open_embedded
@@ -30,5 +34,6 @@ __all__ = [
     "Builder", "BuilderOptions", "ContainerError", "DETAIL_TABLES", "FIELDS", "FORMAT_VERSION", "FormatError",
     "Issue", "JsonError", "ManifestMissingError", "PartMissingError", "PqaxDocument", "PqaxError", "REFERENCES",
     "REQUIRED", "ROWS_PER_PART", "SUMMARY_TABLES", "TABLES", "UnknownVersionError", "ValidationResult",
-    "format_timestamp", "open", "open_embedded", "parse_timestamp", "to_dataframe", "validate", "validate_embedded",
+    "format_timestamp", "measures", "open", "open_embedded", "parse_timestamp", "to_dataframe", "validate",
+    "validate_embedded",
 ]
