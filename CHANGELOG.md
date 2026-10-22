@@ -2,6 +2,27 @@
 
 The packages of a release share its version number, as section 7.1 of the [contracts](docs/contracts.md) says.
 
+## Unreleased
+
+Unattended sign-in for `pqax collect`: a service principal with a secret or a certificate, a managed identity, the Azure CLI, an access token, and the variables of the Azure SDK. The format does not change.
+
+### .NET
+
+| Package | What changes | Format |
+|---|---|---|
+| `Pqax` | No change | Reads 0.1 and 0.2, writes 0.2 |
+| `Pqax.Cli` | `pqax collect` signs in with `--client-id` and `--client-secret-env`, `--client-certificate`, `--managed-identity`, `--azure-cli`, `--access-token-env`, or `--env-credential`, besides the device code, still the default, and the browser. A secret is read from an environment variable, never from the command line, and is not printed or written. A refused sign-in or request is one line with its code and the likely cause. | Reads 0.1 and 0.2, writes 0.2 |
+| `Pqax.Collector` | No change of the code. The README shows how to pass any `TokenCredential`, and the permissions of a service principal. | Writes 0.2 |
+| `Pqax.Collector.ParquetNet` | No change | Reads and writes no PQAX file |
+
+### npm
+
+No change.
+
+### PyPI
+
+No change.
+
 ## 0.2.0 - 2026-10-21
 
 Format version 0.2 adds five optional fields. On `tables`, `unreferencedFileCount` and `unreferencedFileSize` count the data files in storage that the version described does not reference, and `nonLiveOldestRemovedAt` and `nonLiveNewestRemovedAt` say when its non-live files were removed. On `partitions`, `lastModifiedAt` says when the files of a partition last changed. Compared with `nonLiveFileCount` and `nonLiveFileSize`, they let a reader tell the non-live files still in storage from those that a VACUUM already deleted, and see how old the tombstones are against the retention of the table.

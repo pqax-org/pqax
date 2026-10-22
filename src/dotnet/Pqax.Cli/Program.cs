@@ -91,7 +91,7 @@ public static class Program
         writer.WriteLine("  pqax check <file> [--part <name>]   Validate a PQAX file, or the footprint inside a VPAX file.");
         writer.WriteLine("  pqax info <file> [--part <name>]    Show the format, the collection, the parts, and the rows of each table.");
         writer.WriteLine("  pqax collect --local <folder> --output <file>     Collect a footprint from a folder in the OneLake layout.");
-        writer.WriteLine("  pqax collect --workspace <id> --item <name> --output <file>   Collect from OneLake, with a device-code sign-in. See pqax collect --help.");
+        writer.WriteLine("  pqax collect --workspace <id> --item <name> --output <file>   Collect from OneLake after a sign-in. See pqax collect --help.");
         writer.WriteLine("  pqax --version                      Show the version.");
         writer.WriteLine();
         writer.WriteLine("A file with the extension .vpax, or any file with --part, is read as a VPAX file that holds the");
