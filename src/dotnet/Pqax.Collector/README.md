@@ -32,14 +32,22 @@ footprint.Collection.CollectorApp = "MyTool";
 footprint.Write("lakehouse.pqax");
 ```
 
-For OneLake, the storage takes a delegate that returns an access token for the scope `https://storage.azure.com/.default`, so that the library does not depend on Azure.Identity. The application signs in:
+For OneLake, the storage takes a delegate that returns an access token for the scope `https://storage.azure.com/.default`, so that the library does not depend on Azure.Identity. The application signs in with any `TokenCredential` of Azure.Identity, or gets the token another way:
 
 ```csharp
-var credential = new InteractiveBrowserCredential();   // Azure.Identity, in the application
+// Azure.Identity, in the application: any TokenCredential.
+TokenCredential credential = new ClientSecretCredential(tenantId, clientId, Environment.GetEnvironmentVariable("PQAX_CLIENT_SECRET"));
+// or new ClientCertificateCredential(tenantId, clientId, "collector.pfx"), new ManagedIdentityCredential(ManagedIdentityId.SystemAssigned),
+// new AzureCliCredential(), new DefaultAzureCredential(), new InteractiveBrowserCredential()
+
 using var storage = new OneLakeStorage("My Workspace", async cancellation =>
     (await credential.GetTokenAsync(new TokenRequestContext(new[] { OneLakeStorage.Scope }), cancellation)).Token);
 IReadOnlyList<TableLocation> tables = await TableDiscovery.DiscoverAsync(storage, "Sales.Lakehouse", CancellationToken.None);
 ```
+
+The delegate is called before every request. The credentials of Azure.Identity cache their tokens, but a delegate that calls another source should cache the token itself until shortly before it expires, as `TokenCache` of [Pqax.Cli](https://github.com/pqax-org/pqax/blob/main/src/dotnet/Pqax.Cli/README.md) does. A token acquired elsewhere, such as the one of a notebook, is passed as it is: `new OneLakeStorage("My Workspace", _ => Task.FromResult(token))`.
+
+A service principal or a managed identity needs the Fabric tenant setting that lets service principals use Fabric APIs, and a workspace role that reads OneLake: Contributor or higher is known to work, and Viewer alone does not. The [Pqax.Cli README](https://github.com/pqax-org/pqax/blob/main/src/dotnet/Pqax.Cli/README.md#permissions-of-a-service-principal) has the details and what is not verified yet. A refused request is a `StorageException` with `StatusCode` 401 or 403 and `IsAccessDenied` true.
 
 On a real workspace of 78 tables and 5,236 files, a collection at level 2 with every footer took 7,623 requests, one per footer, and wrote a 1.8 MB file. With a fixed 32 KB tail it read 177 MB in 2 minutes; with the adaptive tail it read 103 MB in 38 seconds, with the same output.
 

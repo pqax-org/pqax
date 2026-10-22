@@ -146,6 +146,35 @@ The codes are those of the [rules of the conformance kit](https://github.com/pqa
 
 The validator never throws `PqaxFormatException`: it throws only for a null argument, and when the file cannot be read at all. A file does not have to be valid to be read: the reader opens most invalid files.
 
+## Measure the tables
+
+`StorageMeasures` computes the derived measures of each table as the [storage views](https://github.com/pqax-org/pqax/blob/main/src/typescript/views/README.md#derived-values) define them, function by function, with the same numbers: the storage stack with its waste and overhead, the deleted rows, the small files, the ratios, and the pace of the commits.
+
+```csharp
+using PqaxDocument doc = PqaxDocument.Open("footprint.pqax");
+FootprintMeasures measures = StorageMeasures.Compute(doc);       // reads the files table when the file has it
+foreach (TableStorage table in measures.Tables.OrderByDescending(t => t.Stack.Waste))
+{
+    Console.WriteLine($"{table.Label}: {table.Stack.Waste:N0} bytes of waste, {table.Stack.WasteShare:P1} of the data");
+}
+```
+
+| Member | What it is |
+|---|---|
+| `StorageMeasures.Compute(document, options)` | The measures of every table, from the summary and the `files` table. A `files` table that cannot be read becomes a warning, and the measures use the totals of the summary. |
+| `StorageMeasures.ForTables(summary, files, collection, options)` | The same from the tables, for a caller that read them |
+| `StorageMeasures.StackOf`, `DeletedEstimate`, `SmallShareAtLeast`, `CommitsPerDay`, `DaysBetween`, `Ratio` | The derived values, one function each, as `stackOf`, `deletedEstimate`, `smallShareAtLeast`, `commitsPerDay`, `daysBetween`, and `ratio` of the views |
+| `StorageMeasures.StackComponents`, `WasteComponents`, `OverheadComponents` | The names of the components: `live`, `nonLive`, `unreferenced`, `deleted`, `stale`, `metadata`, `footers`; the first four after `live` are the waste, the last two the overhead |
+| `FootprintMeasures` | `Tables`, `FilesRead`, `Warnings` |
+| `TableStorage` | `Id`, `Row`, `Name`, `Label`, `RowCount`, `FileCount`, `FileSize`, `Stack`, `SmallFiles`, `TinyFiles`, `Measures`, `Maintenance`, and `WriteTo(Utf8JsonWriter)`, which writes the JSON of `pqax tables --json` for one table |
+| `StorageStack` | The seven components, `DeletedSource`, `Listed`, `Data`, `Total`, `Waste`, `Overhead`, `WasteShare`, `OverheadShare` |
+| `SmallFiles` | `Threshold`, `Count` from the `files` table, `ShareAtLeast` |
+| `TableMeasures` | `CompressionRatio`, `DeletedRowShare`, `AverageFileSize`, `AverageRowGroupRows`, `FooterCoverage`, `StaleColumnShare`, `NonLiveShare`, `AveragePartitionSize`, `DictionaryFallbackShare` |
+| `MaintenanceMeasures` | `LastCommitAt`, `CommitsPerDay`, `DaysSinceLastCommit` |
+| `MeasureOptions` | `SmallFileSize`, 128 MiB by default, and `TinyFileSize`, 8 MiB |
+
+A value that cannot be computed is `null`, never 0: a stack component whose field the file lacks, such as the unreferenced files of a file of format 0.1, is `null`. The waste, the overhead, the data, and the total count such a component as 0, as the views do, so they are never `null`. The conformance kit holds the measures of the views for every sample, in `conformance/expected/measures`, and the tests compare these with them.
+
 ## Write
 
 ```csharp
@@ -261,12 +290,12 @@ The reader refuses a file with a `PqaxFormatException` only in these cases:
 | Not in the package | Where it is |
 |---|---|
 | Collect a footprint from a lakehouse or a folder, or read Parquet and Delta files | The package `Pqax.Collector` |
-| Derived measures and a view model, such as compression ratios or a tree of tables and columns | Not defined yet. The rows mirror the file, and a reference is an id. |
+| The measures of the columns, the V-Order share, the partitions, and the tree of the treemap | The view model of [`@pqax/views`](https://github.com/pqax-org/pqax/blob/main/src/typescript/views/README.md). `StorageMeasures` has the measures of the tables. |
 | Write a VPAX file, or embed a footprint in one | `System.IO.Packaging`, as above, and later the VPAX library |
 | Obfuscate names | Later, in the VPAX obfuscator, from `FootprintBuilder.From` |
 | Asynchronous I/O | Not in 0.2 |
 | Check the CRC of the zip entries | Not done. Deflate finds most damage, and a damaged stored part fails as JSON. |
-| A command line | The package `Pqax.Cli`: `pqax check` and `pqax info` |
+| A command line | The package `Pqax.Cli`: `pqax check`, `pqax info`, and `pqax tables` |
 
 ## Limits
 

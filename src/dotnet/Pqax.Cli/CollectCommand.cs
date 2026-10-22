@@ -1,4 +1,6 @@
 using System.Globalization;
+using System.Security.Cryptography;
+using Azure;
 using Azure.Core;
 using Azure.Identity;
 using Pqax.Collector;
@@ -17,18 +19,27 @@ public static class CollectCommand
     /// <param name="output">Where the progress and the result go.</param>
     /// <param name="error">Where usage and errors go.</param>
     /// <returns>0 when the file is written and valid, 1 when the written file is invalid, 2 for a wrong command line or a failure.</returns>
-    public static int Run(string[] args, TextWriter output, TextWriter error)
+    public static int Run(string[] args, TextWriter output, TextWriter error) => Run(args, output, error, CollectHost.Default);
+
+    /// <summary>Parses the arguments after <c>collect</c>, collects, writes the file, and validates it, with the environment, the credential, and the HTTP client of a host.</summary>
+    /// <param name="args">All the arguments, <c>collect</c> first.</param>
+    /// <param name="output">Where the progress and the result go.</param>
+    /// <param name="error">Where usage, errors, the device code, and the trace of <c>--verbose</c> go.</param>
+    /// <param name="host">The environment variables, the credential, and the HTTP client of OneLake.</param>
+    /// <returns>0 when the file is written and valid, 1 when the written file is invalid, 2 for a wrong command line or a failure.</returns>
+    public static int Run(string[] args, TextWriter output, TextWriter error, CollectHost host)
     {
         ArgumentNullException.ThrowIfNull(args);
         ArgumentNullException.ThrowIfNull(output);
         ArgumentNullException.ThrowIfNull(error);
+        ArgumentNullException.ThrowIfNull(host);
         if (args.Skip(1).Any(a => a == "-h" || a == "--help"))
         {
             Usage(output);
             return Program.ExitOk;
         }
 
-        Options? options = Options.Parse(args, out string? problem);
+        CollectOptions? options = CollectOptions.Parse(args, out string? problem);
         if (options == null)
         {
             error.WriteLine($"pqax collect: {problem}");
@@ -38,16 +49,23 @@ public static class CollectCommand
 
         try
         {
-            return RunAsync(options, output, error).GetAwaiter().GetResult();
+            return RunAsync(options, output, error, host).GetAwaiter().GetResult();
         }
-        catch (Exception e) when (e is StorageException || e is IOException || e is UnauthorizedAccessException || e is AuthenticationFailedException || e is ArgumentException)
+        catch (Exception e) when (options.Workspace != null && (e is SignInException || e is AuthenticationFailedException || e is RequestFailedException
+            || e is CryptographicException || e is StorageException { IsAccessDenied: true }))
+        {
+            // One line with the likely cause. A message of Azure.Identity or of OneLake never holds the secret.
+            error.WriteLine($"pqax collect: {SignIn.Describe(e)}");
+            return Program.ExitError;
+        }
+        catch (Exception e) when (e is StorageException || e is IOException || e is UnauthorizedAccessException || e is ArgumentException)
         {
             error.WriteLine($"pqax collect: {e.GetType().Name}: {e.Message}");
             return Program.ExitError;
         }
     }
 
-    private static async Task<int> RunAsync(Options options, TextWriter output, TextWriter error)
+    private static async Task<int> RunAsync(CollectOptions options, TextWriter output, TextWriter error, CollectHost host)
     {
         IStorage storage;
         IDisposable? owned = null;
@@ -63,23 +81,40 @@ public static class CollectCommand
         }
         else
         {
-            // The device code is the default: a browser window can open where nobody sees it, and the code is printed here.
-            TokenCredential credential = !options.Browser
-                ? new DeviceCodeCredential(new DeviceCodeCredentialOptions
+            if (options.Verbose)
+            {
+                error.WriteLine(SignIn.DescribeIdentity(options.SignIn));
+            }
+
+            TokenCredential credential = host.CreateCredential != null
+                ? host.CreateCredential(options.SignIn)
+                : SignIn.CreateCredential(options.SignIn, host.GetVariable, error);
+            if (credential is AccessTokenCredential given)
+            {
+                if (given.ExpiresOn <= DateTimeOffset.UtcNow)
                 {
-                    TenantId = options.Tenant,
-                    DeviceCodeCallback = (code, _) =>
-                    {
-                        error.WriteLine(code.Message);
-                        return Task.CompletedTask;
-                    },
-                })
-                : new InteractiveBrowserCredential(new InteractiveBrowserCredentialOptions { TenantId = options.Tenant });
-            output.WriteLine("Waiting for the sign-in. The token stays in memory and is gone when the command ends.");
+                    error.WriteLine($"pqax collect: the access token of --access-token-env expired at {given.ExpiresOn.UtcDateTime.ToString("yyyy-MM-dd HH:mm:ss 'UTC'", CultureInfo.InvariantCulture)}.");
+                    return Program.ExitError;
+                }
+
+                if (given.Audience != null && !given.Audience.StartsWith("https://storage.azure.com", StringComparison.OrdinalIgnoreCase))
+                {
+                    error.WriteLine($"pqax collect: the access token is for {given.Audience}, and OneLake takes one for https://storage.azure.com; it may refuse it.");
+                }
+            }
+
+            output.WriteLine(options.SignIn.Mode is SignInMode.DeviceCode or SignInMode.Browser
+                ? "Waiting for the sign-in. The token stays in memory and is gone when the command ends."
+                : "Signing in. The token stays in memory and is gone when the command ends.");
             var tokens = new TokenCache(credential);
             await tokens.GetAsync(CancellationToken.None).ConfigureAwait(false);
-            var oneLake = new OneLakeStorage(options.Workspace!, tokens.GetAsync,
-                new OneLakeStorageOptions { Trace = options.Verbose ? line => error.WriteLine(line) : null });
+            var storageOptions = new OneLakeStorageOptions { Trace = options.Verbose ? line => error.WriteLine(line) : null, HttpClient = host.HttpClient };
+            if (host.Endpoint != null)
+            {
+                storageOptions.Endpoint = host.Endpoint;
+            }
+
+            var oneLake = new OneLakeStorage(options.Workspace!, tokens.GetAsync, storageOptions);
             storage = oneLake;
             owned = oneLake;
         }
@@ -141,13 +176,25 @@ public static class CollectCommand
     {
         writer.WriteLine("Usage:");
         writer.WriteLine("  pqax collect --local <folder> --output <file.pqax> [--item <name.Kind>]... [options]");
-        writer.WriteLine("  pqax collect --workspace <name or id> --item <name.Kind> [--item ...] --output <file.pqax> [--tenant <id>] [--browser] [options]");
+        writer.WriteLine("  pqax collect --workspace <name or id> --item <name.Kind> [--item ...] --output <file.pqax> [identity] [options]");
         writer.WriteLine();
         writer.WriteLine("--local reads a folder with the OneLake layout: <item>.<Kind>/Tables/[<schema>/]<table>. Without --item, every");
-        writer.WriteLine("lakehouse, warehouse, mirrored database, and SQL database in the folder. --workspace reads OneLake after a sign-in");
-        writer.WriteLine("with a device code, which the command prints, or in the browser with --browser; an item is named as in OneLake,");
-        writer.WriteLine("such as Sales.Lakehouse.");
+        writer.WriteLine("lakehouse, warehouse, mirrored database, and SQL database in the folder. --workspace reads OneLake after a sign-in;");
+        writer.WriteLine("an item is named as in OneLake, such as Sales.Lakehouse.");
         writer.WriteLine("Name the workspace and the items both by name or both by id: OneLake refuses a workspace id with item names.");
+        writer.WriteLine();
+        writer.WriteLine("Identity, one of these; a secret is read from an environment variable, never from the command line:");
+        writer.WriteLine("  (none), --device-code                         A person, with a device code that the command prints. The default.");
+        writer.WriteLine("  --browser                                     A person, in the browser.");
+        writer.WriteLine("  --client-id <id> --client-secret-env <NAME>   A service principal; the secret is in the variable NAME. Needs --tenant.");
+        writer.WriteLine("  --client-id <id> --client-certificate <file>  A service principal with a PFX or PEM certificate. Needs --tenant.");
+        writer.WriteLine("    [--client-certificate-password-env <NAME>]  The password of the certificate, in the variable NAME.");
+        writer.WriteLine("  --managed-identity [--client-id <id>]         The managed identity: system-assigned, or user-assigned with its client id.");
+        writer.WriteLine("  --azure-cli                                   The account of az login.");
+        writer.WriteLine("  --access-token-env <NAME>                     An access token for https://storage.azure.com, in the variable NAME.");
+        writer.WriteLine("  --env-credential                              AZURE_TENANT_ID, AZURE_CLIENT_ID, and AZURE_CLIENT_SECRET or");
+        writer.WriteLine("                                                AZURE_CLIENT_CERTIFICATE_PATH (and AZURE_CLIENT_CERTIFICATE_PASSWORD).");
+        writer.WriteLine("  --tenant <id>                                 The tenant, for a person, a service principal, or the Azure CLI.");
         writer.WriteLine();
         writer.WriteLine("Options:");
         writer.WriteLine("  --depth summary|files|rowGroups|columnChunks   The detail kept for each table. Default columnChunks.");
@@ -155,34 +202,9 @@ public static class CollectCommand
         writer.WriteLine("  --max-footers <n>                             Footers read for each table, 0 for all. Default 0.");
         writer.WriteLine("  --max-commits <n>                             Commit files read for the history of each table; the commits the state needs are read anyway. Default 30.");
         writer.WriteLine("  --parallelism <n>                             Storage requests at the same time. Default 16.");
-        writer.WriteLine("  --verbose                                     Print every OneLake request and its status code to the error output.");
+        writer.WriteLine("  --verbose                                     Print the identity, and every OneLake request with its status code, to the error output.");
         writer.WriteLine();
         writer.WriteLine("Exit codes: 0 written and valid, 1 written and invalid, 2 wrong command line or failure.");
-    }
-
-    /// <summary>Caches the access token until five minutes before it expires.</summary>
-    private sealed class TokenCache(TokenCredential credential)
-    {
-        private readonly SemaphoreSlim gate = new(1, 1);
-        private AccessToken? token;
-
-        public async Task<string> GetAsync(CancellationToken cancellation)
-        {
-            await gate.WaitAsync(cancellation).ConfigureAwait(false);
-            try
-            {
-                if (token is not { } current || current.ExpiresOn < DateTimeOffset.UtcNow.AddMinutes(5))
-                {
-                    token = current = await credential.GetTokenAsync(new TokenRequestContext([OneLakeStorage.Scope]), cancellation).ConfigureAwait(false);
-                }
-
-                return current.Token;
-            }
-            finally
-            {
-                gate.Release();
-            }
-        }
     }
 
     /// <summary>Prints one line for each table that is done, with counts only.</summary>
@@ -198,185 +220,6 @@ public static class CollectCommand
             Issues += value.IssueCount;
             output.WriteLine($"  table {Number(value.TablesCompleted)} of {Number(value.TableCount)}: {Number(value.FootersRead)} footers, "
                 + $"{Number(value.IssueCount)} issues; {Number(value.RequestCount)} requests so far");
-        }
-    }
-
-    /// <summary>The arguments of <c>collect</c>.</summary>
-    private sealed class Options
-    {
-        public string? Local { get; private set; }
-
-        public string? Workspace { get; private set; }
-
-        public List<string> Items { get; } = [];
-
-        public string? Output { get; private set; }
-
-        public string? Tenant { get; private set; }
-
-        public bool DeviceCode { get; private set; }
-
-        public bool Browser { get; private set; }
-
-        public bool Verbose { get; private set; }
-
-        public DetailDepth Depth { get; private set; } = DetailDepth.ColumnChunks;
-
-        public int Level { get; private set; } = 2;
-
-        public int MaxFooters { get; private set; }
-
-        public int MaxCommits { get; private set; } = 30;
-
-        public int Parallelism { get; private set; } = 16;
-
-        public static Options? Parse(string[] args, out string? problem)
-        {
-            var options = new Options();
-            problem = null;
-            for (int i = 1; i < args.Length; i++)
-            {
-                string arg = args[i];
-                string? Next()
-                {
-                    return i + 1 < args.Length && args[i + 1].Length > 0 && !args[i + 1].StartsWith("--", StringComparison.Ordinal) ? args[++i] : null;
-                }
-
-                string? value;
-                switch (arg)
-                {
-                    case "--local":
-                        options.Local = value = Next();
-                        break;
-                    case "--workspace":
-                        options.Workspace = value = Next();
-                        break;
-                    case "--item":
-                        value = Next();
-                        if (value != null)
-                        {
-                            options.Items.Add(value);
-                        }
-
-                        break;
-                    case "--output":
-                        options.Output = value = Next();
-                        break;
-                    case "--tenant":
-                        options.Tenant = value = Next();
-                        break;
-                    case "--device-code":
-                        options.DeviceCode = true;   // the default; accepted for scripts that ask for it
-                        value = string.Empty;
-                        break;
-                    case "--browser":
-                        options.Browser = true;
-                        value = string.Empty;
-                        break;
-                    case "--verbose":
-                        options.Verbose = true;
-                        value = string.Empty;
-                        break;
-                    case "--depth":
-                        value = Next();
-                        if (value != null)
-                        {
-                            DetailDepth? depth = value.ToLowerInvariant() switch
-                            {
-                                "summary" => DetailDepth.Summary,
-                                "files" => DetailDepth.Files,
-                                "rowgroups" => DetailDepth.RowGroups,
-                                "columnchunks" => DetailDepth.ColumnChunks,
-                                _ => null,
-                            };
-                            if (depth == null)
-                            {
-                                problem = $"unknown depth '{value}'; use summary, files, rowGroups, or columnChunks.";
-                                return null;
-                            }
-
-                            options.Depth = depth.Value;
-                        }
-
-                        break;
-                    case "--level":
-                        value = Next();
-                        if (value != null)
-                        {
-                            if (value != "1" && value != "2")
-                            {
-                                problem = "--level is 1 or 2.";
-                                return null;
-                            }
-
-                            options.Level = value == "1" ? 1 : 2;
-                        }
-
-                        break;
-                    case "--max-footers":
-                    case "--max-commits":
-                    case "--parallelism":
-                        value = Next();
-                        if (value != null)
-                        {
-                            if (!int.TryParse(value, NumberStyles.None, CultureInfo.InvariantCulture, out int number) || (arg == "--parallelism" && number < 1))
-                            {
-                                problem = $"{arg} needs a number{(arg == "--parallelism" ? " of at least 1" : string.Empty)}.";
-                                return null;
-                            }
-
-                            if (arg == "--max-footers")
-                            {
-                                options.MaxFooters = number;
-                            }
-                            else if (arg == "--max-commits")
-                            {
-                                options.MaxCommits = number;
-                            }
-                            else
-                            {
-                                options.Parallelism = number;
-                            }
-                        }
-
-                        break;
-                    default:
-                        problem = $"unknown option '{arg}'.";
-                        return null;
-                }
-
-                if (value == null)
-                {
-                    problem = $"{arg} needs a value.";
-                    return null;
-                }
-            }
-
-            if ((options.Local == null) == (options.Workspace == null))
-            {
-                problem = "give either --local or --workspace.";
-                return null;
-            }
-
-            if (options.Workspace != null && options.Items.Count == 0)
-            {
-                problem = "--workspace needs at least one --item.";
-                return null;
-            }
-
-            if (options.Output == null)
-            {
-                problem = "--output is missing.";
-                return null;
-            }
-
-            if ((options.Tenant != null || options.DeviceCode || options.Browser) && options.Workspace == null)
-            {
-                problem = "--tenant, --device-code, and --browser apply to --workspace only.";
-                return null;
-            }
-
-            return options;
         }
     }
 }

@@ -54,6 +54,16 @@ public static class Program
                 break;
             case "collect":
                 return CollectCommand.Run(args, output, error);
+            case "tables":
+                try
+                {
+                    return TablesCommand.Run(args, output, error);
+                }
+                catch (Exception e) when (e is IOException || e is UnauthorizedAccessException || e is ArgumentException || e is NotSupportedException)
+                {
+                    error.WriteLine($"pqax tables: cannot read the file: {e.Message}");
+                    return ExitError;
+                }
             default:
                 error.WriteLine($"pqax: unknown command '{command}'.");
                 Usage(error);
@@ -90,8 +100,10 @@ public static class Program
         writer.WriteLine("Usage:");
         writer.WriteLine("  pqax check <file> [--part <name>]   Validate a PQAX file, or the footprint inside a VPAX file.");
         writer.WriteLine("  pqax info <file> [--part <name>]    Show the format, the collection, the parts, and the rows of each table.");
+        writer.WriteLine("  pqax tables <file> [--sort waste|total|rows|files|name] [--top <n>] [--wide] [--json]");
+        writer.WriteLine("                                      One row per table with its storage, waste, and waste share. See pqax tables --help.");
         writer.WriteLine("  pqax collect --local <folder> --output <file>     Collect a footprint from a folder in the OneLake layout.");
-        writer.WriteLine("  pqax collect --workspace <id> --item <name> --output <file>   Collect from OneLake, with a device-code sign-in. See pqax collect --help.");
+        writer.WriteLine("  pqax collect --workspace <id> --item <name> --output <file>   Collect from OneLake after a sign-in. See pqax collect --help.");
         writer.WriteLine("  pqax --version                      Show the version.");
         writer.WriteLine();
         writer.WriteLine("A file with the extension .vpax, or any file with --part, is read as a VPAX file that holds the");

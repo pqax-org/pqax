@@ -110,15 +110,39 @@ The fields are named as in the file. An `add_` method refuses a field that its t
 
 `from_document` keeps the ids, the collection, the obfuscation fields, the other members of the manifest, and the fields and tables that this version does not define. It loses what the reader does not keep: the entries that the manifest does not list, the members of a table that are not arrays, and the members of an element of `parts` other than `name` and `tables`. It writes format version 0.2, and its own part names.
 
+## Measure the tables
+
+`pqax.measures` computes the derived measures of each table as the [storage views](https://github.com/pqax-org/pqax/blob/main/src/typescript/views/README.md#derived-values) define them, function by function, with the same numbers: the storage stack with its waste and overhead, the deleted rows, the small files, the ratios, and the pace of the commits.
+
+```python
+import pqax
+
+with pqax.open("footprint.pqax") as doc:
+    result = pqax.measures.measure(doc)          # reads the files table when the file has it
+for table in sorted(result["tables"], key=lambda t: -t["stack"]["waste"]):
+    print(table["label"], table["stack"]["waste"], table["stack"]["wasteShare"])
+```
+
+| Name | What it is |
+|---|---|
+| `measure(doc, small_file_size=..., tiny_file_size=...)` | `{"filesRead": ..., "warnings": [...], "tables": [...]}`, one dict per table. A `files` table that cannot be read becomes a warning, and the measures use the totals of the summary. |
+| `measure_tables(summary, files=None, collection=None, ...)` | The list of the tables, from tables already read |
+| `stack_of`, `deleted_estimate`, `small_share_at_least`, `commits_per_day`, `days_between`, `ratio` | The derived values, one function each, as `stackOf`, `deletedEstimate`, `smallShareAtLeast`, `commitsPerDay`, `daysBetween`, and `ratio` of the views |
+| `STACK_COMPONENTS`, `WASTE_COMPONENTS`, `OVERHEAD_COMPONENTS` | The names of the components |
+| `DEFAULT_SMALL_FILE_SIZE`, `DEFAULT_TINY_FILE_SIZE` | 128 MiB and 8 MiB |
+
+The dict of a table has the keys of the JSON of `pqax tables --json`, in the names of the views: `id`, `name`, `label`, `rowCount`, `fileCount`, `fileSize`, `stack`, `smallFiles`, `tinyFiles`, `measures`, and `maintenance`. A value that cannot be computed is `None`, never 0; the waste, the overhead, the data, and the total count a missing component as 0, as the views do. An integral float is an `int`. The conformance kit holds the measures of the views for every sample, in `conformance/expected/measures`, and the tests compare these with them.
+
 ## Command line
 
 ```bash
 python -m pqax check footprint.pqax      # exit code 0 when valid, 1 when not, 2 on a usage or I/O error
 python -m pqax info footprint.pqax       # format, version, collection, parts with their tables and rows
 python -m pqax info model.vpax           # a VPAX file: the PQAX file that it embeds as Footprint.pqax
+python -m pqax tables footprint.pqax     # one row per table: rows, files, live bytes, waste, and waste share
 ```
 
-`check` prints one line for each issue, its code first, then a summary line. Both commands take `--part NAME` for another embedded part. The installed package also has a `pqax` command.
+`check` prints one line for each issue, its code first, then a summary line. The commands take `--part NAME` for another embedded part. `tables` takes `--sort waste|total|rows|files|name`, `--top N`, `--wide` for the small files and the overhead, and `--json` for one JSON object; it writes what `pqax tables` of [Pqax.Cli](https://github.com/pqax-org/pqax/blob/main/src/dotnet/Pqax.Cli/README.md#tables) writes. The installed package also has a `pqax` command.
 
 ## API
 
@@ -130,6 +154,7 @@ python -m pqax info model.vpax           # a VPAX file: the PQAX file that it em
 | `validate(path_or_file)`, `validate_embedded(path_or_file, part_name)` | A `ValidationResult`: `is_valid`, `checks`, `issues`, `codes` |
 | `Issue` | `code`, `message`, `part`, `table`, `field` |
 | `to_dataframe(table, library=None)` | A pandas or polars data frame |
+| `measures` | The derived measures of the tables. See above. |
 | `Builder`, `BuilderOptions` | The writer |
 | `format_timestamp(datetime)`, `parse_timestamp(text)` | Timestamps in the form of the format, `2026-10-05T08:15:30.000Z` |
 | `TABLES`, `SUMMARY_TABLES`, `DETAIL_TABLES`, `FIELDS`, `REQUIRED`, `REFERENCES` | The names of the format |

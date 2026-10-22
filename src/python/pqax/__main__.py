@@ -1,17 +1,21 @@
-"""The command line: python -m pqax check <file>, python -m pqax info <file>.
+"""The command line: python -m pqax check <file>, python -m pqax info <file>, python -m pqax tables <file>.
 
 check exits with 0 when the file is valid, 1 when it is not, and 2 on a usage error or a file that cannot be read.
-Both commands also take a VPAX file, and then work on the PQAX file that it embeds as Footprint.pqax.
+tables writes one row per table with the derived measures of the storage views, or one JSON object with --json.
+The commands also take a VPAX file, and then work on the PQAX file that it embeds as Footprint.pqax.
 """
 from __future__ import annotations
 
 import argparse
+import decimal
 import json
+import math
+import os
 import sys
 import zipfile
-from typing import Any, List, Optional
+from typing import Any, Dict, List, Optional
 
-from . import __version__
+from . import __version__, measures
 from ._container import find_entry, open_archive
 from ._errors import ContainerError, PqaxError
 from ._schema import EMBEDDED_PART, FORMAT_VERSION, MANIFEST_PART, SUMMARY_PART
@@ -98,6 +102,134 @@ def _info(path: str, part: Optional[str]) -> int:
     return 0
 
 
+ORDERS = ("waste", "total", "rows", "files", "name")
+MISSING = "n/a"
+UNITS = ("B", "KB", "MB", "GB", "TB", "PB")
+
+
+def _fixed(value: float, digits: int) -> str:
+    """A number with separators and a fixed number of decimals, as the views write it: the shortest decimal that gives
+    back the float, rounded half away from zero, so that 1.125 and 1.005 become 1.13 and 1.01."""
+    shortest = decimal.Decimal(repr(float(value)))
+    exact = shortest.quantize(decimal.Decimal(1).scaleb(-digits), rounding=decimal.ROUND_HALF_UP)
+    return f"{exact:,.{digits}f}"
+
+
+def format_bytes(value: Optional[float]) -> str:
+    """Bytes in 1024-based units, as the storage views write them: 512 B, 1.50 KB, 21.5 MB."""
+    if value is None or not math.isfinite(value):
+        return MISSING
+    scaled, unit = abs(value), 0
+    while scaled >= 1024 and unit < len(UNITS) - 1:
+        scaled /= 1024
+        unit += 1
+    digits = 0 if unit == 0 else 2 if scaled < 10 else 1 if scaled < 100 else 0
+    return f"{'-' if value < 0 else ''}{_fixed(scaled, digits)} {UNITS[unit]}"
+
+
+def format_share(value: Optional[float]) -> str:
+    """A share from 0 to 1 as a percentage with one decimal; <0.1% for a share above 0 that rounds to 0."""
+    if value is None or not math.isfinite(value):
+        return MISSING
+    return "<0.1%" if 0 < value < 0.0005 else _fixed(value * 100, 1) + "%"
+
+
+def _count(value: Optional[int]) -> str:
+    return MISSING if value is None else f"{value:,}"
+
+
+def _small(files: Dict[str, Any]) -> str:
+    """A share of small files. A share from the quartiles is a lower bound, written with >=, except 0 and 1."""
+    share = files.get("shareAtLeast")
+    bound = files.get("count") is None and share is not None and 0 < share < 1
+    return (">=" if bound else "") + format_share(share)
+
+
+def _ordinal(label: str) -> bytes:
+    """The order of the views and of C#: by UTF-16 code units."""
+    return label.encode("utf-16-be", errors="surrogatepass")
+
+
+def sort_tables(tables: List[Dict[str, Any]], order: str) -> List[Dict[str, Any]]:
+    """The tables, sorted: by waste, stack total, rows, or files, the largest first, or by label. Ties go by the stack
+    total, the largest first, then by the label, then by the order of the file. A missing count goes last."""
+    def key(item: Any) -> Any:
+        position, table = item
+        stack = table["stack"]
+        label = _ordinal(table["label"])
+        if order == "name":
+            return (label, position)
+        if order in ("rows", "files"):
+            value = table["rowCount" if order == "rows" else "fileCount"]
+            return (value is None, -(value or 0), -stack["total"], label, position)
+        primary = -stack["waste"] if order == "waste" else 0
+        return (primary, -stack["total"], label, position)
+    return [table for _, table in sorted(enumerate(tables), key=key)]
+
+
+def _joined(collection: Dict[str, Any], app: str, version: str) -> Optional[str]:
+    first, second = collection.get(app), collection.get(version)
+    if not isinstance(first, str):
+        return None
+    return f"{first} {second}" if isinstance(second, str) else first
+
+
+def _tables(path: str, part: Optional[str], order: str, top: Optional[int], as_json: bool, wide: bool) -> int:
+    embedded = _embedded_part(path, part)
+    with (open_embedded(path, embedded) if embedded else open_document(path)) as document:
+        result = measures.measure(document)
+        manifest, collection = document.manifest, document.collection
+        embedded_part = document.embedded_part
+    for warning in result["warnings"]:
+        print(f"pqax tables: {warning}", file=sys.stderr)
+    tables = sort_tables(result["tables"], order)
+    if top is not None:
+        tables = tables[:top]
+    name = os.path.basename(path)
+    if as_json:
+        completed, started = collection.get("completedAt"), collection.get("startedAt")
+        level = collection.get("level")
+        print(json.dumps({
+            "file": name, "embeddedPart": embedded_part, "format": manifest.get("format"),
+            "formatVersion": manifest.get("formatVersion"),
+            "collector": _joined(collection, "collectorApp", "collectorAppVersion"),
+            "library": _joined(collection, "collectorLib", "collectorLibVersion"),
+            "collectedAt": completed if isinstance(completed, str) else started if isinstance(started, str) else None,
+            "level": level if isinstance(level, int) and not isinstance(level, bool) else None,
+            "smallFileSize": measures.DEFAULT_SMALL_FILE_SIZE, "tinyFileSize": measures.DEFAULT_TINY_FILE_SIZE,
+            "sort": order, "top": top, "tableCount": len(result["tables"]), "filesRead": result["filesRead"],
+            "warnings": result["warnings"], "tables": tables,
+        }, indent=2, ensure_ascii=False))
+        return 0
+    count = len(result["tables"])
+    print(f"{name}: {count:,} {'table' if count == 1 else 'tables'}, by {order}"
+          + (f", the first {top:,}" if top else ""))
+    header = ["Table", "Rows", "Files", "Live", "Non-live", "Unreferenced", "Deleted", "Stale", "Waste", "Waste share"]
+    if wide:
+        header += ["Under 8 MiB", "Under 128 MiB", "Metadata", "Footers"]
+    rows = [header]
+    for table in tables:
+        stack = table["stack"]
+        cells = [table["label"], _count(table["rowCount"]), _count(table["fileCount"])]
+        cells += [format_bytes(stack[key]) for key in ("live", "nonLive", "unreferenced", "deleted", "stale", "waste")]
+        cells.append(format_share(stack["wasteShare"]))
+        if wide:
+            cells += [_small(table["tinyFiles"]), _small(table["smallFiles"]), format_bytes(stack["metadata"]),
+                      format_bytes(stack["footers"])]
+        rows.append(cells)
+    widths = [max(len(row[column]) for row in rows) for column in range(len(header))]
+    for row in rows:
+        line = "  ".join(cell.ljust(widths[i]) if i == 0 else cell.rjust(widths[i]) for i, cell in enumerate(row))
+        print(line.rstrip())
+    return 0
+
+
+def _positive(text: str) -> int:
+    if not text.isdigit() or int(text) < 1:
+        raise argparse.ArgumentTypeError("needs a number of at least 1")
+    return int(text)
+
+
 def main(argv: Optional[List[str]] = None) -> int:
     """Runs the command line and returns the exit code."""
     for stream in (sys.stdout, sys.stderr):
@@ -105,14 +237,24 @@ def main(argv: Optional[List[str]] = None) -> int:
             stream.reconfigure(errors="backslashreplace")  # type: ignore[union-attr]
         except (AttributeError, ValueError):
             pass
-    parser = argparse.ArgumentParser(prog="pqax", description="Check and describe PQAX files.")
+    parser = argparse.ArgumentParser(prog="pqax",
+                                     description="Check and describe PQAX files, and measure their tables.")
     parser.add_argument("--version", action="version",
                         version=f"pqax {__version__}, reads format 0.x, writes format {FORMAT_VERSION}")
     commands = parser.add_subparsers(dest="command", metavar="command")
     commands.required = True
     check = commands.add_parser("check", help="validate a file; exit code 0 when valid, 1 when not")
     info = commands.add_parser("info", help="print the manifest: format, version, collection, and parts")
-    for command in (check, info):
+    tables = commands.add_parser("tables", help="one row per table with its storage, waste, and waste share, as the "
+                                                "storage views compute them")
+    tables.add_argument("--sort", choices=ORDERS, default="waste",
+                        help="the order: the largest first, or by name (default: waste)")
+    tables.add_argument("--top", type=_positive, metavar="N", help="the first N tables of the order")
+    tables.add_argument("--wide", action="store_true",
+                        help="add the shares of the files under 8 MiB and 128 MiB, the metadata, and the footers")
+    tables.add_argument("--json", action="store_true",
+                        help="write one JSON object with the collection and every measure of each table")
+    for command in (check, info, tables):
         command.add_argument("file", help="a .pqax file, or a .vpax file that embeds one")
         command.add_argument("--part", help=f"the embedded part of a package (default: {EMBEDDED_PART} when the file "
                                             f"has no manifest.json)")
@@ -120,6 +262,9 @@ def main(argv: Optional[List[str]] = None) -> int:
     try:
         if arguments.command == "check":
             return _check(arguments.file, arguments.part)
+        if arguments.command == "tables":
+            return _tables(arguments.file, arguments.part, arguments.sort, arguments.top, arguments.json,
+                           arguments.wide)
         return _info(arguments.file, arguments.part)
     except OSError as error:
         print(f"pqax: {error}", file=sys.stderr)

@@ -2,6 +2,35 @@
 
 The packages of a release share its version number, as section 7.1 of the [contracts](docs/contracts.md) says.
 
+## Unreleased
+
+Three tools: unattended sign-in for `pqax collect`, templates that collect a footprint on a schedule, and `pqax tables`, with the derived measures of the storage views in C# and in Python. The format does not change.
+
+### .NET
+
+| Package | What changes | Format |
+|---|---|---|
+| `Pqax` | `StorageMeasures` computes the derived measures of the tables as the storage views do: the stack with its waste and overhead, the deleted rows, the small files, the ratios, and the pace of the commits. | Reads 0.1 and 0.2, writes 0.2 |
+| `Pqax.Cli` | `pqax collect` signs in with `--client-id` and `--client-secret-env`, `--client-certificate`, `--managed-identity`, `--azure-cli`, `--access-token-env`, or `--env-credential`, besides the device code, still the default, and the browser. A secret is read from an environment variable, never from the command line, and is not printed or written. A refused sign-in or request is one line with its code and the likely cause. `pqax tables` prints one row per table with its rows, files, live bytes, waste, and waste share, or one JSON object with `--json`. | Reads 0.1 and 0.2, writes 0.2 |
+| `Pqax.Collector` | No change of the code. The README shows how to pass any `TokenCredential`, and the permissions of a service principal. | Writes 0.2 |
+| `Pqax.Collector.ParquetNet` | No change | Reads and writes no PQAX file |
+
+### npm
+
+No change.
+
+### PyPI
+
+`pqax` has the module `measures`, the same measures as the storage views, and the command `python -m pqax tables`. Reads 0.1 and 0.2, writes 0.2.
+
+### Templates
+
+A new folder, `templates/`, with files to copy elsewhere. `github-actions/pqax-footprint.yml` collects a workspace every day as a service principal, signed in with OpenID Connect or a client secret, checks the footprint, and keeps it as an artifact and optionally in the repository. `fabric/pqax-footprint.ipynb` collects from a Fabric notebook with the token of the notebook. Neither has run against a real workspace yet: their READMEs say what is verified.
+
+### Conformance kit
+
+`expected/measures/` holds the derived measures of every valid sample, as the storage views compute them, and `make_measures.py` rebuilds them. `cross_check.py` computes the measures with the three implementations and compares them with these files.
+
 ## 0.2.0 - 2026-10-21
 
 Format version 0.2 adds five optional fields. On `tables`, `unreferencedFileCount` and `unreferencedFileSize` count the data files in storage that the version described does not reference, and `nonLiveOldestRemovedAt` and `nonLiveNewestRemovedAt` say when its non-live files were removed. On `partitions`, `lastModifiedAt` says when the files of a partition last changed. Compared with `nonLiveFileCount` and `nonLiveFileSize`, they let a reader tell the non-live files still in storage from those that a VACUUM already deleted, and see how old the tombstones are against the retention of the table.
