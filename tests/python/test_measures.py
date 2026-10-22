@@ -262,11 +262,12 @@ def test_stack_of_counts_a_missing_component_as_0_and_keeps_it_none():
         assert result[key] is None, key
     assert result["deletedSource"] is None
     assert result["listed"] is False
-    assert (result["data"], result["total"], result["waste"], result["overhead"]) == (0, 0, 0, 0)
+    # Section 10.2: with every component absent, the sums and the data are None.
+    assert (result["data"], result["total"], result["waste"], result["overhead"]) == (None, None, None, None)
     assert result["wasteShare"] is None
     no_size = stack(None, 10, 5, 2, 7, 3)
     assert no_size["live"] is None
-    assert (no_size["waste"], no_size["data"], no_size["total"]) == (19, 19, 27)
+    assert (no_size["waste"], no_size["data"], no_size["total"], no_size["wasteShare"]) == (19, None, 27, None)
 
 
 def test_stack_of_keeps_the_source_of_the_deleted_rows_only_with_the_deleted_rows():
@@ -377,7 +378,7 @@ def test_a_missing_input_gives_none_and_never_0():
         assert result["stack"][key] is None, key
     assert result["stack"]["deletedSource"] is None
     assert result["stack"]["listed"] is False
-    assert (result["stack"]["data"], result["stack"]["total"]) == (0, 0)
+    assert (result["stack"]["data"], result["stack"]["total"]) == (None, None)
     assert result["stack"]["wasteShare"] is None
     assert result["smallFiles"]["count"] is None and result["smallFiles"]["shareAtLeast"] is None
     assert result["tinyFiles"]["shareAtLeast"] is None
@@ -444,7 +445,8 @@ def test_the_last_commit_is_the_snapshot_else_the_latest_operation_else_the_last
     assert instant(a["maintenance"]["lastCommitAt"]) == datetime(2026, 10, 1, 12, tzinfo=timezone.utc)
     assert (a["maintenance"]["commitsPerDay"], a["maintenance"]["daysSinceLastCommit"]) == (2, 10)
     assert instant(b["maintenance"]["lastCommitAt"]) == datetime(2026, 9, 26, tzinfo=timezone.utc)
-    assert (b["maintenance"]["commitsPerDay"], b["maintenance"]["daysSinceLastCommit"]) == (1, 15)
+    # Section 10.4: the commits per day divide commitsRead only, which this table lacks; commitCount is not a fallback.
+    assert (b["maintenance"]["commitsPerDay"], b["maintenance"]["daysSinceLastCommit"]) == (None, 15)
     assert instant(c["maintenance"]["lastCommitAt"]) == datetime(2026, 9, 1, tzinfo=timezone.utc)
     assert (c["maintenance"]["commitsPerDay"], c["maintenance"]["daysSinceLastCommit"]) == (None, 40)
 
