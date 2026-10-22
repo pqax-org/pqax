@@ -17,13 +17,13 @@ npm installs the reader with it.
 | Export | What it does |
 |---|---|
 | `readFootprint(doc, options?)` | Reads what the model needs from an open document: the summary, and the `files` and `partitions` detail tables when the file has them |
-| `buildModel(data, options?)` | The model of a footprint: the collection line, the sources, the tables, the columns, and the derived values |
+| `buildModel(data, options?)` | The model of a footprint: the collection line, the sources, the tables, the columns, and the derived measures |
 | `renderTableStack(container, model, options?)` | The storage stack of each table, sorted by waste, in bytes or in shares |
 | `renderColumnTreemap(container, model, options?)` | Sources, tables, and columns sized by compressed bytes and colored by the share of nulls, with drill-down |
 | `renderFileStrip(container, model, options?)` | The distribution of the file sizes of each table on a log scale, with the V-Order share |
 | `columnTree(model)`, `findPath(tree, key)` | The tree of the treemap, and the path to a node |
 | `sortTables(tables, order)` | The tables by waste, by total, or by label |
-| `deletedEstimate`, `stackOf`, `quartiles`, `smallShareAtLeast`, `commitsPerDay`, `daysBetween`, `ratio` | The derived values, one function each |
+| `deletedEstimate`, `stackOf`, `quartiles`, `smallShareAtLeast`, `commitsPerDay`, `daysBetween`, `ratio` | The parts of the derived measures that are one function each |
 | `STACK_COMPONENTS`, `WASTE_COMPONENTS`, `OVERHEAD_COMPONENTS` | The components of a stack, and which make the waste and the overhead |
 | `squarify(items, rect)` | The squarified treemap layout |
 | `nullShareBin(share)` | The color class of a share of nulls |
@@ -117,11 +117,11 @@ One row per table on a log scale shared by all rows: a line from the smallest to
 
 ## The view model
 
-`buildModel` is pure: it reads only its input, which `readFootprint` returns or a caller builds by hand. It tolerates a field that the file leaves out, a table that the file does not have, a value of the wrong type, duplicated ids, and a file of format 0.1. A value that cannot be computed is `null`; a stack component whose field is missing is marked `absent` and counts as 0. `readFootprint` reads the `files` and `partitions` tables only when the manifest lists rows for them, and a detail table that cannot be read becomes a warning in `model.warnings`, not an error. `buildModel` takes two options, `smallFileSize`, 128 MiB by default, and `tinyFileSize`, 8 MiB by default.
+`buildModel` is pure: it reads only its input, which `readFootprint` returns or a caller builds by hand. It tolerates a field that the file leaves out, a table that the file does not have, a value of the wrong type, duplicated ids, and a file of format 0.1. A value that cannot be computed is `null`; a stack component whose field is missing is marked `absent`, and the waste, the overhead, and the total count it as 0, as section 10.2 of the object model says. `readFootprint` reads the `files` and `partitions` tables only when the manifest lists rows for them, and a detail table that cannot be read becomes a warning in `model.warnings`, not an error. `buildModel` takes two options, `smallFileSize`, 128 MiB by default, and `tinyFileSize`, 8 MiB by default.
 
 | Part of the model | Content |
 |---|---|
-| `collection` | Format version, collector, library, level, times, requests, bytes read, the embedded part, and totals: sources, tables, columns, files, data bytes, rows, footprint, waste, and the tables at each detail depth |
+| `collection` | Format version, collector, library, level, times, requests, bytes read, the embedded part, and totals: sources, tables, columns, files, data bytes, rows, footprint, waste, overhead, and the tables at each detail depth |
 | `sources` | One per source, plus `No source` for the tables that refer to none |
 | `tables` | One per table, with its stack, its file sizes, its maintenance, its partitions, its measures, and the fields of format 0.2 when the file has them |
 | `columns` | One per column, with its totals and its measures |
@@ -129,52 +129,26 @@ One row per table on a log scale shared by all rows: a line from the smallest to
 
 Keys: a table is `t:<id>`, a column `c:<id>`, a source `s:<id>`. A row without a valid or distinct id gets `t#<row>` or `c#<row>`, its position in the file.
 
-### Derived values
+### Measures
 
-| Value | Formula | Needs | Null or absent when |
-|---|---|---|---|
-| Deleted rows | `fileSize * deletedRowCount / rowCount`. With the files table, the sum of the same over the files of the table. 0 when `deletedRowCount` is 0. | `tables.fileSize`, `rowCount`, `deletedRowCount`; or `files.fileSize`, `rowCount`, `deletedRowCount` | A field is missing or `rowCount` is 0. The files are used only when every file of the table gives an estimate. |
-| Live data | `max(0, fileSize - deleted - footerSize - staleColumnSize)`, a missing term counting as 0. The footers and the stale columns are bytes inside the data files. | `fileSize` | `fileSize` is missing |
-| Non-live files | With the unreferenced files: `min(nonLiveFileSize, unreferencedFileSize)`. Without them: `nonLiveFileSize`, an upper bound. See below. | `nonLiveFileSize` | It is missing |
-| Unreferenced files | `unreferencedFileSize` - the non-live files above | `unreferencedFileSize`, format 0.2 | It is missing: a file of format 0.1, or a listing that failed |
-| Waste | non-live + unreferenced + deleted + `staleColumnSize` | | Never: a missing component counts as 0 |
-| Overhead | `metadataSize + footerSize`, outside the waste | | Never |
-| Data | live data + waste: the denominator of every share | | |
-| Stack total | data + overhead, which is `fileSize + metadataSize` plus `unreferencedFileSize` (format 0.2) or `nonLiveFileSize` (format 0.1) when the live bytes are not clipped | | |
-| Waste share | waste / data | | The data is 0 |
-| Overhead share | overhead / data, shown beyond the data | | The data is 0 |
-| File size quartiles | From the files: `sorted[n/4]`, `sorted[n/2]`, `sorted[3n/4]`, rounded down, as the collector computes `fileSizes`. Otherwise the `fileSizes` distribution. | `files.fileSize`, or `tables.fileSizes` | Neither is there |
-| V-Order share | From the files: V-Ordered files / files with a known `isVOrdered`, and the same in bytes. Otherwise `vOrderedFileCount / fileCount`. | `files.isVOrdered`, or `tables.vOrderedFileCount` and `fileCount` | Neither is there |
-| Small files, very small files | Two thresholds, 128 MiB and 8 MiB by default. From the files: the count below each, and its share. Otherwise a lower bound of the share from the quartiles: 1 when the maximum is below, 0.75 for the third quartile, 0.5 for the median, 0.25 for the first quartile, one file for the minimum. | `files.fileSize`, or `tables.fileSizes` | No quartile is known |
-| Last commit | The newest commit read: `snapshotTimestamp`, else the latest `lastAt` of the operations of the table, else `lastModifiedAt` | | None is there |
-| Commits per day | commits / max(1, days from `oldestCommitAt` to the last commit). The commits are `commitsRead`, since `oldestCommitAt` is the oldest of them, else `commitCount`. | `commitsRead` or `commitCount`, `oldestCommitAt`, the last commit | A value is missing |
-| Days since the last commit | Whole days from the last commit to the end of the collection, else its start, at least 0 | The last commit, `manifest.collection.completedAt` or `startedAt` | A value is missing |
-| Non-live files removed | From `nonLiveOldestRemovedAt` to `nonLiveNewestRemovedAt` | Format 0.2 | They are missing |
-| Partitions | `partitionCount`, else the rows of the `partitions` table; their last change from the earliest to the latest `partitions.lastModifiedAt` | `partitionCount`, `partitions`, and from format 0.2 `lastModifiedAt` | Neither count is there |
-| VACUUM, OPTIMIZE | Whether an operation of the table has the word in its name, and the latest `lastAt` | `operations` | The file has no `operations` table |
-| Compression ratio | `uncompressedSize / compressedSize`, of a table or of a column | The two sizes | A size is missing or `compressedSize` is 0 |
-| Deleted row share | `deletedRowCount / rowCount` | | |
-| Average file size | `fileSize / fileCount` | | |
-| Average row group | `rowGroupRowCounts.sum / rowGroupRowCounts.count`, else `rowCount / rowGroupCount` when `footerCount` equals `fileCount` | | |
-| Footer coverage | `footerCount / fileCount`: how complete the totals of level 2 are | | |
-| Stale column share | `staleColumnSize / compressedSize` | | |
-| Non-live share | `nonLiveFileSize / (fileSize + nonLiveFileSize)` | | |
-| Average partition | `partitionSizes.sum / partitionSizes.count`, else `fileSize / partitionCount` | | |
-| Dictionary fallback | `fallbackChunkCount / dictionaryChunkCount`, of a column, or summed over the columns of a table | | |
-| Null share | `nullCount / valueCount`, of a column, or summed over the columns of a node of the treemap | | `valueCount` is 0 or missing |
-| Dictionary share | `dictionaryChunkCount / chunkCount` of a column | | |
-| Average value length | `unencodedByteArrayDataBytes / (valueCount - nullCount)` of a column | | |
-| Files without the column | `fileCountWithoutColumn / fileCount` of its table | | |
+The model computes the derived measures that section 10 of the [object model](../../../docs/object-model.md) defines, under the names that section 10.8 gives in the model, with the two thresholds of section 10.1 as the options `smallFileSize` and `tinyFileSize`. Section 10 is their definition: the formulas, when a measure is null, and whether it is exact, an estimate, or a bound. What the model adds for the views:
 
-These values follow the prototype of the storage views of 7 October 2026 and the decisions of the maintainer of 21 October 2026. The object model does not define derived measures yet; the [backlog](../../../docs/backlog.md) plans it, and this table is the definition until then.
+| Part of the model | What it adds |
+|---|---|
+| A component of `table.stack` | `bytes` is 0 when the component is absent, so that the bar can be drawn, and `absent` says that it is; its `share` is null then. The deleted component has `source`: `files` when the estimate comes from the files that the footprint keeps, which it does when at least one kept file has a `fileSize` and each of them gives an estimate, `table` when it comes from the totals of the table. |
+| `table.files` | `source`: `files`, or `table` when the figures come from `fileSizes`, null when neither has a value. `sizes`: every file size, sorted, when the footprint keeps the files. `vOrder.files` and `vOrder.knownFiles`, the two terms of the share, and `vOrder.source`. |
+| `table.maintenance` | `commitCount`, `commitsRead`, and `oldestCommitAt` as the file has them, and `operations`, the names of the operations of the table. |
+| `table` | The fields that the tooltips show as they are, such as `nonLiveFileCount`, `unreferencedFileCount`, `metadataFileCount`, `nonLiveOldestRemovedAt`, and `nonLiveNewestRemovedAt`. |
+| A node of `columnTree` | `size`: the compressed bytes of the columns below it, with a leaf for the stale columns of a table; a table whose columns have no totals takes `tables.compressedSize`, and `sizeSource` is then `table`. `nullShare` and `compressionRatio` are ColumnNullShare and ColumnCompressionRatio over the columns below the node, and on a column leaf the NullShare and the CompressionRatio of the column. The tooltip names them so. The ColumnCompressionRatio of a table can differ from its CompressionRatio, `table.measures.compressionRatio`, which reads the totals of the table. |
+| `sortTables` | By Waste, the largest first, then by Total, then by label, as section 10.2 orders the tables. A table whose Waste or Total is null comes after those that have it. |
+
+The model reads the fields of format 0.1 and 0.2. The reader leaves out the fields that it does not know, so a file of a later version gives the same views.
 
 ### Non-live and unreferenced files
 
 The two sets overlap. The non-live files are those that left the table and that the log still tracks, whether a VACUUM deleted them or not. The unreferenced files are the data files that a listing of the storage finds and that the version described does not reference: the non-live files still stored, and files that no commit ever referenced or whose remove the log no longer holds. A summary does not say which files are in both.
 
 The stack draws each byte once. With a file of format 0.2 whose listing worked, the two segments sum to `unreferencedFileSize`, what the storage holds: the non-live segment takes as much of it as the non-live files can account for, `min(nonLiveFileSize, unreferencedFileSize)`, and the unreferenced segment the rest. The non-live files beyond that are already deleted and are not drawn; the tooltip gives both counts. With a file of format 0.1, or when the listing failed, the non-live segment is `nonLiveFileSize`, an upper bound, and the unreferenced segment is marked as not in the file.
-
-The model reads the fields of format 0.1 and 0.2. The reader leaves out the fields that it does not know, so a file of a later version gives the same views.
 
 ## Styling
 
@@ -210,7 +184,7 @@ The classes and attributes that a page or a test can rely on:
 
 ## Decisions
 
-The maintainer decided four questions on 21 October 2026:
+The maintainer decided five questions on 21 October 2026:
 
 | Question | Decision |
 |---|---|
@@ -218,6 +192,7 @@ The maintainer decided four questions on 21 October 2026:
 | Small files | Two shares: below 8 MiB and below 128 MiB, both options of `buildModel` |
 | Commits per day | Over the span of the commits read, which ends at the newest of them, with the days since the last commit beside it, counted to the collection |
 | Treemap on a phone | As tall as it is wide, at most 60% of the height of the window, below the width where the views take their phone layout |
+| Non-live and unreferenced files | Counted once: their sum is what the storage holds, the non-live part as large as it can be, since a summary does not say which files are in both sets |
 
 The others were taken while building the package, and are open to review:
 
@@ -227,7 +202,6 @@ The others were taken while building the package, and are open to review:
 | Treemap layout | Squarified, written here in about a hundred lines | No dependency |
 | What the views take | The whole model, built once, for the three views | The page builds it once and updates the three |
 | Metadata and footers | One segment in the stack, two components in the model | As the prototype; both are small next to the others |
-| Non-live and unreferenced files | Drawn once: their sum is what the storage holds, the non-live part as large as it can be | A summary does not say which files are in both sets |
 | Tiles without totals | 1% of their parent each, hatched | As the prototype; a tile of size 0 would not show |
 | Null share colors | Six classes rather than a continuous scale | `color-mix` is not in Chrome 103, and classes give a readable legend |
 | Tests | In `tests/typescript-views`, beside the tests of the reader | The vitest configuration of the reader collects every test file of `tests/typescript` |

@@ -78,7 +78,7 @@ function segmentsOf(table: TableModel): Segment[] {
       const missing = [metadata.absent ? OVERHEAD_PARTS.metadata : null, footers.absent ? OVERHEAD_PARTS.footers : null]
         .filter((part): part is string => part !== null);
       return {
-        key, bytes, share: data > 0 ? bytes / data : null, absent: missing.length > 0, unknown: missing.length === 2, missing,
+        key, bytes, share: data !== null && data > 0 && missing.length < 2 ? bytes / data : null, absent: missing.length > 0, unknown: missing.length === 2, missing,
       };
     }
     const component = componentOf(table, key);
@@ -227,10 +227,10 @@ function legend(): HTMLElement {
  */
 function scaleOf(tables: readonly TableModel[], mode: StackMode): number {
   if (mode === "shares") {
-    const widest = tables.reduce((most, t) => (t.stack.data > 0 ? Math.max(most, t.stack.total / t.stack.data) : most), 1);
+    const widest = tables.reduce((most, t) => (t.stack.data !== null && t.stack.data > 0 ? Math.max(most, (t.stack.total ?? 0) / t.stack.data) : most), 1);
     return 1 / widest;
   }
-  return tables.reduce((largest, t) => Math.max(largest, t.stack.total), 0);
+  return tables.reduce((largest, t) => Math.max(largest, t.stack.total ?? 0), 0);
 }
 
 /** One row: the label, the bar, the marks of the missing components, and the value. */
