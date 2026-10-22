@@ -1,8 +1,8 @@
 # PQAX object model
 
-Draft 0.5, 21 October 2026.
+Draft 0.6, 22 October 2026.
 
-This document defines the logical content of a PQAX file: the objects, their fields, and how they relate. It does not define how the objects are written to a file. The [serialization](serialization.md) does that, and section 10 keeps the option of several representations open.
+This document defines the logical content of a PQAX file: the objects, their fields, and how they relate. It does not define how the objects are written to a file. The [serialization](serialization.md) does that, and section 11 keeps the option of several representations open.
 
 Statements marked **Decided** were taken by the maintainers and are recorded in [decisions.md](decisions.md). Everything else is **Proposed**.
 
@@ -11,6 +11,8 @@ Draft 0.3 takes into account a test on the tables of a real Fabric lakehouse and
 Draft 0.4 aligns identifiers and a few names with the serialization, so that a field has the same name in both documents. Every object that another object refers to has an `Id`. The identifiers that Iceberg assigns are now `SpecId` and `OrderId`, the identifier of a commit is `CommitId`, and `Partition.Spec` is `Partition.PartitionSpec`. A footprint can also hold issues that concern no single table.
 
 Draft 0.5 takes into account a test of storage views on a real lakehouse. It showed that the non-live files of a table are only an upper bound of the space it wastes: a VACUUM may have deleted some of them already, and the storage can hold files that no commit references. `Table` now has the unreferenced files that a listing of the storage finds, and the removal times of the non-live files. `Partition` has `LastModifiedAt`. Format version 0.2 carries the new fields.
+
+Draft 0.6 defines the derived measures in a new section 10: the storage stack of a table with its waste and overhead, the small files, the V-Order share, the commits per day, and the ratios and shares of the tables, the columns, and the collection. They follow the storage views and the decisions of 21 October 2026. The format does not change. Views become section 11, and the open questions section 12.
 
 ## 1. Purpose
 
@@ -633,7 +635,200 @@ Every question has an answer at the `Summary` depth, whose size depends on the n
 
 The model also covers what the existing analyzers show. The figures of the Delta Analyzer in DAX Studio and of the Delta Analyzer notebook can be computed from it at the `Column chunks` depth, including the cardinality that the notebook gets from a scan. The exception is the raw page offsets that the notebook lists, which the model replaces with the size of the dictionary page.
 
-## 10. Views
+Section 10 defines the measures that a reader derives from these fields, and 10.9 maps the figures of the two analyzers to them.
+
+## 10. Derived measures
+
+A derived measure is computed by a reader from the fields of section 6. The file does not store it. This section defines the measures once, so that every implementation computes them the same way and gives them the same names. They follow the storage views of `@pqax/views` 0.2.0 and the decisions of 21 October 2026 recorded in [decisions.md](decisions.md).
+
+### 10.1 Rules
+
+1. **Only the fields.** A measure reads the fields of section 6 and nothing else. A formula names them as section 6 does: `FileSize` is `Table.FileSize` unless another object is named.
+2. **Null, never zero.** A measure is null when a field that it needs is absent, or when its denominator is zero. A reader treats a negative size or count as absent. This applies the principle "Unknown is not zero" of section 2. The exceptions are stated with their measure: a stack component that is absent counts as zero in the sums of 10.2, which are then lower bounds; Deleted is zero when DeletedRowCount is zero; and a sum over the tables or the columns adds those that have the value.
+3. **Kind.** Each measure is **exact**, an **estimate**, or a **bound**. Exact means exact over the fields it reads. An estimate says which assumption it makes, and a bound says in which direction it errs.
+4. **Coverage.** A measure over totals of level 2 covers the files whose footer was read, as rule 3 of section 4.2 says. FooterCoverage says how complete they are. No measure extrapolates.
+5. **Detail.** Some measures have two forms: one from the files, when the table keeps them at the `Files` depth or deeper, and one from the totals. The form from the files reads the files that the footprint keeps, which at that depth are every file of the table, as rule 2 of section 4.2 requires. The measure says when the form from the files needs more.
+6. **Units.** Sizes are in bytes, and an estimate in bytes need not be an integer. A share is a part over a whole, from 0 to 1 when the fields agree with each other; OverheadShare and the shares of Metadata and Footers can exceed 1, and only NullShare and VOrderShare are clipped at 1. A ratio is a number. A count of days is a whole number.
+7. **Names.** A measure has a logical name, written as a field is, with a capital first letter. Each language writes it in its own casing, as rule 5 of section 3 of the [contracts](contracts.md) says for fields. The names are those of the storage views, and 10.8 maps them.
+
+Two thresholds define the small files. **Decided** on 21 October 2026.
+
+| Threshold | Value | Meaning |
+|---|---|---|
+| SmallFileSize | 128 MiB, 134,217,728 bytes | A file below it is small |
+| TinyFileSize | 8 MiB, 8,388,608 bytes | A file below it is very small |
+
+A file is below a threshold when its size is strictly less. An implementation may let the caller change the two values, and these are then the defaults.
+
+The level and depth column of the tables below gives the lowest collection level and the lowest detail depth at which the measure can be computed. `Summary` means any depth.
+
+### 10.2 Storage stack of a table
+
+The stack says where the bytes of a table go: the live data, the waste, and the overhead. It has seven components, and together they add up to what the storage holds for the table.
+
+| Measure | Formula | Unit | Level, depth | Kind | Meaning |
+|---|---|---|---|---|---|
+| Live | `max(0, FileSize - Deleted - FooterSize - StaleColumnSize)`, an absent term counting as 0. Null when FileSize is absent. | bytes | 1, Summary | Exact less the estimate of Deleted. An upper bound when Deleted, FooterSize, or StaleColumnSize is absent, or when not every footer was read. | The bytes of the data files that hold rows the table still has, in the columns it still declares |
+| NonLive | When UnreferencedFileSize is present: `min(NonLiveFileSize, UnreferencedFileSize)`. Otherwise `NonLiveFileSize`. Null when NonLiveFileSize is absent. | bytes | 1, Summary | Upper bound of the non-live files still stored, tighter with the listing | The files that left the table and that the log still tracks, as far as the storage can still hold them |
+| Unreferenced | `UnreferencedFileSize - NonLive`, with NonLive as 0 when it is null. Null when UnreferencedFileSize is absent: a file of format 0.1, a listing that failed, or live files that are unknown. | bytes | 1, Summary, format 0.2 | Lower bound of the files that no non-live file accounts for, and of their bytes, since a file whose size the listing does not give is not in UnreferencedFileSize. NonLive plus Unreferenced is exactly UnreferencedFileSize. | The data files in the storage that no non-live file of the log explains: files that no commit referenced, or whose remove the log no longer holds |
+| Deleted | From the totals: 0 when DeletedRowCount is 0, whatever the other fields; otherwise `FileSize * min(DeletedRowCount, RowCount) / RowCount`, null when FileSize, DeletedRowCount, or RowCount is absent, or RowCount is 0. From the files, when at least one file is kept with a FileSize and each of them gives the estimate by the same rule over `File.FileSize`, `File.DeletedRowCount`, and `File.RowCount`: the sum of the estimates. A kept file without a FileSize is left out. | bytes | 1, Summary; the form from the files at `Files` | Estimate. It assumes that a deleted row takes the average bytes of a row of its file, or of the table, footers and stale columns included. The form from the files is closer, since deleted rows gather in some files. | The bytes of the rows that are marked as deleted and still stored |
+| Stale | `StaleColumnSize` | bytes | 2, Summary | Exact over the footers read | The bytes of the physical columns that the table no longer declares |
+| Metadata | `MetadataSize` | bytes | 1, Summary | Exact | The files of the table format: the Delta log, or the Iceberg metadata and manifests |
+| Footers | `FooterSize` | bytes | 2, Summary | Exact over the footers read | The footers of the data files |
+| Waste | `NonLive + Unreferenced + Deleted + Stale`, an absent component counting as 0. Null when all four are absent. | bytes | 1, Summary | As its components, and a lower bound when one is absent. Without a listing, NonLive is an upper bound and Unreferenced is absent, so the waste is then neither bound. | The space that holds no live data |
+| Overhead | `Metadata + Footers`, an absent component counting as 0. Null when both are absent. | bytes | 1, Summary | Lower bound when a component is absent | The space that describes the data, outside the waste |
+| Data | `Live + Waste`. Null when Live is null. | bytes | 1, Summary | As its terms | The denominator of the shares |
+| Total | The sum of the seven components, an absent one counting as 0. Null when all seven are absent. When Live is not clipped at 0, it equals `FileSize + MetadataSize` plus `UnreferencedFileSize` when it is present, or plus `NonLiveFileSize` otherwise. | bytes | 1, Summary | Exact when FileSize, MetadataSize, and UnreferencedFileSize are present, even when not every footer was read. Without a listing, it counts the non-live files that a VACUUM may have deleted. A lower bound when a component is absent. | Everything that the storage holds for the table |
+| WasteShare | `Waste / Data` | share | 1, Summary | As its terms | The part of the data that is waste |
+| OverheadShare | `Overhead / Data`. WasteShare plus OverheadShare can exceed 1, since the overhead is outside the data. | share | 1, Summary | As its terms | The overhead against the data |
+| Share of a component | `component / Data`, for each of the seven. Null when the component is absent. | share | 1, Summary | As its terms | The part of the data that the component takes |
+| Listed | Whether UnreferencedFileSize is present | boolean | 1, Summary | Exact | Whether NonLive and Unreferenced come from a listing of the storage |
+
+The components that make the waste and the overhead are **Decided** on 21 October 2026: the waste is the non-live files, the unreferenced files, the deleted rows, and the stale columns. The metadata and the footers are overhead. They are outside the waste, outside the order of the tables by waste, and outside the denominator of the shares.
+
+The non-live and the unreferenced files overlap, and a summary does not say which files are in both. The unreferenced files include the non-live files that are still stored, as section 6.4 says. So the stack counts the bytes of the listing once: NonLive takes as much of UnreferencedFileSize as the non-live files can account for, and Unreferenced takes the rest. The non-live files beyond that were already deleted, by a VACUUM for example, and are not in the stack. Without a listing, NonLive is NonLiveFileSize, an upper bound, and Unreferenced is null. **Decided** on 21 October 2026.
+
+The footers and the stale columns are bytes inside the data files, so Live leaves them out, and Live, Deleted, Stale, and Footers together are FileSize when Live is not clipped. Deleted is an estimate over the whole file, so it holds a share of the footers and of the stale columns too, and the split between the four is approximate even when their sum is exact. Live also holds what the files store besides the column chunks and the footer, such as page indexes and bloom filters. The tables are ordered by Waste, the largest first, then by Total, then by name.
+
+The stack leaves out the delete files of an Iceberg table, DeleteFileSize, and the files of the Delta deletion vectors, whose sizes are DeletionVectorSize on each file. Both are stored bytes that a later draft may add as a component.
+
+### 10.3 Files of a table
+
+The measures read a `Distribution` with its quartiles taken by position in the sorted values: for n values, FirstQuartile is the value at position `floor(n/4)` from 0, Median at `floor(n/2)`, and ThirdQuartile at `floor(3n/4)`. The collector computes them so. Section 4.3 does not state it yet, and the small-file shares below depend on it.
+
+The size figures of the files of a table come from the files when the footprint keeps them, and otherwise from FileSizes:
+
+| Measure | Formula | Unit | Level, depth | Kind | Meaning |
+|---|---|---|---|---|---|
+| File size figures | From the files: the count, the sum, the minimum, the three quartiles by position, and the maximum of `File.FileSize` over the files of the table that have one. From the totals: the members of `FileSizes`, with `FileCount` for a missing Count and `FileSize` for a missing Sum. The minimum, the quartiles, and the maximum are null when neither is there. | files, bytes | 1, Summary | Exact | The shape of the file sizes |
+| AverageFileSize | `FileSize / FileCount` | bytes | 1, Summary | Exact | The average size of a data file |
+| SmallFileCount | The files with `File.FileSize < SmallFileSize`. Null without the files. | files | 1, `Files` | Exact | The small files |
+| TinyFileCount | The same below TinyFileSize | files | 1, `Files` | Exact | The very small files |
+| SmallFileShare | From the files: `SmallFileCount` over the files with a FileSize. From FileSizes: 1 when Maximum is below SmallFileSize, else 0.75 when ThirdQuartile is, else 0.5 when Median is, else 0.25 when FirstQuartile is, else `1 / FileSizes.Count` when Minimum is, else 0. FileCount stands for a missing Count, and when both are absent the share for the minimum is 0. Null when FileSizes has none of the five values. | share | 1, Summary | Exact from the files. A lower bound from FileSizes. | The part of the files that are small |
+| TinyFileShare | The same with TinyFileSize | share | 1, Summary | As SmallFileShare | The part of the files that are very small |
+| VOrderShare | From the files, when at least one has `IsVOrdered`: the files with `File.IsVOrdered` true over the files where it is present. Otherwise `min(1, VOrderedFileCount / FileCount)`. | share | 1, Summary | Exact over the files whose V-Order is known. From the totals, a file that no tag marks and whose footer was not read counts as not V-Ordered, so the share is a lower bound when FooterCount is less than FileCount. | The part of the files that are V-Ordered |
+| VOrderBytesShare | The sum of `File.FileSize` of the V-Ordered files over the sum of `File.FileSize` of the files where `IsVOrdered` is present. Null without the files. | share | 1, `Files` | Exact over those files | The part of the bytes in V-Ordered files |
+
+The two small-file shares are **Decided** on 21 October 2026.
+
+Why the share from FileSizes is a lower bound. At the `Summary` depth the footprint keeps five values of the sizes, not the sizes. When ThirdQuartile, the value at position `floor(3n/4)`, is below the threshold, the `floor(3n/4) + 1` smallest files are all below it, and `floor(3n/4) + 1` is at least `3n/4`, so at least 75% of the files are small. The same holds for the median at 50% and for the first quartile at 25%, and the minimum gives one file. The share between two of these steps is unknown, so the measure takes the step it can prove, and the true share is at most the next step. The bound holds for quartiles taken by position. With interpolated quartiles it does not: for two files, an interpolated third quartile below the threshold proves only one file. Open question 2 of section 12 asks whether fixed size classes would say more.
+
+### 10.4 History of a table
+
+| Measure | Formula | Unit | Level, depth | Kind | Meaning |
+|---|---|---|---|---|---|
+| LastCommitAt | `SnapshotTimestamp`; else the latest `Operation.LastAt` of the table; else `LastModifiedAt`. The first that is present. | timestamp | 1, Summary | Exact from SnapshotTimestamp or from the operations. From LastModifiedAt an estimate, and a lower bound: the newest data file was written at or before the last commit. | When the table last changed |
+| CommitsPerDay | `CommitsRead / max(1, days from OldestCommitAt to LastCommitAt)`, the days as a fraction. Null when a value is absent. | commits per day | 1, Summary | Exact over the commits read, as LastCommitAt is. An estimate when LastCommitAt comes from LastModifiedAt. | How often the table is committed, over the span of the commits read |
+| DaysSinceLastCommit | `max(0, floor(days from LastCommitAt to Collection.CompletedAt))`, with `Collection.StartedAt` when CompletedAt is absent. Null when a value is absent. | days | 1, Summary | Exact as LastCommitAt is. An upper bound when LastCommitAt comes from LastModifiedAt. | How long ago the table last changed, counted to the collection |
+| HasVacuum | Whether the Name of an Operation of the table contains `VACUUM`, in any case. Null when the table has no Operation, since the list is empty when the commits carry no operation name. | boolean | 1, Summary | Exact over the commits read | Whether a VACUUM ran among the commits read |
+| LastVacuumAt | The latest `Operation.LastAt` of those operations | timestamp | 1, Summary | Exact over the commits read | When the last VACUUM ran |
+| HasOptimize, LastOptimizeAt | The same with `OPTIMIZE` | boolean, timestamp | 1, Summary | Exact over the commits read | Whether and when an OPTIMIZE ran |
+
+Commits per day are over the span of the commits read, from OldestCommitAt, the oldest of them, to the newest, with the days since the last commit beside it, counted to the collection. **Decided** on 21 October 2026. A span shorter than a day counts as one day, so that a burst of commits gives their number and not a rate per hour.
+
+HasVacuum and HasOptimize false say that no such operation is among the commits read, not that none ever ran. The names are those of Delta. Iceberg names a rewrite `replace` and expires snapshots outside the commits, so for an Iceberg table the two say nothing.
+
+The removal times of the non-live files, NonLiveOldestRemovedAt and NonLiveNewestRemovedAt, are shown as they are, beside the stack.
+
+### 10.5 Ratios and averages of a table
+
+| Measure | Formula | Unit | Level, depth | Kind | Meaning |
+|---|---|---|---|---|---|
+| CompressionRatio | `UncompressedSize / CompressedSize` | ratio | 2, Summary | Exact over the footers read | How much the codecs and the encodings shrink the data |
+| DeletedRowShare | `DeletedRowCount / RowCount` | share | 1, Summary | Exact | The part of the stored rows that are deleted |
+| AverageRowGroupRows | `RowGroupRowCounts.Sum / RowGroupRowCounts.Count`; else `RowCount / RowGroupCount` when FooterCount equals FileCount | rows | 2, Summary | Exact over the footers read | The average rows of a row group |
+| FooterCoverage | `FooterCount / FileCount` | share | 2, Summary | Exact | How complete the totals of level 2 are |
+| StaleColumnShare | `StaleColumnSize / CompressedSize` | share | 2, Summary | Exact over the footers read | The part of the compressed column data that the table no longer declares |
+| NonLiveShare | `NonLiveFileSize / (FileSize + NonLiveFileSize)` | share | 1, Summary | Upper bound, since it reads NonLiveFileSize and not the NonLive of the stack | The non-live files that the log tracks, against the files of the table and those together |
+| AveragePartitionSize | `PartitionSizes.Sum / PartitionSizes.Count`; else `FileSize / PartitionCount` | bytes | 1, Summary | Exact | The average data size of a partition |
+| DictionaryFallbackShare | The sum of `Column.FallbackChunkCount` over the sum of `Column.DictionaryChunkCount`, over the columns of the table that have both | share | 2, Summary | Exact over those columns and the footers read | The part of the dictionary-encoded column chunks that fell back to another encoding |
+| Partitions | `PartitionCount`; else the number of Partitions kept for the table. Null when the table has neither. | partitions | 1, Summary | Exact | The partitions that hold data |
+| PartitionsKept | The number of Partitions kept for the table, 0 when there are none | partitions | 1, Summary | Exact | How many partitions the footprint keeps |
+| PartitionsOldestModifiedAt, PartitionsNewestModifiedAt | The earliest and the latest `Partition.LastModifiedAt` over the partitions kept. Null when none has it. | timestamp | 1, Summary, format 0.2 | Exact over the partitions kept | The range of the last change of the partitions |
+
+### 10.6 Column
+
+| Measure | Formula | Unit | Level, depth | Kind | Meaning |
+|---|---|---|---|---|---|
+| NullShare | `min(1, NullCount / ValueCount)` | share | 2, or 1 for Iceberg; Summary | Exact | The part of the values that are null |
+| CompressionRatio | `UncompressedSize / CompressedSize` | ratio | 2, Summary | Exact over the footers read | How much the column shrinks |
+| DictionaryShare | `DictionaryChunkCount / ChunkCount` | share | 2, Summary | Exact over the footers read | The part of the column chunks with a dictionary page |
+| DictionaryFallbackShare | `FallbackChunkCount / DictionaryChunkCount` | share | 2, Summary | Exact over the footers read | The part of the dictionary-encoded column chunks that fell back to another encoding |
+| AverageValueLength | `UnencodedByteArrayDataBytes / (ValueCount - NullCount)` | bytes | 2, Summary | Exact over the footers read | The average length of a variable-length value, such as a string |
+| FilesWithoutColumnShare | `FileCountWithoutColumn / FooterCount` of its table | share | 2, Summary | Exact over the footers read | The part of the files that do not store the column, for example because it was added later |
+
+A partition column that the files do not store has no totals, so its measures are null.
+
+Over a set of columns, two measures add the columns first. The storage views use them for a table, a source, and the collection:
+
+| Measure | Formula | Unit | Level, depth | Kind | Meaning |
+|---|---|---|---|---|---|
+| ColumnNullShare | The sum of NullCount over the sum of ValueCount, over the columns that have both | share | 2, Summary | Exact over those columns | The part of the values that are null, over the set |
+| ColumnCompressionRatio | The sum of UncompressedSize over the sum of CompressedSize, over the columns that have both | ratio | 2, Summary | Exact over those columns | How much the set shrinks |
+
+The CompressionRatio of a table is that of 10.5, from the totals of the table. ColumnCompressionRatio of the same table leaves out the stale columns, the partition columns, and the columns that lack a size, and its sizes come from the table format when ColumnTotalsSource says so, so the two can differ.
+
+### 10.7 Collection
+
+| Measure | Formula | Unit | Level, depth | Kind | Meaning |
+|---|---|---|---|---|---|
+| Sources | The sources with a distinct Id | sources | 1, Summary | Exact | The sources |
+| Tables | The tables | tables | 1, Summary | Exact | The tables |
+| Columns | The columns | columns | 1, Summary | Exact | The columns |
+| Files | The sum of `FileCount` over the tables that have it | files | 1, Summary | Lower bound when a table lacks it | The data files |
+| FileSize | The sum of `FileSize` over the tables that have it | bytes | 1, Summary | As Files | The bytes of the data files |
+| RowCount | The sum of `RowCount` over the tables that have it | rows | 1, Summary | As Files | The rows stored |
+| Footprint | The sum of the Total of the stacks, over the tables whose Total is not null | bytes | 1, Summary | As Total | Everything that the storage holds for the tables |
+| Waste | The sum of the Waste of the stacks, over the tables whose Waste is not null | bytes | 1, Summary | As Waste | The space that holds no live data |
+| Overhead | The sum of the Overhead of the stacks, over the tables whose Overhead is not null | bytes | 1, Summary | As Overhead | The metadata and the footers |
+| Depths | The number of tables for each value of DetailDepth | tables | 1, Summary | Exact | How deep the footprint goes |
+
+A sum is null when no table has the value. A reader that shows a sum says how many tables lack the value.
+
+### 10.8 Names in the views
+
+The storage views, `@pqax/views`, compute the measures in their view model: `buildModel`, and `columnTree` for the two measures over a set of columns. Their names in lower camel case:
+
+| Measures | In the view model |
+|---|---|
+| Live, NonLive, Unreferenced, Deleted, Stale, Metadata, Footers | `table.stack.components`, a list in this order whose `key` is `live`, `nonLive`, `unreferenced`, `deleted`, `stale`, `metadata`, `footers`, with the value in `bytes` |
+| Waste, Overhead, Data, Total, WasteShare, OverheadShare, Listed, the share of a component | `table.stack.waste`, `overhead`, `data`, `total`, `wasteShare`, `overheadShare`, `listed`, and `share` on each component |
+| File size figures | `table.files.count`, `sum`, `minimum`, `firstQuartile`, `median`, `thirdQuartile`, `maximum` |
+| SmallFileCount, SmallFileShare, TinyFileCount, TinyFileShare | `table.files.smallFiles.count`, `smallFiles.shareAtLeast`, `tinyFiles.count`, `tinyFiles.shareAtLeast` |
+| VOrderShare, VOrderBytesShare | `table.files.vOrder.share`, `vOrder.bytesShare`, with `vOrder` null when the share is |
+| LastCommitAt, CommitsPerDay, DaysSinceLastCommit, HasVacuum, LastVacuumAt, HasOptimize, LastOptimizeAt | `table.maintenance.lastCommitAt`, `commitsPerDay`, `daysSinceLastCommit`, `hasVacuum`, `lastVacuumAt`, `hasOptimize`, `lastOptimizeAt` |
+| CompressionRatio, DeletedRowShare, AverageFileSize, AverageRowGroupRows, FooterCoverage, StaleColumnShare, NonLiveShare, AveragePartitionSize, DictionaryFallbackShare of a table | `table.measures.compressionRatio`, `deletedRowShare`, `averageFileSize`, `averageRowGroupRows`, `footerCoverage`, `staleColumnShare`, `nonLiveShare`, `averagePartitionSize`, `dictionaryFallbackShare` |
+| Partitions, PartitionsKept, PartitionsOldestModifiedAt, PartitionsNewestModifiedAt | `table.partitions.count`, `kept`, `oldestModifiedAt`, `newestModifiedAt` |
+| NullShare, CompressionRatio, DictionaryShare, DictionaryFallbackShare, AverageValueLength, FilesWithoutColumnShare of a column | `column.nullShare`, `compressionRatio`, `dictionaryShare`, `dictionaryFallbackShare`, `averageValueLength`, `filesWithoutColumnShare` |
+| ColumnNullShare, ColumnCompressionRatio | `nullShare` and `compressionRatio` of a node of `columnTree` |
+| The measures of the collection | `collection.totals.sources`, `tables`, `columns`, `files`, `fileSize`, `rowCount`, `footprint`, `waste`, `overhead`, and `collection.depths` |
+| SmallFileSize, TinyFileSize | The options `smallFileSize` and `tinyFileSize` of `buildModel` |
+
+### 10.9 The existing analyzers
+
+The figures of two analyzers of Delta tables, against the fields and the measures. The Delta Analyzer of DAX Studio is described from its documentation, and `delta_analyzer` of semantic-link-labs from its source, both as of October 2026.
+
+| DAX Studio | semantic-link-labs | PQAX |
+|---|---|---|
+| Files | Summary: Parquet Files | FileCount |
+| Avg File | | AverageFileSize |
+| Max File | | FileSizes.Maximum |
+| Small Files, below 128 MB | | SmallFileCount at the `Files` depth; SmallFileShare, a lower bound, at the `Summary` depth |
+| Row Groups | Summary: Row Groups | RowGroupCount |
+| Min Rows/RG, Max Rows/RG | Summary: Min Rows Per Row Group, Max Rows Per Row Group | RowGroupRowCounts.Minimum, RowGroupRowCounts.Maximum |
+| Avg Rows/RG | Summary: Avg Rows Per Row Group | AverageRowGroupRows. semantic-link-labs divides the rows that the table returns, without the deleted rows, so the two differ when rows are deleted. |
+| Rows | Summary: Row Count | RowCount includes the deleted rows; semantic-link-labs counts `RowCount - DeletedRowCount` |
+| Compressed, Uncompressed | Summary: Total Size; Columns: Compressed Size, Uncompressed Size | CompressedSize, UncompressedSize of the table and of the column |
+| | Row Groups: Compression Ratio | `RowGroup.CompressedSize / RowGroup.UncompressedSize`, the inverse of a CompressionRatio, at the `Row groups` depth |
+| V-Order | Summary: VOrder Enabled | VOrderShare, a share rather than a flag |
+| Deletion Vectors | | DeletedRowCount, DeletedRowShare |
+| Last Modified | | LastModifiedAt |
+| | Columns: Size Percent Of Table | Not defined here: `Column.CompressedSize` over the sum of the CompressedSize of the columns of its table |
+| | Columns: Cardinality | DistinctCount at level 4, or LargestChunkDistinctCount as a lower bound |
+
+The considerations of DAX Studio read the same measures: SmallFileCount and SmallFileShare against 30% for compacting small files, AverageRowGroupRows against 1,000,000 rows, RowGroupRowCounts.Maximum against 16,000,000 rows, and DeletedRowShare against 5% for purging deletion vectors.
+
+## 11. Views
 
 VPAX carries the same content twice: the full object model, and flat views that the Excel workbook loads directly. PQAX can do the same if it helps tools that cannot follow references, such as a spreadsheet or a BI tool.
 
@@ -656,7 +851,7 @@ Candidate views, each a flat table over whatever depth the footprint has:
 
 The first version of the format has no views. The tables of the [serialization](serialization.md) are already flat, and a later version can add views without breaking a reader. **Decided** on 6 October 2026.
 
-## 11. Open questions
+## 12. Open questions
 
 The [backlog](backlog.md) tracks questions 1, 3, and 5 before version 1.0, and question 7 later.
 
