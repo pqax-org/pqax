@@ -453,17 +453,19 @@ public class MeasuresTests
         Assert.Null(stack.Live);
         Assert.Null(stack.DeletedSource);
         Assert.False(stack.Listed);
-        Assert.Equal(0.0, stack.Data);
-        Assert.Equal(0.0, stack.Total);
-        Assert.Equal(0.0, stack.Waste);
-        Assert.Equal(0.0, stack.Overhead);
+        // Section 10.2: with every component absent, the sums and the data are null.
+        Assert.Null(stack.Data);
+        Assert.Null(stack.Total);
+        Assert.Null(stack.Waste);
+        Assert.Null(stack.Overhead);
         Assert.Null(stack.WasteShare);
 
         StorageStack noFileSize = Stack(null, 10, 5, 2, 7, null, 3);
         Assert.Null(noFileSize.Live);
         Assert.Equal(19.0, noFileSize.Waste);
-        Assert.Equal(19.0, noFileSize.Data);
+        Assert.Null(noFileSize.Data);
         Assert.Equal(27.0, noFileSize.Total);
+        Assert.Null(noFileSize.WasteShare);
     }
 
     [Fact]
@@ -677,8 +679,8 @@ public class MeasuresTests
         Assert.All(StorageMeasures.StackComponents, key => Assert.Null(table.Stack.Component(key)));
         Assert.Null(table.Stack.DeletedSource);
         Assert.False(table.Stack.Listed);
-        Assert.Equal(0.0, table.Stack.Data);
-        Assert.Equal(0.0, table.Stack.Total);
+        Assert.Null(table.Stack.Data);
+        Assert.Null(table.Stack.Total);
         Assert.Null(table.Stack.WasteShare);
         Assert.Null(table.Stack.OverheadShare);
         Assert.Null(table.SmallFiles.Count);
@@ -800,7 +802,8 @@ public class MeasuresTests
         Assert.Equal(10L, tables[0].Maintenance.DaysSinceLastCommit);
 
         Assert.Equal(new DateTimeOffset(2026, 9, 26, 0, 0, 0, TimeSpan.Zero), tables[1].Maintenance.LastCommitAt);
-        Assert.Equal(1.0, tables[1].Maintenance.CommitsPerDay);
+        // Section 10.4: the commits per day divide CommitsRead only, which this table lacks; CommitCount is not a fallback.
+        Assert.Null(tables[1].Maintenance.CommitsPerDay);
         Assert.Equal(15L, tables[1].Maintenance.DaysSinceLastCommit);
 
         Assert.Equal(new DateTimeOffset(2026, 9, 1, 0, 0, 0, TimeSpan.Zero), tables[2].Maintenance.LastCommitAt);

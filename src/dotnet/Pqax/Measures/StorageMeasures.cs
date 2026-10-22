@@ -7,9 +7,9 @@ namespace Pqax;
 
 /// <summary>
 /// The derived measures of the tables of a footprint: the storage stack with its waste and overhead, the deleted rows,
-/// the small files, the ratios, and the pace of the commits. They follow the view model of the storage views,
-/// <c>src/typescript/views/src/model.ts</c>, function by function and with its names, so that the numbers are the same.
-/// A value that cannot be computed is null, never 0.
+/// the small files, the ratios, and the pace of the commits, as section 10 of the object model defines them. They follow
+/// the view model of the storage views, <c>src/typescript/views/src/model.ts</c>, function by function and with its
+/// names, so that the numbers are the same. A value that cannot be computed is null, never 0.
 /// </summary>
 public static class StorageMeasures
 {
@@ -102,8 +102,8 @@ public static class StorageMeasures
         return !minimum.HasValue && !firstQuartile.HasValue && !median.HasValue && !thirdQuartile.HasValue && !maximum.HasValue ? null : 0;
     }
 
-    /// <summary>Commits per day: the commits over the days from the oldest to the newest commit, at least one day.</summary>
-    /// <param name="commits">The commits that the span holds: <c>commitsRead</c>, else <c>commitCount</c>.</param>
+    /// <summary>Commits per day: the commits read over the days from the oldest to the newest of them, at least one day.</summary>
+    /// <param name="commits">The commits that the span holds: <c>commitsRead</c>.</param>
     /// <param name="oldestCommitAt">The oldest of them, <c>oldestCommitAt</c>.</param>
     /// <param name="newestCommitAt">The newest of them.</param>
     /// <returns>The rate, or null when a value is missing.</returns>
@@ -132,9 +132,11 @@ public static class StorageMeasures
     }
 
     /// <summary>
-    /// A storage stack from its inputs. A null input is an absent component. When the unreferenced files are known, the
-    /// non-live component is the part of them that the log still tracks, at most: the smaller of the two sizes, and the
-    /// unreferenced component is the rest.
+    /// A storage stack from its inputs, as section 10.2 of the object model defines it. A null input is an absent
+    /// component. When the unreferenced files are known, the non-live component is the part of them that the log still
+    /// tracks, at most: the smaller of the two sizes, and the unreferenced component is the rest. The sums count an absent
+    /// component as 0 and are null when every component they add is absent; the data, and so the shares, are null when
+    /// the live data is.
     /// </summary>
     /// <param name="input">The inputs.</param>
     /// <returns>The stack.</returns>
@@ -156,18 +158,12 @@ public static class StorageMeasures
         double? nonLive = listed && nonLiveFileSize.HasValue ? Math.Min(nonLiveFileSize.Value, unreferencedFileSize!.Value) : nonLiveFileSize;
         double? unreferenced = listed ? unreferencedFileSize!.Value - (nonLive ?? 0) : null;
 
-        // The sums go in the order of the components, from 0, as the views add them.
-        double waste = 0;
-        waste += nonLive ?? 0;
-        waste += unreferenced ?? 0;
-        waste += deleted ?? 0;
-        waste += staleColumnSize ?? 0;
-        double overhead = 0;
-        overhead += input.MetadataSize ?? 0;
-        overhead += footerSize ?? 0;
-        double data = (live ?? 0) + waste;
+        // The sums go in the order of the components, from the first present, as the views add them.
+        double? waste = SumKnown(nonLive, unreferenced, deleted, staleColumnSize);
+        double? overhead = SumKnown(input.MetadataSize, footerSize);
+        double? data = live.HasValue ? live.Value + (waste ?? 0) : null;
         return new StorageStack(live, nonLive, unreferenced, deleted, staleColumnSize, input.MetadataSize, footerSize,
-            deleted.HasValue ? input.DeletedSource : null, listed, data, waste, overhead);
+            deleted.HasValue ? input.DeletedSource : null, listed, data, SumKnown(live, waste, overhead), waste, overhead);
     }
 
     /// <summary>
@@ -310,7 +306,7 @@ public static class StorageMeasures
             DateTimeOffset? lastCommitAt = table.SnapshotTimestamp ?? lastOperationAt ?? table.LastModifiedAt;
             var maintenance = new MaintenanceMeasures(
                 lastCommitAt,
-                CommitsPerDay(Size(table.CommitsRead) ?? Size(table.CommitCount), table.OldestCommitAt, lastCommitAt),
+                CommitsPerDay(Size(table.CommitsRead), table.OldestCommitAt, lastCommitAt),
                 DaysBetween(lastCommitAt, collectedAt));
 
             // The ratios.
@@ -446,6 +442,21 @@ public static class StorageMeasures
     }
 
     private static bool IsId(long? value) => value > 0;
+
+    /// <summary>The sum of the values that are present, in their order, null when none is.</summary>
+    private static double? SumKnown(params double?[] values)
+    {
+        double? total = null;
+        foreach (double? value in values)
+        {
+            if (value.HasValue)
+            {
+                total = (total ?? 0) + value.Value;
+            }
+        }
+
+        return total;
+    }
 
     /// <summary>A size or a count: a value that is not negative, else null.</summary>
     private static double? Size(long? value) => value >= 0 ? value.Value : null;
