@@ -4,7 +4,13 @@ The packages of a release share its version number, as section 7.1 of the [contr
 
 ## Unreleased
 
-Three tools: unattended sign-in for `pqax collect`, templates that collect a footprint on a schedule, and `pqax tables`, with the derived measures of the storage views in C# and in Python. The format does not change.
+Three tools: unattended sign-in for `pqax collect`, templates that collect a footprint on a schedule, and `pqax tables`, with the derived measures of the storage views in C# and in Python, and the object model defines those measures in its section 10. The format does not change.
+
+### Format
+
+| Piece | Version | Content |
+|---|---|---|
+| [Object model](docs/object-model.md) | Draft 0.6 | Section 10 defines the derived measures: the storage stack with its waste and overhead, the small files, the V-Order share, the history, and the ratios of tables, columns, and the collection. The format does not change. |
 
 ### .NET
 
