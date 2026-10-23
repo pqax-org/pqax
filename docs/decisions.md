@@ -28,6 +28,7 @@ The decisions that the format and its implementations rest on, with their dates.
 | 2026-10-07 | A Python writer for notebooks is a strategic option, not a first step. |
 | 2026-10-07 | The format, the kit, and the reference implementations live in this repository while the format is 0.x, so that one commit changes all of them together. |
 | 2026-10-21 | The npm package is `@pqax/pqax`, under the npm organization `pqax`: the registry refuses the unscoped name `pqax` as too similar to the packages `rax` and `sax`. The six packages move to 0.1.1 together, with no other change. |
+| 2026-10-23 | The Python collector for notebooks lives in the `pqax` package on PyPI, as the optional extra `pqax[collect]`, so that one version covers every package and the kit's cross check runs it. A thin wrapper that imports `pqax` is offered to semantic-link-labs after the planned waves of tools are complete, not before. |
 
 ## The C# API of `Pqax` 0.1
 
