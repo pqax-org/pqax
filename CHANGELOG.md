@@ -37,6 +37,8 @@ Every package carries the PQAX icon, the mark of [brand/](brand/README.md).
 
 A new folder, `templates/`, with files to copy elsewhere. `github-actions/pqax-footprint.yml` collects a workspace every day as a service principal, signed in with OpenID Connect or a client secret, checks the footprint, and keeps it as an artifact and optionally in the repository. `fabric/pqax-footprint.ipynb` collects from a Fabric notebook with the token of the notebook. Neither has run against a real workspace yet: their READMEs say what is verified.
 
+`powerbi/` is a Power BI project, a TMDL model and a PBIR report, over a folder of Parquet files written by `pqax export`: a Footprints table, Tables and Columns with their measures per collection, a Date table, and DAX measures for the last collection of a period and the change from the collection before. Its three pages show the storage stack per table over time, the non-live and unreferenced files, and the small files, with the definitions of section 10 in the descriptions. `make_sample.py` builds a synthetic export of fourteen days from a sample of the kit. The README says how to point the model at the Delta tables of a lakehouse in Direct Lake. It opened and refreshed in Power BI Desktop on that sample; Direct Lake has not run yet.
+
 ### Conformance kit
 
 `expected/measures/` holds the derived measures of every valid sample, as the storage views compute them, and `make_measures.py` rebuilds them. `cross_check.py` computes the measures with the three implementations and compares them with these files. The files hold every measure of section 10 that the three implementations share, for the tables, the columns, and the collection, and the comparison has no tolerance.

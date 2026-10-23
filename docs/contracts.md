@@ -74,6 +74,7 @@ research/detail-encoding          the experiment that compared encodings of a la
 .github/workflows/publish.yml     publishes a release to NuGet, npm, and PyPI
 .github/workflows/pages.yml       deploys site/ to GitHub Pages, the site of pqax.org
 site/                             the one-page site of pqax.org, with its favicons; tools/ redirects to pqax.tools
+templates/                        files to copy elsewhere: the scheduled collection, and the Power BI template over pqax export
 ```
 
 Nothing under `src/`, `tests/`, and `conformance/` depends on a path outside those three folders. `research/` holds the experiments that the documents cite.

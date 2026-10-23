@@ -1,0 +1,46 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/report/definition/visualContainer/2.12.0/schema.json",
+  "name": "57d35fc9d0e250b3986d",
+  "position": {
+    "x": 10,
+    "y": 10,
+    "z": 0,
+    "height": 80,
+    "width": 1260,
+    "tabOrder": 0
+  },
+  "visual": {
+    "visualType": "textbox",
+    "objects": {
+      "general": [
+        {
+          "properties": {
+            "paragraphs": [
+              {
+                "textRuns": [
+                  {
+                    "value": "Small files over time",
+                    "textStyle": {
+                      "fontWeight": "bold",
+                      "fontSize": "14pt"
+                    }
+                  }
+                ]
+              },
+              {
+                "textRuns": [
+                  {
+                    "value": "Section 10.3: a file is small below SmallFileSize, 128 MiB, and very small below TinyFileSize, 8 MiB. When the footprint keeps the files, SmallFileShare counts them. At the Summary depth it is the step that the quartiles of FileSizes prove, 1, 0.75, 0.5, 0.25, or one file, so it is a lower bound. Over several tables, the report adds the files that each share proves. A period shows the tables of its last collection day, each table once, from its latest collection of that day. Sizes are in units of 1,000 bytes.",
+                    "textStyle": {
+                      "fontSize": "10pt"
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    }
+  }
+}

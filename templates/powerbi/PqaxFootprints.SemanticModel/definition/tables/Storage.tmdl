@@ -1,0 +1,746 @@
+/// The measures of the storage of the tables, over the Tables table.
+table Storage
+	lineageTag: 58160a95-b32f-564d-815e-469a81fa1f8a
+
+	/// Live, 10.2: max(0, FileSize - Deleted - FooterSize - StaleColumnSize). Over the tables of the last collection day in the period, each table once, from its latest collection of that day.
+	measure 'Live' =
+			VAR LastDay = MAX ( Footprints[collectionDate] )
+			VAR Latest =
+			    CALCULATETABLE (
+			        ADDCOLUMNS (
+			            SUMMARIZE ( Tables, Tables[sourceName], Tables[label] ),
+			            "@collectedAt", CALCULATE ( MAX ( Tables[collectedAt] ) )
+			        ),
+			        Footprints[collectionDate] = LastDay
+			    )
+			RETURN
+			    CALCULATE (
+			        SUM ( Tables[live] ),
+			        TREATAS ( Latest, Tables[sourceName], Tables[label], Tables[collectedAt] )
+			    )
+		displayFolder: Stack
+		lineageTag: d187bd6f-a599-511b-bdb3-965d550bbffa
+		formatStringDefinition = SWITCH ( TRUE (), ABS ( SELECTEDMEASURE () ) >= 1E12, "#,0,,,,.0 ""TB""", ABS ( SELECTEDMEASURE () ) >= 1E9, "#,0,,,.0 ""GB""", ABS ( SELECTEDMEASURE () ) >= 1E6, "#,0,,.0 ""MB""", ABS ( SELECTEDMEASURE () ) >= 1E3, "#,0,.0 ""KB""", "#,0 ""B""" )
+
+	/// NonLive, 10.2: min(NonLiveFileSize, UnreferencedFileSize) when the storage was listed, else NonLiveFileSize. Over the tables of the last collection day in the period, each table once, from its latest collection of that day.
+	measure 'Non-live' =
+			VAR LastDay = MAX ( Footprints[collectionDate] )
+			VAR Latest =
+			    CALCULATETABLE (
+			        ADDCOLUMNS (
+			            SUMMARIZE ( Tables, Tables[sourceName], Tables[label] ),
+			            "@collectedAt", CALCULATE ( MAX ( Tables[collectedAt] ) )
+			        ),
+			        Footprints[collectionDate] = LastDay
+			    )
+			RETURN
+			    CALCULATE (
+			        SUM ( Tables[nonLive] ),
+			        TREATAS ( Latest, Tables[sourceName], Tables[label], Tables[collectedAt] )
+			    )
+		displayFolder: Stack
+		lineageTag: 22f8c38a-2b03-5a82-a53d-e88f3061a6d1
+		formatStringDefinition = SWITCH ( TRUE (), ABS ( SELECTEDMEASURE () ) >= 1E12, "#,0,,,,.0 ""TB""", ABS ( SELECTEDMEASURE () ) >= 1E9, "#,0,,,.0 ""GB""", ABS ( SELECTEDMEASURE () ) >= 1E6, "#,0,,.0 ""MB""", ABS ( SELECTEDMEASURE () ) >= 1E3, "#,0,.0 ""KB""", "#,0 ""B""" )
+
+	/// Unreferenced, 10.2: UnreferencedFileSize - NonLive. Over the tables of the last collection day in the period, each table once, from its latest collection of that day.
+	measure 'Unreferenced' =
+			VAR LastDay = MAX ( Footprints[collectionDate] )
+			VAR Latest =
+			    CALCULATETABLE (
+			        ADDCOLUMNS (
+			            SUMMARIZE ( Tables, Tables[sourceName], Tables[label] ),
+			            "@collectedAt", CALCULATE ( MAX ( Tables[collectedAt] ) )
+			        ),
+			        Footprints[collectionDate] = LastDay
+			    )
+			RETURN
+			    CALCULATE (
+			        SUM ( Tables[unreferenced] ),
+			        TREATAS ( Latest, Tables[sourceName], Tables[label], Tables[collectedAt] )
+			    )
+		displayFolder: Stack
+		lineageTag: f980e062-7558-5f54-9d38-ca7d8c75685a
+		formatStringDefinition = SWITCH ( TRUE (), ABS ( SELECTEDMEASURE () ) >= 1E12, "#,0,,,,.0 ""TB""", ABS ( SELECTEDMEASURE () ) >= 1E9, "#,0,,,.0 ""GB""", ABS ( SELECTEDMEASURE () ) >= 1E6, "#,0,,.0 ""MB""", ABS ( SELECTEDMEASURE () ) >= 1E3, "#,0,.0 ""KB""", "#,0 ""B""" )
+
+	/// Deleted, 10.2: FileSize * min(DeletedRowCount, RowCount) / RowCount, or the sum of the same estimate over the files when the footprint keeps them. Over the tables of the last collection day in the period, each table once, from its latest collection of that day.
+	measure 'Deleted' =
+			VAR LastDay = MAX ( Footprints[collectionDate] )
+			VAR Latest =
+			    CALCULATETABLE (
+			        ADDCOLUMNS (
+			            SUMMARIZE ( Tables, Tables[sourceName], Tables[label] ),
+			            "@collectedAt", CALCULATE ( MAX ( Tables[collectedAt] ) )
+			        ),
+			        Footprints[collectionDate] = LastDay
+			    )
+			RETURN
+			    CALCULATE (
+			        SUM ( Tables[deleted] ),
+			        TREATAS ( Latest, Tables[sourceName], Tables[label], Tables[collectedAt] )
+			    )
+		displayFolder: Stack
+		lineageTag: 692b046d-0323-57ad-9fb0-423ebf335a1d
+		formatStringDefinition = SWITCH ( TRUE (), ABS ( SELECTEDMEASURE () ) >= 1E12, "#,0,,,,.0 ""TB""", ABS ( SELECTEDMEASURE () ) >= 1E9, "#,0,,,.0 ""GB""", ABS ( SELECTEDMEASURE () ) >= 1E6, "#,0,,.0 ""MB""", ABS ( SELECTEDMEASURE () ) >= 1E3, "#,0,.0 ""KB""", "#,0 ""B""" )
+
+	/// Stale, 10.2: StaleColumnSize. Over the tables of the last collection day in the period, each table once, from its latest collection of that day.
+	measure 'Stale' =
+			VAR LastDay = MAX ( Footprints[collectionDate] )
+			VAR Latest =
+			    CALCULATETABLE (
+			        ADDCOLUMNS (
+			            SUMMARIZE ( Tables, Tables[sourceName], Tables[label] ),
+			            "@collectedAt", CALCULATE ( MAX ( Tables[collectedAt] ) )
+			        ),
+			        Footprints[collectionDate] = LastDay
+			    )
+			RETURN
+			    CALCULATE (
+			        SUM ( Tables[stale] ),
+			        TREATAS ( Latest, Tables[sourceName], Tables[label], Tables[collectedAt] )
+			    )
+		displayFolder: Stack
+		lineageTag: 4069a3f8-b0e3-5e70-a42a-860cb9d14d5d
+		formatStringDefinition = SWITCH ( TRUE (), ABS ( SELECTEDMEASURE () ) >= 1E12, "#,0,,,,.0 ""TB""", ABS ( SELECTEDMEASURE () ) >= 1E9, "#,0,,,.0 ""GB""", ABS ( SELECTEDMEASURE () ) >= 1E6, "#,0,,.0 ""MB""", ABS ( SELECTEDMEASURE () ) >= 1E3, "#,0,.0 ""KB""", "#,0 ""B""" )
+
+	/// Metadata, 10.2: MetadataSize. Over the tables of the last collection day in the period, each table once, from its latest collection of that day.
+	measure 'Metadata' =
+			VAR LastDay = MAX ( Footprints[collectionDate] )
+			VAR Latest =
+			    CALCULATETABLE (
+			        ADDCOLUMNS (
+			            SUMMARIZE ( Tables, Tables[sourceName], Tables[label] ),
+			            "@collectedAt", CALCULATE ( MAX ( Tables[collectedAt] ) )
+			        ),
+			        Footprints[collectionDate] = LastDay
+			    )
+			RETURN
+			    CALCULATE (
+			        SUM ( Tables[metadata] ),
+			        TREATAS ( Latest, Tables[sourceName], Tables[label], Tables[collectedAt] )
+			    )
+		displayFolder: Stack
+		lineageTag: 4a93b8ee-d207-5afc-a287-cc15bd28523b
+		formatStringDefinition = SWITCH ( TRUE (), ABS ( SELECTEDMEASURE () ) >= 1E12, "#,0,,,,.0 ""TB""", ABS ( SELECTEDMEASURE () ) >= 1E9, "#,0,,,.0 ""GB""", ABS ( SELECTEDMEASURE () ) >= 1E6, "#,0,,.0 ""MB""", ABS ( SELECTEDMEASURE () ) >= 1E3, "#,0,.0 ""KB""", "#,0 ""B""" )
+
+	/// Footers, 10.2: FooterSize. Over the tables of the last collection day in the period, each table once, from its latest collection of that day.
+	measure 'Footers' =
+			VAR LastDay = MAX ( Footprints[collectionDate] )
+			VAR Latest =
+			    CALCULATETABLE (
+			        ADDCOLUMNS (
+			            SUMMARIZE ( Tables, Tables[sourceName], Tables[label] ),
+			            "@collectedAt", CALCULATE ( MAX ( Tables[collectedAt] ) )
+			        ),
+			        Footprints[collectionDate] = LastDay
+			    )
+			RETURN
+			    CALCULATE (
+			        SUM ( Tables[footers] ),
+			        TREATAS ( Latest, Tables[sourceName], Tables[label], Tables[collectedAt] )
+			    )
+		displayFolder: Stack
+		lineageTag: 30d96cc5-6292-5534-8b14-393052e527c5
+		formatStringDefinition = SWITCH ( TRUE (), ABS ( SELECTEDMEASURE () ) >= 1E12, "#,0,,,,.0 ""TB""", ABS ( SELECTEDMEASURE () ) >= 1E9, "#,0,,,.0 ""GB""", ABS ( SELECTEDMEASURE () ) >= 1E6, "#,0,,.0 ""MB""", ABS ( SELECTEDMEASURE () ) >= 1E3, "#,0,.0 ""KB""", "#,0 ""B""" )
+
+	/// Waste, 10.2: NonLive + Unreferenced + Deleted + Stale, an absent component counting as 0. Over the tables of the last collection day in the period, each table once, from its latest collection of that day.
+	measure 'Waste' =
+			VAR LastDay = MAX ( Footprints[collectionDate] )
+			VAR Latest =
+			    CALCULATETABLE (
+			        ADDCOLUMNS (
+			            SUMMARIZE ( Tables, Tables[sourceName], Tables[label] ),
+			            "@collectedAt", CALCULATE ( MAX ( Tables[collectedAt] ) )
+			        ),
+			        Footprints[collectionDate] = LastDay
+			    )
+			RETURN
+			    CALCULATE (
+			        SUM ( Tables[waste] ),
+			        TREATAS ( Latest, Tables[sourceName], Tables[label], Tables[collectedAt] )
+			    )
+		displayFolder: Stack
+		lineageTag: f23e28c3-915f-5bd2-988e-e5f61eca6dc6
+		formatStringDefinition = SWITCH ( TRUE (), ABS ( SELECTEDMEASURE () ) >= 1E12, "#,0,,,,.0 ""TB""", ABS ( SELECTEDMEASURE () ) >= 1E9, "#,0,,,.0 ""GB""", ABS ( SELECTEDMEASURE () ) >= 1E6, "#,0,,.0 ""MB""", ABS ( SELECTEDMEASURE () ) >= 1E3, "#,0,.0 ""KB""", "#,0 ""B""" )
+
+	/// Overhead, 10.2: Metadata + Footers, an absent component counting as 0. Over the tables of the last collection day in the period, each table once, from its latest collection of that day.
+	measure 'Overhead' =
+			VAR LastDay = MAX ( Footprints[collectionDate] )
+			VAR Latest =
+			    CALCULATETABLE (
+			        ADDCOLUMNS (
+			            SUMMARIZE ( Tables, Tables[sourceName], Tables[label] ),
+			            "@collectedAt", CALCULATE ( MAX ( Tables[collectedAt] ) )
+			        ),
+			        Footprints[collectionDate] = LastDay
+			    )
+			RETURN
+			    CALCULATE (
+			        SUM ( Tables[overhead] ),
+			        TREATAS ( Latest, Tables[sourceName], Tables[label], Tables[collectedAt] )
+			    )
+		displayFolder: Stack
+		lineageTag: fbfe7e2d-5a16-53d5-be3e-0c3f04a10319
+		formatStringDefinition = SWITCH ( TRUE (), ABS ( SELECTEDMEASURE () ) >= 1E12, "#,0,,,,.0 ""TB""", ABS ( SELECTEDMEASURE () ) >= 1E9, "#,0,,,.0 ""GB""", ABS ( SELECTEDMEASURE () ) >= 1E6, "#,0,,.0 ""MB""", ABS ( SELECTEDMEASURE () ) >= 1E3, "#,0,.0 ""KB""", "#,0 ""B""" )
+
+	/// Data, 10.2: Live + Waste. Over the tables of the last collection day in the period, each table once, from its latest collection of that day.
+	measure 'Data' =
+			VAR LastDay = MAX ( Footprints[collectionDate] )
+			VAR Latest =
+			    CALCULATETABLE (
+			        ADDCOLUMNS (
+			            SUMMARIZE ( Tables, Tables[sourceName], Tables[label] ),
+			            "@collectedAt", CALCULATE ( MAX ( Tables[collectedAt] ) )
+			        ),
+			        Footprints[collectionDate] = LastDay
+			    )
+			RETURN
+			    CALCULATE (
+			        SUM ( Tables[data] ),
+			        TREATAS ( Latest, Tables[sourceName], Tables[label], Tables[collectedAt] )
+			    )
+		displayFolder: Stack
+		lineageTag: 9b668bd1-79ed-50da-94d3-300c01f98510
+		formatStringDefinition = SWITCH ( TRUE (), ABS ( SELECTEDMEASURE () ) >= 1E12, "#,0,,,,.0 ""TB""", ABS ( SELECTEDMEASURE () ) >= 1E9, "#,0,,,.0 ""GB""", ABS ( SELECTEDMEASURE () ) >= 1E6, "#,0,,.0 ""MB""", ABS ( SELECTEDMEASURE () ) >= 1E3, "#,0,.0 ""KB""", "#,0 ""B""" )
+
+	/// Total, 10.2: the sum of the seven components. Over the tables of the last collection day in the period, each table once, from its latest collection of that day.
+	measure 'Total' =
+			VAR LastDay = MAX ( Footprints[collectionDate] )
+			VAR Latest =
+			    CALCULATETABLE (
+			        ADDCOLUMNS (
+			            SUMMARIZE ( Tables, Tables[sourceName], Tables[label] ),
+			            "@collectedAt", CALCULATE ( MAX ( Tables[collectedAt] ) )
+			        ),
+			        Footprints[collectionDate] = LastDay
+			    )
+			RETURN
+			    CALCULATE (
+			        SUM ( Tables[total] ),
+			        TREATAS ( Latest, Tables[sourceName], Tables[label], Tables[collectedAt] )
+			    )
+		displayFolder: Stack
+		lineageTag: 9a947cbe-7b7a-57f1-bf41-6136e4ee224a
+		formatStringDefinition = SWITCH ( TRUE (), ABS ( SELECTEDMEASURE () ) >= 1E12, "#,0,,,,.0 ""TB""", ABS ( SELECTEDMEASURE () ) >= 1E9, "#,0,,,.0 ""GB""", ABS ( SELECTEDMEASURE () ) >= 1E6, "#,0,,.0 ""MB""", ABS ( SELECTEDMEASURE () ) >= 1E3, "#,0,.0 ""KB""", "#,0 ""B""" )
+
+	/// Waste / Data, section 10.2. Over the tables whose Data is not empty, the sum of the part over the sum of Data. Over the tables of the last collection day in the period, each table once, from its latest collection of that day.
+	measure 'Waste Share' =
+			DIVIDE (
+			    VAR LastDay = MAX ( Footprints[collectionDate] )
+			    VAR Latest =
+			        CALCULATETABLE (
+			            ADDCOLUMNS (
+			                SUMMARIZE ( Tables, Tables[sourceName], Tables[label] ),
+			                "@collectedAt", CALCULATE ( MAX ( Tables[collectedAt] ) )
+			            ),
+			            Footprints[collectionDate] = LastDay
+			        )
+			    RETURN
+			        CALCULATE (
+			            SUM ( Tables[waste] ),
+			            TREATAS ( Latest, Tables[sourceName], Tables[label], Tables[collectedAt] ),
+			            NOT ISBLANK ( Tables[data] )
+			        ),
+			    [Data]
+			)
+		formatString: 0.0%
+		displayFolder: Shares
+		lineageTag: a456f057-20ac-545d-8361-eff5efec19ea
+
+	/// Overhead / Data, section 10.2. Over the tables whose Data is not empty, the sum of the part over the sum of Data. Over the tables of the last collection day in the period, each table once, from its latest collection of that day.
+	measure 'Overhead Share' =
+			DIVIDE (
+			    VAR LastDay = MAX ( Footprints[collectionDate] )
+			    VAR Latest =
+			        CALCULATETABLE (
+			            ADDCOLUMNS (
+			                SUMMARIZE ( Tables, Tables[sourceName], Tables[label] ),
+			                "@collectedAt", CALCULATE ( MAX ( Tables[collectedAt] ) )
+			            ),
+			            Footprints[collectionDate] = LastDay
+			        )
+			    RETURN
+			        CALCULATE (
+			            SUM ( Tables[overhead] ),
+			            TREATAS ( Latest, Tables[sourceName], Tables[label], Tables[collectedAt] ),
+			            NOT ISBLANK ( Tables[data] )
+			        ),
+			    [Data]
+			)
+		formatString: 0.0%
+		displayFolder: Shares
+		lineageTag: d091d890-8f7c-5a17-a3af-70121afb4d87
+
+	/// NonLive / Data, section 10.2. Over the tables whose Data is not empty, the sum of the part over the sum of Data. Over the tables of the last collection day in the period, each table once, from its latest collection of that day.
+	measure 'Non-live Data Share' =
+			DIVIDE (
+			    VAR LastDay = MAX ( Footprints[collectionDate] )
+			    VAR Latest =
+			        CALCULATETABLE (
+			            ADDCOLUMNS (
+			                SUMMARIZE ( Tables, Tables[sourceName], Tables[label] ),
+			                "@collectedAt", CALCULATE ( MAX ( Tables[collectedAt] ) )
+			            ),
+			            Footprints[collectionDate] = LastDay
+			        )
+			    RETURN
+			        CALCULATE (
+			            SUM ( Tables[nonLive] ),
+			            TREATAS ( Latest, Tables[sourceName], Tables[label], Tables[collectedAt] ),
+			            NOT ISBLANK ( Tables[data] )
+			        ),
+			    [Data]
+			)
+		formatString: 0.0%
+		displayFolder: Shares
+		lineageTag: 97907acf-4ff6-5897-a440-c797ac092355
+
+	/// Unreferenced / Data, section 10.2. Over the tables whose Data is not empty, the sum of the part over the sum of Data. Over the tables of the last collection day in the period, each table once, from its latest collection of that day.
+	measure 'Unreferenced Data Share' =
+			DIVIDE (
+			    VAR LastDay = MAX ( Footprints[collectionDate] )
+			    VAR Latest =
+			        CALCULATETABLE (
+			            ADDCOLUMNS (
+			                SUMMARIZE ( Tables, Tables[sourceName], Tables[label] ),
+			                "@collectedAt", CALCULATE ( MAX ( Tables[collectedAt] ) )
+			            ),
+			            Footprints[collectionDate] = LastDay
+			        )
+			    RETURN
+			        CALCULATE (
+			            SUM ( Tables[unreferenced] ),
+			            TREATAS ( Latest, Tables[sourceName], Tables[label], Tables[collectedAt] ),
+			            NOT ISBLANK ( Tables[data] )
+			        ),
+			    [Data]
+			)
+		formatString: 0.0%
+		displayFolder: Shares
+		lineageTag: fa750a2d-1456-54b1-928f-b3d65ac917dc
+
+	/// Deleted / Data, section 10.2. Over the tables whose Data is not empty, the sum of the part over the sum of Data. Over the tables of the last collection day in the period, each table once, from its latest collection of that day.
+	measure 'Deleted Data Share' =
+			DIVIDE (
+			    VAR LastDay = MAX ( Footprints[collectionDate] )
+			    VAR Latest =
+			        CALCULATETABLE (
+			            ADDCOLUMNS (
+			                SUMMARIZE ( Tables, Tables[sourceName], Tables[label] ),
+			                "@collectedAt", CALCULATE ( MAX ( Tables[collectedAt] ) )
+			            ),
+			            Footprints[collectionDate] = LastDay
+			        )
+			    RETURN
+			        CALCULATE (
+			            SUM ( Tables[deleted] ),
+			            TREATAS ( Latest, Tables[sourceName], Tables[label], Tables[collectedAt] ),
+			            NOT ISBLANK ( Tables[data] )
+			        ),
+			    [Data]
+			)
+		formatString: 0.0%
+		displayFolder: Shares
+		lineageTag: 0ce0a2a1-077f-5cd1-8c43-4b0b3f5a50f2
+
+	/// The tables. Over the tables of the last collection day in the period, each table once, from its latest collection of that day.
+	measure 'Table Count' =
+			VAR LastDay = MAX ( Footprints[collectionDate] )
+			VAR Latest =
+			    CALCULATETABLE (
+			        ADDCOLUMNS (
+			            SUMMARIZE ( Tables, Tables[sourceName], Tables[label] ),
+			            "@collectedAt", CALCULATE ( MAX ( Tables[collectedAt] ) )
+			        ),
+			        Footprints[collectionDate] = LastDay
+			    )
+			RETURN
+			    CALCULATE (
+			        COUNTROWS ( Tables ),
+			        TREATAS ( Latest, Tables[sourceName], Tables[label], Tables[collectedAt] )
+			    )
+		formatString: #,0
+		displayFolder: Files
+		lineageTag: acd095a5-d08a-5a4f-bec8-adaee7d74917
+
+	/// FileCount, 6.4: the data files. Over the tables of the last collection day in the period, each table once, from its latest collection of that day.
+	measure 'Files' =
+			VAR LastDay = MAX ( Footprints[collectionDate] )
+			VAR Latest =
+			    CALCULATETABLE (
+			        ADDCOLUMNS (
+			            SUMMARIZE ( Tables, Tables[sourceName], Tables[label] ),
+			            "@collectedAt", CALCULATE ( MAX ( Tables[collectedAt] ) )
+			        ),
+			        Footprints[collectionDate] = LastDay
+			    )
+			RETURN
+			    CALCULATE (
+			        SUM ( Tables[fileCount] ),
+			        TREATAS ( Latest, Tables[sourceName], Tables[label], Tables[collectedAt] )
+			    )
+		formatString: #,0
+		displayFolder: Files
+		lineageTag: 0d446c78-e0eb-5172-b745-5697486ca017
+
+	/// FileSize, 6.4: the sum of the sizes of the data files. Over the tables of the last collection day in the period, each table once, from its latest collection of that day.
+	measure 'File Size' =
+			VAR LastDay = MAX ( Footprints[collectionDate] )
+			VAR Latest =
+			    CALCULATETABLE (
+			        ADDCOLUMNS (
+			            SUMMARIZE ( Tables, Tables[sourceName], Tables[label] ),
+			            "@collectedAt", CALCULATE ( MAX ( Tables[collectedAt] ) )
+			        ),
+			        Footprints[collectionDate] = LastDay
+			    )
+			RETURN
+			    CALCULATE (
+			        SUM ( Tables[fileSize] ),
+			        TREATAS ( Latest, Tables[sourceName], Tables[label], Tables[collectedAt] )
+			    )
+		displayFolder: Files
+		lineageTag: c7a541c0-de4f-5c45-b54d-aec3ed5282a6
+		formatStringDefinition = SWITCH ( TRUE (), ABS ( SELECTEDMEASURE () ) >= 1E12, "#,0,,,,.0 ""TB""", ABS ( SELECTEDMEASURE () ) >= 1E9, "#,0,,,.0 ""GB""", ABS ( SELECTEDMEASURE () ) >= 1E6, "#,0,,.0 ""MB""", ABS ( SELECTEDMEASURE () ) >= 1E3, "#,0,.0 ""KB""", "#,0 ""B""" )
+
+	/// RowCount, 6.4: the rows stored, including the rows marked as deleted. Over the tables of the last collection day in the period, each table once, from its latest collection of that day.
+	measure 'Rows' =
+			VAR LastDay = MAX ( Footprints[collectionDate] )
+			VAR Latest =
+			    CALCULATETABLE (
+			        ADDCOLUMNS (
+			            SUMMARIZE ( Tables, Tables[sourceName], Tables[label] ),
+			            "@collectedAt", CALCULATE ( MAX ( Tables[collectedAt] ) )
+			        ),
+			        Footprints[collectionDate] = LastDay
+			    )
+			RETURN
+			    CALCULATE (
+			        SUM ( Tables[rowCount] ),
+			        TREATAS ( Latest, Tables[sourceName], Tables[label], Tables[collectedAt] )
+			    )
+		formatString: #,0
+		displayFolder: Files
+		lineageTag: c71d1a68-5936-5d6b-a271-16eb900fb851
+
+	/// AverageFileSize, 10.3: FileSize / FileCount, over the tables of the last collection day in the period.
+	measure 'Average File Size' =
+			DIVIDE ( [File Size], [Files] )
+		displayFolder: Files
+		lineageTag: 68b605d8-b77f-52d5-a289-213cc0c9ea8e
+		formatStringDefinition = SWITCH ( TRUE (), ABS ( SELECTEDMEASURE () ) >= 1E12, "#,0,,,,.0 ""TB""", ABS ( SELECTEDMEASURE () ) >= 1E9, "#,0,,,.0 ""GB""", ABS ( SELECTEDMEASURE () ) >= 1E6, "#,0,,.0 ""MB""", ABS ( SELECTEDMEASURE () ) >= 1E3, "#,0,.0 ""KB""", "#,0 ""B""" )
+
+	/// The median of the file sizes of one table, 10.3: the size at position floor(n/2) of the sorted sizes, else FileSizes.Median. Empty for more than one table. Over the tables of the last collection day in the period, each table once, from its latest collection of that day.
+	measure 'Median File Size' =
+			IF (
+			    HASONEVALUE ( Tables[label] ),
+			    VAR LastDay = MAX ( Footprints[collectionDate] )
+			    VAR Latest =
+			        CALCULATETABLE (
+			            ADDCOLUMNS (
+			                SUMMARIZE ( Tables, Tables[sourceName], Tables[label] ),
+			                "@collectedAt", CALCULATE ( MAX ( Tables[collectedAt] ) )
+			            ),
+			            Footprints[collectionDate] = LastDay
+			        )
+			    RETURN
+			        CALCULATE (
+			            MAX ( Tables[fileSizesMedian] ),
+			            TREATAS ( Latest, Tables[sourceName], Tables[label], Tables[collectedAt] )
+			        )
+			)
+		displayFolder: Files
+		lineageTag: 4132ca5d-a2eb-5b0b-afb1-b3747a4aa277
+		formatStringDefinition = SWITCH ( TRUE (), ABS ( SELECTEDMEASURE () ) >= 1E12, "#,0,,,,.0 ""TB""", ABS ( SELECTEDMEASURE () ) >= 1E9, "#,0,,,.0 ""GB""", ABS ( SELECTEDMEASURE () ) >= 1E6, "#,0,,.0 ""MB""", ABS ( SELECTEDMEASURE () ) >= 1E3, "#,0,.0 ""KB""", "#,0 ""B""" )
+
+	/// The files below SmallFileSize that the shares prove: SmallFileShare, 10.3, times the count of the file sizes, summed over the tables. Exact when the footprint keeps the files, else a lower bound. Over the tables of the last collection day in the period, each table once, from its latest collection of that day.
+	measure 'Small Files At Least' =
+			VAR LastDay = MAX ( Footprints[collectionDate] )
+			VAR Latest =
+			    CALCULATETABLE (
+			        ADDCOLUMNS (
+			            SUMMARIZE ( Tables, Tables[sourceName], Tables[label] ),
+			            "@collectedAt", CALCULATE ( MAX ( Tables[collectedAt] ) )
+			        ),
+			        Footprints[collectionDate] = LastDay
+			    )
+			RETURN
+			    CALCULATE (
+			        SUMX ( Tables, Tables[smallFileShare] * Tables[fileSizesCount] ),
+			        TREATAS ( Latest, Tables[sourceName], Tables[label], Tables[collectedAt] )
+			    )
+		formatString: #,0
+		displayFolder: Small files
+		lineageTag: 9ce87ad4-84fb-5c4d-b71e-7f755c288cf4
+
+	/// The files below TinyFileSize that the shares prove: TinyFileShare, 10.3, times the count of the file sizes, summed over the tables. Exact when the footprint keeps the files, else a lower bound. Over the tables of the last collection day in the period, each table once, from its latest collection of that day.
+	measure 'Tiny Files At Least' =
+			VAR LastDay = MAX ( Footprints[collectionDate] )
+			VAR Latest =
+			    CALCULATETABLE (
+			        ADDCOLUMNS (
+			            SUMMARIZE ( Tables, Tables[sourceName], Tables[label] ),
+			            "@collectedAt", CALCULATE ( MAX ( Tables[collectedAt] ) )
+			        ),
+			        Footprints[collectionDate] = LastDay
+			    )
+			RETURN
+			    CALCULATE (
+			        SUMX ( Tables, Tables[tinyFileShare] * Tables[fileSizesCount] ),
+			        TREATAS ( Latest, Tables[sourceName], Tables[label], Tables[collectedAt] )
+			    )
+		formatString: #,0
+		displayFolder: Small files
+		lineageTag: a77f4646-a9b2-58fd-a1a4-0e94b7a42597
+
+	/// SmallFileShare, 10.3, over a set of tables: the small files that the shares prove over the files counted. A lower bound when a table is at the Summary depth. Over the tables of the last collection day in the period, each table once, from its latest collection of that day.
+	measure 'Small File Share' =
+			DIVIDE (
+			    [Small Files At Least],
+			    VAR LastDay = MAX ( Footprints[collectionDate] )
+			    VAR Latest =
+			        CALCULATETABLE (
+			            ADDCOLUMNS (
+			                SUMMARIZE ( Tables, Tables[sourceName], Tables[label] ),
+			                "@collectedAt", CALCULATE ( MAX ( Tables[collectedAt] ) )
+			            ),
+			            Footprints[collectionDate] = LastDay
+			        )
+			    RETURN
+			        CALCULATE (
+			            SUM ( Tables[fileSizesCount] ),
+			            TREATAS ( Latest, Tables[sourceName], Tables[label], Tables[collectedAt] ),
+			            NOT ISBLANK ( Tables[smallFileShare] )
+			        )
+			)
+		formatString: 0.0%
+		displayFolder: Small files
+		lineageTag: edefee7b-c923-540a-9b6a-97ad2ddb7b6c
+
+	/// TinyFileShare, 10.3, over a set of tables: the very small files that the shares prove over the files counted. A lower bound when a table is at the Summary depth. Over the tables of the last collection day in the period, each table once, from its latest collection of that day.
+	measure 'Tiny File Share' =
+			DIVIDE (
+			    [Tiny Files At Least],
+			    VAR LastDay = MAX ( Footprints[collectionDate] )
+			    VAR Latest =
+			        CALCULATETABLE (
+			            ADDCOLUMNS (
+			                SUMMARIZE ( Tables, Tables[sourceName], Tables[label] ),
+			                "@collectedAt", CALCULATE ( MAX ( Tables[collectedAt] ) )
+			            ),
+			            Footprints[collectionDate] = LastDay
+			        )
+			    RETURN
+			        CALCULATE (
+			            SUM ( Tables[fileSizesCount] ),
+			            TREATAS ( Latest, Tables[sourceName], Tables[label], Tables[collectedAt] ),
+			            NOT ISBLANK ( Tables[tinyFileShare] )
+			        )
+			)
+		formatString: 0.0%
+		displayFolder: Small files
+		lineageTag: de0b9d04-f11e-5f7b-a347-bb59b08ac4f9
+
+	/// LastOptimizeAt, 10.4: the latest OPTIMIZE among the commits read. Over the tables of the last collection day in the period, each table once, from its latest collection of that day.
+	measure 'Last Optimize At' =
+			VAR LastDay = MAX ( Footprints[collectionDate] )
+			VAR Latest =
+			    CALCULATETABLE (
+			        ADDCOLUMNS (
+			            SUMMARIZE ( Tables, Tables[sourceName], Tables[label] ),
+			            "@collectedAt", CALCULATE ( MAX ( Tables[collectedAt] ) )
+			        ),
+			        Footprints[collectionDate] = LastDay
+			    )
+			RETURN
+			    CALCULATE (
+			        MAX ( Tables[lastOptimizeAt] ),
+			        TREATAS ( Latest, Tables[sourceName], Tables[label], Tables[collectedAt] )
+			    )
+		formatString: yyyy-mm-dd hh:nn
+		displayFolder: Small files
+		lineageTag: 7b21ab9e-1219-5793-b079-867f69bf9342
+
+	/// NonLiveFileCount, 6.4: the files that left the table and that the log still tracks. Over the tables of the last collection day in the period, each table once, from its latest collection of that day.
+	measure 'Non-live Files' =
+			VAR LastDay = MAX ( Footprints[collectionDate] )
+			VAR Latest =
+			    CALCULATETABLE (
+			        ADDCOLUMNS (
+			            SUMMARIZE ( Tables, Tables[sourceName], Tables[label] ),
+			            "@collectedAt", CALCULATE ( MAX ( Tables[collectedAt] ) )
+			        ),
+			        Footprints[collectionDate] = LastDay
+			    )
+			RETURN
+			    CALCULATE (
+			        SUM ( Tables[nonLiveFileCount] ),
+			        TREATAS ( Latest, Tables[sourceName], Tables[label], Tables[collectedAt] )
+			    )
+		formatString: #,0
+		displayFolder: Non-live and unreferenced
+		lineageTag: 9fa4fe4c-f9cd-5d39-a372-31205cca4440
+
+	/// UnreferencedFileCount, 6.4: the data files under the table location that the version described does not reference. Over the tables of the last collection day in the period, each table once, from its latest collection of that day.
+	measure 'Unreferenced Files' =
+			VAR LastDay = MAX ( Footprints[collectionDate] )
+			VAR Latest =
+			    CALCULATETABLE (
+			        ADDCOLUMNS (
+			            SUMMARIZE ( Tables, Tables[sourceName], Tables[label] ),
+			            "@collectedAt", CALCULATE ( MAX ( Tables[collectedAt] ) )
+			        ),
+			        Footprints[collectionDate] = LastDay
+			    )
+			RETURN
+			    CALCULATE (
+			        SUM ( Tables[unreferencedFileCount] ),
+			        TREATAS ( Latest, Tables[sourceName], Tables[label], Tables[collectedAt] )
+			    )
+		formatString: #,0
+		displayFolder: Non-live and unreferenced
+		lineageTag: 33547464-3db2-5bf8-9def-fbbc6cfb1922
+
+	/// NonLiveOldestRemovedAt, 6.4: the earliest removal time of the non-live files, shown beside the stack as 10.4 says. Over the tables of the last collection day in the period, each table once, from its latest collection of that day.
+	measure 'Non-live Oldest Removed At' =
+			VAR LastDay = MAX ( Footprints[collectionDate] )
+			VAR Latest =
+			    CALCULATETABLE (
+			        ADDCOLUMNS (
+			            SUMMARIZE ( Tables, Tables[sourceName], Tables[label] ),
+			            "@collectedAt", CALCULATE ( MAX ( Tables[collectedAt] ) )
+			        ),
+			        Footprints[collectionDate] = LastDay
+			    )
+			RETURN
+			    CALCULATE (
+			        MIN ( Tables[nonLiveOldestRemovedAt] ),
+			        TREATAS ( Latest, Tables[sourceName], Tables[label], Tables[collectedAt] )
+			    )
+		formatString: yyyy-mm-dd hh:nn
+		displayFolder: Non-live and unreferenced
+		lineageTag: ee828f30-1d9f-5609-8792-25b9c431f15d
+
+	/// NonLiveNewestRemovedAt, 6.4: the latest removal time of the non-live files. Over the tables of the last collection day in the period, each table once, from its latest collection of that day.
+	measure 'Non-live Newest Removed At' =
+			VAR LastDay = MAX ( Footprints[collectionDate] )
+			VAR Latest =
+			    CALCULATETABLE (
+			        ADDCOLUMNS (
+			            SUMMARIZE ( Tables, Tables[sourceName], Tables[label] ),
+			            "@collectedAt", CALCULATE ( MAX ( Tables[collectedAt] ) )
+			        ),
+			        Footprints[collectionDate] = LastDay
+			    )
+			RETURN
+			    CALCULATE (
+			        MAX ( Tables[nonLiveNewestRemovedAt] ),
+			        TREATAS ( Latest, Tables[sourceName], Tables[label], Tables[collectedAt] )
+			    )
+		formatString: yyyy-mm-dd hh:nn
+		displayFolder: Non-live and unreferenced
+		lineageTag: 39c245aa-cd95-587e-8891-48ff32689880
+
+	/// LastVacuumAt, 10.4: the latest VACUUM among the commits read. Over the tables of the last collection day in the period, each table once, from its latest collection of that day.
+	measure 'Last Vacuum At' =
+			VAR LastDay = MAX ( Footprints[collectionDate] )
+			VAR Latest =
+			    CALCULATETABLE (
+			        ADDCOLUMNS (
+			            SUMMARIZE ( Tables, Tables[sourceName], Tables[label] ),
+			            "@collectedAt", CALCULATE ( MAX ( Tables[collectedAt] ) )
+			        ),
+			        Footprints[collectionDate] = LastDay
+			    )
+			RETURN
+			    CALCULATE (
+			        MAX ( Tables[lastVacuumAt] ),
+			        TREATAS ( Latest, Tables[sourceName], Tables[label], Tables[collectedAt] )
+			    )
+		formatString: yyyy-mm-dd hh:nn
+		displayFolder: Non-live and unreferenced
+		lineageTag: 28353a00-e910-5c8e-b78d-2d99627e42a9
+
+	/// [Total] on the last collection day of the period less [Total] on the collection day before it. Empty when there is none.
+	measure 'Total Change' =
+			VAR LastDay = MAX ( Footprints[collectionDate] )
+			VAR PriorDay =
+			    CALCULATE ( MAX ( Footprints[collectionDate] ), REMOVEFILTERS ( 'Date' ), Footprints[collectionDate] < LastDay )
+			RETURN
+			    IF (
+			        NOT ISBLANK ( PriorDay ),
+			        [Total] - CALCULATE ( [Total], REMOVEFILTERS ( 'Date' ), Footprints[collectionDate] = PriorDay )
+			    )
+		displayFolder: Trends
+		lineageTag: 12783aaa-4754-52ae-b4d5-52c50ec5a404
+		formatStringDefinition = SWITCH ( TRUE (), ABS ( SELECTEDMEASURE () ) >= 1E12, "#,0,,,,.0 ""TB""", ABS ( SELECTEDMEASURE () ) >= 1E9, "#,0,,,.0 ""GB""", ABS ( SELECTEDMEASURE () ) >= 1E6, "#,0,,.0 ""MB""", ABS ( SELECTEDMEASURE () ) >= 1E3, "#,0,.0 ""KB""", "#,0 ""B""" )
+
+	/// [Waste] on the last collection day of the period less [Waste] on the collection day before it. Empty when there is none.
+	measure 'Waste Change' =
+			VAR LastDay = MAX ( Footprints[collectionDate] )
+			VAR PriorDay =
+			    CALCULATE ( MAX ( Footprints[collectionDate] ), REMOVEFILTERS ( 'Date' ), Footprints[collectionDate] < LastDay )
+			RETURN
+			    IF (
+			        NOT ISBLANK ( PriorDay ),
+			        [Waste] - CALCULATE ( [Waste], REMOVEFILTERS ( 'Date' ), Footprints[collectionDate] = PriorDay )
+			    )
+		displayFolder: Trends
+		lineageTag: 043eb4e8-adfe-5cf1-91d6-6d65239a545e
+		formatStringDefinition = SWITCH ( TRUE (), ABS ( SELECTEDMEASURE () ) >= 1E12, "#,0,,,,.0 ""TB""", ABS ( SELECTEDMEASURE () ) >= 1E9, "#,0,,,.0 ""GB""", ABS ( SELECTEDMEASURE () ) >= 1E6, "#,0,,.0 ""MB""", ABS ( SELECTEDMEASURE () ) >= 1E3, "#,0,.0 ""KB""", "#,0 ""B""" )
+
+	/// [Non-live] on the last collection day of the period less [Non-live] on the collection day before it. Empty when there is none.
+	measure 'Non-live Change' =
+			VAR LastDay = MAX ( Footprints[collectionDate] )
+			VAR PriorDay =
+			    CALCULATE ( MAX ( Footprints[collectionDate] ), REMOVEFILTERS ( 'Date' ), Footprints[collectionDate] < LastDay )
+			RETURN
+			    IF (
+			        NOT ISBLANK ( PriorDay ),
+			        [Non-live] - CALCULATE ( [Non-live], REMOVEFILTERS ( 'Date' ), Footprints[collectionDate] = PriorDay )
+			    )
+		displayFolder: Trends
+		lineageTag: 7f98c2b7-7a6f-513a-a2f8-ebdefa7958a2
+		formatStringDefinition = SWITCH ( TRUE (), ABS ( SELECTEDMEASURE () ) >= 1E12, "#,0,,,,.0 ""TB""", ABS ( SELECTEDMEASURE () ) >= 1E9, "#,0,,,.0 ""GB""", ABS ( SELECTEDMEASURE () ) >= 1E6, "#,0,,.0 ""MB""", ABS ( SELECTEDMEASURE () ) >= 1E3, "#,0,.0 ""KB""", "#,0 ""B""" )
+
+	/// [Unreferenced] on the last collection day of the period less [Unreferenced] on the collection day before it. Empty when there is none.
+	measure 'Unreferenced Change' =
+			VAR LastDay = MAX ( Footprints[collectionDate] )
+			VAR PriorDay =
+			    CALCULATE ( MAX ( Footprints[collectionDate] ), REMOVEFILTERS ( 'Date' ), Footprints[collectionDate] < LastDay )
+			RETURN
+			    IF (
+			        NOT ISBLANK ( PriorDay ),
+			        [Unreferenced] - CALCULATE ( [Unreferenced], REMOVEFILTERS ( 'Date' ), Footprints[collectionDate] = PriorDay )
+			    )
+		displayFolder: Trends
+		lineageTag: 27e0407b-9a9b-555a-af74-3bc1d5e089aa
+		formatStringDefinition = SWITCH ( TRUE (), ABS ( SELECTEDMEASURE () ) >= 1E12, "#,0,,,,.0 ""TB""", ABS ( SELECTEDMEASURE () ) >= 1E9, "#,0,,,.0 ""GB""", ABS ( SELECTEDMEASURE () ) >= 1E6, "#,0,,.0 ""MB""", ABS ( SELECTEDMEASURE () ) >= 1E3, "#,0,.0 ""KB""", "#,0 ""B""" )
+
+	/// [Files] on the last collection day of the period less [Files] on the collection day before it. Empty when there is none.
+	measure 'Files Change' =
+			VAR LastDay = MAX ( Footprints[collectionDate] )
+			VAR PriorDay =
+			    CALCULATE ( MAX ( Footprints[collectionDate] ), REMOVEFILTERS ( 'Date' ), Footprints[collectionDate] < LastDay )
+			RETURN
+			    IF (
+			        NOT ISBLANK ( PriorDay ),
+			        [Files] - CALCULATE ( [Files], REMOVEFILTERS ( 'Date' ), Footprints[collectionDate] = PriorDay )
+			    )
+		formatString: +#,0;-#,0;0
+		displayFolder: Trends
+		lineageTag: efe8b329-45b2-5772-b5a8-87d08c3b4f2a
+
+	column Value
+		dataType: int64
+		isHidden
+		formatString: 0
+		lineageTag: c6c8201a-8907-552c-8c8d-32a5c715c168
+		summarizeBy: none
+		isNameInferred
+		sourceColumn: [Value]
+
+		annotation SummarizationSetBy = User
+
+	partition Storage = calculated
+		mode: import
+		source = { BLANK () }

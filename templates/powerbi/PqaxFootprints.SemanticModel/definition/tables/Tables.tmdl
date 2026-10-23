@@ -1,0 +1,717 @@
+table Tables
+	lineageTag: c2767dc8-8f99-5fef-914c-18943d8ed351
+
+	/// The identifier of the footprint in the export: the SHA-256 of the bytes of its PQAX file, in lowercase hex. The same file, standalone or embedded in a VPAX, has the same id.
+	column footprintId
+		dataType: string
+		isHidden
+		lineageTag: 95aa22df-b4ad-55a4-a786-fab15301323c
+		summarizeBy: none
+		sourceColumn: footprintId
+
+		annotation SummarizationSetBy = User
+
+	/// When the footprint was collected: CompletedAt of the collection, else StartedAt, in UTC.
+	column collectedAt
+		dataType: dateTime
+		formatString: yyyy-mm-dd hh:nn:ss
+		lineageTag: cb5acac8-e1f6-56b1-a23a-e5babd545bcb
+		summarizeBy: none
+		sourceColumn: collectedAt
+
+		annotation SummarizationSetBy = User
+
+	/// Id of the table in its footprint.
+	column id
+		dataType: int64
+		formatString: #,0
+		lineageTag: c88fe100-b088-5d3a-908e-9b84322c924f
+		summarizeBy: none
+		sourceColumn: id
+
+		annotation SummarizationSetBy = User
+
+	/// Name of the table.
+	column name
+		dataType: string
+		lineageTag: b04d4678-f5b5-5dfd-b261-2f44d09ff717
+		summarizeBy: none
+		sourceColumn: name
+
+		annotation SummarizationSetBy = User
+
+	/// The namespace and the name of the table, joined by dots, as the storage views show it. The report follows a table from day to day by its source name and its label.
+	column label
+		dataType: string
+		lineageTag: ba10ff68-5572-567b-ba29-9c209333bf5c
+		summarizeBy: none
+		sourceColumn: label
+
+		annotation SummarizationSetBy = User
+
+	/// Name of the source that holds the table: a lakehouse, a warehouse, a catalog, or a folder.
+	column sourceName
+		dataType: string
+		lineageTag: 526e5699-fe0c-567d-8991-33fdef0b06d7
+		summarizeBy: none
+		sourceColumn: sourceName
+
+		annotation SummarizationSetBy = User
+
+	/// DetailDepth, 6.4: Summary, Files, Row groups, or Column chunks.
+	column detailDepth
+		dataType: string
+		lineageTag: 949cdbce-c966-5368-99c0-e8a8b54259bd
+		summarizeBy: none
+		sourceColumn: detailDepth
+
+		annotation SummarizationSetBy = User
+
+	/// RowCount, 6.4: the rows stored, including the rows marked as deleted.
+	column rowCount
+		dataType: int64
+		formatString: #,0
+		lineageTag: 94567177-98fa-54f9-9f52-5badc5dd76eb
+		summarizeBy: none
+		sourceColumn: rowCount
+
+		annotation SummarizationSetBy = User
+
+	/// FileCount, 6.4: the data files of the version described.
+	column fileCount
+		dataType: int64
+		formatString: #,0
+		lineageTag: fb6e5bce-b367-5e68-885c-baf7077e225b
+		summarizeBy: none
+		sourceColumn: fileCount
+
+		annotation SummarizationSetBy = User
+
+	/// FileSize, 6.4: the sum of their sizes.
+	column fileSize
+		dataType: int64
+		formatString: #,0
+		lineageTag: 9639fc28-3208-5375-b202-fcea147f2e77
+		summarizeBy: none
+		sourceColumn: fileSize
+
+		annotation SummarizationSetBy = User
+
+	/// Live, 10.2: max(0, FileSize - Deleted - FooterSize - StaleColumnSize). The bytes of the data files that hold rows the table still has, in the columns it still declares. Exact less the estimate of Deleted; an upper bound when a term is absent or not every footer was read.
+	column live
+		dataType: double
+		formatString: #,0.###
+		lineageTag: 0352b882-1d0f-5b6b-84b3-6b56d2e5e4d7
+		summarizeBy: none
+		sourceColumn: live
+
+		annotation SummarizationSetBy = User
+
+	/// NonLive, 10.2: min(NonLiveFileSize, UnreferencedFileSize) when the storage was listed, else NonLiveFileSize. The files that left the table and that the log still tracks, as far as the storage can still hold them. An upper bound.
+	column nonLive
+		dataType: double
+		formatString: #,0.###
+		lineageTag: 5e8a00b9-3867-5965-87b6-bb6b0bc23c89
+		summarizeBy: none
+		sourceColumn: nonLive
+
+		annotation SummarizationSetBy = User
+
+	/// Unreferenced, 10.2: UnreferencedFileSize - NonLive. The data files in the storage that no non-live file of the log explains: files that no commit referenced, or whose remove the log no longer holds. A lower bound; empty without a listing.
+	column unreferenced
+		dataType: double
+		formatString: #,0.###
+		lineageTag: 1242113e-fd17-5b69-95ca-80fa74fc71b2
+		summarizeBy: none
+		sourceColumn: unreferenced
+
+		annotation SummarizationSetBy = User
+
+	/// Deleted, 10.2: FileSize * min(DeletedRowCount, RowCount) / RowCount, or the sum of the same estimate over the files when the footprint keeps them. The bytes of the rows marked as deleted and still stored. An estimate.
+	column deleted
+		dataType: double
+		formatString: #,0.###
+		lineageTag: feaed609-866c-5909-bc46-6dc5a5cb5fd6
+		summarizeBy: none
+		sourceColumn: deleted
+
+		annotation SummarizationSetBy = User
+
+	/// Stale, 10.2: StaleColumnSize. The bytes of the physical columns that the table no longer declares.
+	column stale
+		dataType: double
+		formatString: #,0.###
+		lineageTag: c0528f48-2b7f-5e83-b9b9-ab02b7132737
+		summarizeBy: none
+		sourceColumn: stale
+
+		annotation SummarizationSetBy = User
+
+	/// Metadata, 10.2: MetadataSize. The files of the table format: the Delta log, or the Iceberg metadata and manifests.
+	column metadata
+		dataType: double
+		formatString: #,0.###
+		lineageTag: 793223cc-64b6-502d-8e41-00ba60f92eed
+		summarizeBy: none
+		sourceColumn: metadata
+
+		annotation SummarizationSetBy = User
+
+	/// Footers, 10.2: FooterSize. The footers of the data files.
+	column footers
+		dataType: double
+		formatString: #,0.###
+		lineageTag: d1ac30e1-b59b-5f5f-9840-6d1eeb1ce70b
+		summarizeBy: none
+		sourceColumn: footers
+
+		annotation SummarizationSetBy = User
+
+	/// Where Deleted comes from: files, the estimate over the files kept, or table, the estimate over the totals of the table.
+	column deletedSource
+		dataType: string
+		lineageTag: dca9ce95-fbdd-5dfc-a720-60adaf32e502
+		summarizeBy: none
+		sourceColumn: deletedSource
+
+		annotation SummarizationSetBy = User
+
+	/// Listed, 10.2: whether UnreferencedFileSize is present, so whether NonLive and Unreferenced come from a listing of the storage.
+	column listed
+		dataType: boolean
+		lineageTag: 49f40d57-0950-5309-a989-9ad40555aa33
+		summarizeBy: none
+		sourceColumn: listed
+
+		annotation SummarizationSetBy = User
+
+	/// Waste, 10.2: NonLive + Unreferenced + Deleted + Stale, an absent component counting as 0. The space that holds no live data.
+	column waste
+		dataType: double
+		formatString: #,0.###
+		lineageTag: a6ebfb9e-ffea-5189-b209-d4cc69069f0d
+		summarizeBy: none
+		sourceColumn: waste
+
+		annotation SummarizationSetBy = User
+
+	/// Overhead, 10.2: Metadata + Footers, an absent component counting as 0. The space that describes the data, outside the waste.
+	column overhead
+		dataType: double
+		formatString: #,0.###
+		lineageTag: bac4ae3e-1d5e-5ceb-a391-e4e145ff575b
+		summarizeBy: none
+		sourceColumn: overhead
+
+		annotation SummarizationSetBy = User
+
+	/// Data, 10.2: Live + Waste. The denominator of the shares. Empty when Live is.
+	column data
+		dataType: double
+		formatString: #,0.###
+		lineageTag: d44fcf0f-921e-57cd-9bf1-d07a6d9b2427
+		summarizeBy: none
+		sourceColumn: data
+
+		annotation SummarizationSetBy = User
+
+	/// Total, 10.2: the sum of the seven components. Everything that the storage holds for the table.
+	column total
+		dataType: double
+		formatString: #,0.###
+		lineageTag: 7fb33c95-c05a-5073-9052-42b476e78e30
+		summarizeBy: none
+		sourceColumn: total
+
+		annotation SummarizationSetBy = User
+
+	/// WasteShare, 10.2: Waste / Data.
+	column wasteShare
+		dataType: double
+		formatString: #,0.###
+		lineageTag: d2a6c145-7533-5d87-8b0b-77484dcb9d35
+		summarizeBy: none
+		sourceColumn: wasteShare
+
+		annotation SummarizationSetBy = User
+
+	/// OverheadShare, 10.2: Overhead / Data. It can exceed 1, since the overhead is outside the data.
+	column overheadShare
+		dataType: double
+		formatString: #,0.###
+		lineageTag: db73315d-832f-5746-a8e8-9c8cb6a60d5b
+		summarizeBy: none
+		sourceColumn: overheadShare
+
+		annotation SummarizationSetBy = User
+
+	/// The share of the component Live, 10.2: Live / Data. Empty when Live is.
+	column liveDataShare
+		dataType: double
+		formatString: #,0.###
+		lineageTag: 72dc7873-923a-5855-9034-814a3a8868a8
+		summarizeBy: none
+		sourceColumn: liveDataShare
+
+		annotation SummarizationSetBy = User
+
+	/// The share of the component NonLive, 10.2: NonLive / Data. Empty when NonLive is.
+	column nonLiveDataShare
+		dataType: double
+		formatString: #,0.###
+		lineageTag: 2ee8a6bd-57f1-57e3-8a65-714e805f360b
+		summarizeBy: none
+		sourceColumn: nonLiveDataShare
+
+		annotation SummarizationSetBy = User
+
+	/// The share of the component Unreferenced, 10.2: Unreferenced / Data. Empty when Unreferenced is.
+	column unreferencedDataShare
+		dataType: double
+		formatString: #,0.###
+		lineageTag: b7cc6aad-fdc6-5bc2-85bc-a8e86a89bf2c
+		summarizeBy: none
+		sourceColumn: unreferencedDataShare
+
+		annotation SummarizationSetBy = User
+
+	/// The share of the component Deleted, 10.2: Deleted / Data. Empty when Deleted is.
+	column deletedDataShare
+		dataType: double
+		formatString: #,0.###
+		lineageTag: 82c53bf2-a747-529b-a258-6ce3fd603a02
+		summarizeBy: none
+		sourceColumn: deletedDataShare
+
+		annotation SummarizationSetBy = User
+
+	/// The share of the component Stale, 10.2: Stale / Data. Empty when Stale is.
+	column staleDataShare
+		dataType: double
+		formatString: #,0.###
+		lineageTag: df736b79-5456-54b4-955f-0847959146f0
+		summarizeBy: none
+		sourceColumn: staleDataShare
+
+		annotation SummarizationSetBy = User
+
+	/// The share of the component Metadata, 10.2: Metadata / Data. Empty when Metadata is.
+	column metadataDataShare
+		dataType: double
+		formatString: #,0.###
+		lineageTag: b91d5990-cd17-51d1-b020-d5b71f66338a
+		summarizeBy: none
+		sourceColumn: metadataDataShare
+
+		annotation SummarizationSetBy = User
+
+	/// The share of the component Footers, 10.2: Footers / Data. Empty when Footers is.
+	column footersDataShare
+		dataType: double
+		formatString: #,0.###
+		lineageTag: 336509a1-3cfb-5f5e-814c-4822d2061929
+		summarizeBy: none
+		sourceColumn: footersDataShare
+
+		annotation SummarizationSetBy = User
+
+	/// NonLiveFileCount, 6.4: the files that left the table and that the log still tracks.
+	column nonLiveFileCount
+		dataType: int64
+		formatString: #,0
+		lineageTag: 75caccae-796d-528c-925c-1b1490874d15
+		summarizeBy: none
+		sourceColumn: nonLiveFileCount
+
+		annotation SummarizationSetBy = User
+
+	/// NonLiveOldestRemovedAt, 6.4: the earliest removal time of the non-live files, shown beside the stack (10.4).
+	column nonLiveOldestRemovedAt
+		dataType: dateTime
+		formatString: yyyy-mm-dd hh:nn:ss
+		lineageTag: 79ab6931-84ee-5e86-b792-e76f350504ac
+		summarizeBy: none
+		sourceColumn: nonLiveOldestRemovedAt
+
+		annotation SummarizationSetBy = User
+
+	/// NonLiveNewestRemovedAt, 6.4: the latest removal time of the non-live files, shown beside the stack (10.4).
+	column nonLiveNewestRemovedAt
+		dataType: dateTime
+		formatString: yyyy-mm-dd hh:nn:ss
+		lineageTag: a2fa41bc-b3eb-5299-aed0-99671df043f1
+		summarizeBy: none
+		sourceColumn: nonLiveNewestRemovedAt
+
+		annotation SummarizationSetBy = User
+
+	/// UnreferencedFileCount, 6.4: the data files under the table location that the version described does not reference.
+	column unreferencedFileCount
+		dataType: int64
+		formatString: #,0
+		lineageTag: 959efafa-b83c-52e6-a453-dd22f2143fd6
+		summarizeBy: none
+		sourceColumn: unreferencedFileCount
+
+		annotation SummarizationSetBy = User
+
+	/// SmallFileSize, 10.1: the threshold below which a file is small, 128 MiB by default.
+	column smallFileSize
+		dataType: int64
+		formatString: #,0
+		lineageTag: bba927a3-443f-53f7-9b4a-fb3823a7501c
+		summarizeBy: none
+		sourceColumn: smallFileSize
+
+		annotation SummarizationSetBy = User
+
+	/// SmallFileCount, 10.3: the files with File.FileSize < SmallFileSize. Empty without the files.
+	column smallFileCount
+		dataType: int64
+		formatString: #,0
+		lineageTag: 9bd10d51-d144-5303-8b8d-3409106712e8
+		summarizeBy: none
+		sourceColumn: smallFileCount
+
+		annotation SummarizationSetBy = User
+
+	/// SmallFileShare, 10.3: SmallFileCount over the files with a size, when the footprint keeps the files. From FileSizes: 1 when Maximum is below SmallFileSize, else 0.75 when ThirdQuartile is, else 0.5 when Median is, else 0.25 when FirstQuartile is, else 1 / Count when Minimum is, else 0: a lower bound.
+	column smallFileShare
+		dataType: double
+		formatString: #,0.###
+		lineageTag: 5dd47d97-2684-53ef-82cd-3457783d1e86
+		summarizeBy: none
+		sourceColumn: smallFileShare
+
+		annotation SummarizationSetBy = User
+
+	/// TinyFileSize, 10.1: the threshold below which a file is very small, 8 MiB by default.
+	column tinyFileSize
+		dataType: int64
+		formatString: #,0
+		lineageTag: b846bc2d-2606-580d-a3fd-7637e6e36c10
+		summarizeBy: none
+		sourceColumn: tinyFileSize
+
+		annotation SummarizationSetBy = User
+
+	/// TinyFileCount, 10.3: the files with File.FileSize < TinyFileSize. Empty without the files.
+	column tinyFileCount
+		dataType: int64
+		formatString: #,0
+		lineageTag: d0191506-854a-53b9-beed-5e5ef80b3966
+		summarizeBy: none
+		sourceColumn: tinyFileCount
+
+		annotation SummarizationSetBy = User
+
+	/// TinyFileShare, 10.3: SmallFileShare with TinyFileSize. A lower bound from FileSizes.
+	column tinyFileShare
+		dataType: double
+		formatString: #,0.###
+		lineageTag: 920f14c0-c180-5974-bd8a-15bd44cff3c7
+		summarizeBy: none
+		sourceColumn: tinyFileShare
+
+		annotation SummarizationSetBy = User
+
+	/// File size figures, 10.3: the files with a FileSize when the footprint keeps them, else FileSizes.Count, else FileCount.
+	column fileSizesCount
+		dataType: int64
+		formatString: #,0
+		lineageTag: 38c5b2ff-e9ab-5ce0-92bc-412e34eea35f
+		summarizeBy: none
+		sourceColumn: fileSizesCount
+
+		annotation SummarizationSetBy = User
+
+	/// File size figures, 10.3: the sum of File.FileSize, else FileSizes.Sum, else FileSize.
+	column fileSizesSum
+		dataType: int64
+		formatString: #,0
+		lineageTag: ea825ead-d0b3-5fb7-a4e0-32ed926b162c
+		summarizeBy: none
+		sourceColumn: fileSizesSum
+
+		annotation SummarizationSetBy = User
+
+	/// File size figures, 10.3: the smallest File.FileSize, else FileSizes.Minimum.
+	column fileSizesMinimum
+		dataType: int64
+		formatString: #,0
+		lineageTag: eeecd693-9ee4-53ea-8cb1-d04a67353364
+		summarizeBy: none
+		sourceColumn: fileSizesMinimum
+
+		annotation SummarizationSetBy = User
+
+	/// File size figures, 10.3: the size at position floor(n/4) of the sorted sizes, else FileSizes.FirstQuartile.
+	column fileSizesFirstQuartile
+		dataType: int64
+		formatString: #,0
+		lineageTag: 67640639-c5fd-5117-bfd0-d7b9b88a1bca
+		summarizeBy: none
+		sourceColumn: fileSizesFirstQuartile
+
+		annotation SummarizationSetBy = User
+
+	/// File size figures, 10.3: the size at position floor(n/2) of the sorted sizes, else FileSizes.Median.
+	column fileSizesMedian
+		dataType: int64
+		formatString: #,0
+		lineageTag: 96407826-1277-5e10-a763-6183ee8b385b
+		summarizeBy: none
+		sourceColumn: fileSizesMedian
+
+		annotation SummarizationSetBy = User
+
+	/// File size figures, 10.3: the size at position floor(3n/4) of the sorted sizes, else FileSizes.ThirdQuartile.
+	column fileSizesThirdQuartile
+		dataType: int64
+		formatString: #,0
+		lineageTag: 4050df5f-e0bb-5e4a-b8c2-602b4c37fe3f
+		summarizeBy: none
+		sourceColumn: fileSizesThirdQuartile
+
+		annotation SummarizationSetBy = User
+
+	/// File size figures, 10.3: the largest File.FileSize, else FileSizes.Maximum.
+	column fileSizesMaximum
+		dataType: int64
+		formatString: #,0
+		lineageTag: e19e9ee3-2bba-552b-963f-faca771a3bd4
+		summarizeBy: none
+		sourceColumn: fileSizesMaximum
+
+		annotation SummarizationSetBy = User
+
+	/// VOrderShare, 10.3: the files with IsVOrdered true over the files where it is present, else min(1, VOrderedFileCount / FileCount), then a lower bound when not every footer was read.
+	column vOrderShare
+		dataType: double
+		formatString: #,0.###
+		lineageTag: 0d69a412-3268-5edf-b087-9dcdc82560eb
+		summarizeBy: none
+		sourceColumn: vOrderShare
+
+		annotation SummarizationSetBy = User
+
+	/// VOrderBytesShare, 10.3: the bytes of the V-Ordered files over the bytes of the files where IsVOrdered is present. Empty without the files.
+	column vOrderBytesShare
+		dataType: double
+		formatString: #,0.###
+		lineageTag: 8fd673cf-d520-52fd-be8e-dff0206c3c42
+		summarizeBy: none
+		sourceColumn: vOrderBytesShare
+
+		annotation SummarizationSetBy = User
+
+	/// CompressionRatio, 10.5: UncompressedSize / CompressedSize.
+	column compressionRatio
+		dataType: double
+		formatString: #,0.###
+		lineageTag: 8d3b824b-73dc-5ee7-9af4-365abed4b813
+		summarizeBy: none
+		sourceColumn: compressionRatio
+
+		annotation SummarizationSetBy = User
+
+	/// DeletedRowShare, 10.5: DeletedRowCount / RowCount.
+	column deletedRowShare
+		dataType: double
+		formatString: #,0.###
+		lineageTag: a0b77bd4-417f-54f6-bdc5-b3b26c176fee
+		summarizeBy: none
+		sourceColumn: deletedRowShare
+
+		annotation SummarizationSetBy = User
+
+	/// AverageFileSize, 10.3: FileSize / FileCount.
+	column averageFileSize
+		dataType: double
+		formatString: #,0.###
+		lineageTag: d6e391a2-0610-5900-820e-1bd222238814
+		summarizeBy: none
+		sourceColumn: averageFileSize
+
+		annotation SummarizationSetBy = User
+
+	/// AverageRowGroupRows, 10.5: RowGroupRowCounts.Sum / RowGroupRowCounts.Count, else RowCount / RowGroupCount when FooterCount equals FileCount.
+	column averageRowGroupRows
+		dataType: double
+		formatString: #,0.###
+		lineageTag: d7fbcd33-d54f-58f9-b046-fd8764a006e1
+		summarizeBy: none
+		sourceColumn: averageRowGroupRows
+
+		annotation SummarizationSetBy = User
+
+	/// FooterCoverage, 10.5: FooterCount / FileCount. How complete the totals of level 2 are.
+	column footerCoverage
+		dataType: double
+		formatString: #,0.###
+		lineageTag: 079b002f-881b-5419-8c95-e79d6721a0c4
+		summarizeBy: none
+		sourceColumn: footerCoverage
+
+		annotation SummarizationSetBy = User
+
+	/// StaleColumnShare, 10.5: StaleColumnSize / CompressedSize.
+	column staleColumnShare
+		dataType: double
+		formatString: #,0.###
+		lineageTag: 78549142-27ad-56b7-ac9b-e4ec3f3fb231
+		summarizeBy: none
+		sourceColumn: staleColumnShare
+
+		annotation SummarizationSetBy = User
+
+	/// NonLiveShare, 10.5: NonLiveFileSize / (FileSize + NonLiveFileSize). An upper bound, since it reads NonLiveFileSize and not the NonLive of the stack.
+	column nonLiveShare
+		dataType: double
+		formatString: #,0.###
+		lineageTag: ee18a0e9-e110-51f6-9cd4-6d2c90eb887c
+		summarizeBy: none
+		sourceColumn: nonLiveShare
+
+		annotation SummarizationSetBy = User
+
+	/// AveragePartitionSize, 10.5: PartitionSizes.Sum / PartitionSizes.Count, else FileSize / PartitionCount.
+	column averagePartitionSize
+		dataType: double
+		formatString: #,0.###
+		lineageTag: 8b73a825-d402-57b5-9a59-171aa4d7b112
+		summarizeBy: none
+		sourceColumn: averagePartitionSize
+
+		annotation SummarizationSetBy = User
+
+	/// DictionaryFallbackShare, 10.5: the sum of FallbackChunkCount over the sum of DictionaryChunkCount, over the columns of the table that have both.
+	column dictionaryFallbackShare
+		dataType: double
+		formatString: #,0.###
+		lineageTag: 10d06d78-fe0d-534e-be1c-924dc159f5d2
+		summarizeBy: none
+		sourceColumn: dictionaryFallbackShare
+
+		annotation SummarizationSetBy = User
+
+	/// LastCommitAt, 10.4: SnapshotTimestamp, else the latest Operation.LastAt, else LastModifiedAt.
+	column lastCommitAt
+		dataType: dateTime
+		formatString: yyyy-mm-dd hh:nn:ss
+		lineageTag: bc27d72b-2888-5ac4-bcfb-273294b113e2
+		summarizeBy: none
+		sourceColumn: lastCommitAt
+
+		annotation SummarizationSetBy = User
+
+	/// CommitsPerDay, 10.4: CommitsRead / max(1, days from OldestCommitAt to LastCommitAt).
+	column commitsPerDay
+		dataType: double
+		formatString: #,0.###
+		lineageTag: f39862ce-cab6-5b81-b2e1-ac596bde98e1
+		summarizeBy: none
+		sourceColumn: commitsPerDay
+
+		annotation SummarizationSetBy = User
+
+	/// DaysSinceLastCommit, 10.4: the whole days from LastCommitAt to the collection.
+	column daysSinceLastCommit
+		dataType: int64
+		formatString: #,0
+		lineageTag: 67c2ac3e-f2af-5e51-b55f-599ab40c46a2
+		summarizeBy: none
+		sourceColumn: daysSinceLastCommit
+
+		annotation SummarizationSetBy = User
+
+	/// HasVacuum, 10.4: whether the name of an operation of the table contains VACUUM. Empty when the table has no operation.
+	column hasVacuum
+		dataType: boolean
+		lineageTag: 98c39787-0bdc-5957-972b-3401f846be2d
+		summarizeBy: none
+		sourceColumn: hasVacuum
+
+		annotation SummarizationSetBy = User
+
+	/// LastVacuumAt, 10.4: the latest Operation.LastAt of those operations.
+	column lastVacuumAt
+		dataType: dateTime
+		formatString: yyyy-mm-dd hh:nn:ss
+		lineageTag: ee4b3ecd-c79d-542b-8cbd-7e13906850c1
+		summarizeBy: none
+		sourceColumn: lastVacuumAt
+
+		annotation SummarizationSetBy = User
+
+	/// HasOptimize, 10.4: whether the name of an operation of the table contains OPTIMIZE. Empty when the table has no operation.
+	column hasOptimize
+		dataType: boolean
+		lineageTag: 14442ff2-cd07-5899-ad37-0252908d3a80
+		summarizeBy: none
+		sourceColumn: hasOptimize
+
+		annotation SummarizationSetBy = User
+
+	/// LastOptimizeAt, 10.4: the latest Operation.LastAt of those operations.
+	column lastOptimizeAt
+		dataType: dateTime
+		formatString: yyyy-mm-dd hh:nn:ss
+		lineageTag: 1f420293-7d46-59a8-b036-04911cc46f47
+		summarizeBy: none
+		sourceColumn: lastOptimizeAt
+
+		annotation SummarizationSetBy = User
+
+	/// Partitions, 10.5: PartitionCount, else the number of partitions kept.
+	column partitions
+		dataType: int64
+		formatString: #,0
+		lineageTag: 1c6dc78e-bbb0-5cb8-8958-f01d0f454397
+		summarizeBy: none
+		sourceColumn: partitions
+
+		annotation SummarizationSetBy = User
+
+	/// PartitionsKept, 10.5: the partitions that the footprint keeps for the table.
+	column partitionsKept
+		dataType: int64
+		formatString: #,0
+		lineageTag: 2d085e28-e8aa-5509-ba3a-efda890c07f5
+		summarizeBy: none
+		sourceColumn: partitionsKept
+
+		annotation SummarizationSetBy = User
+
+	/// PartitionsOldestModifiedAt, 10.5: the earliest Partition.LastModifiedAt over the partitions kept.
+	column partitionsOldestModifiedAt
+		dataType: dateTime
+		formatString: yyyy-mm-dd hh:nn:ss
+		lineageTag: 6f1fe623-3aa0-58db-963e-71ff38113865
+		summarizeBy: none
+		sourceColumn: partitionsOldestModifiedAt
+
+		annotation SummarizationSetBy = User
+
+	/// PartitionsNewestModifiedAt, 10.5: the latest Partition.LastModifiedAt over the partitions kept.
+	column partitionsNewestModifiedAt
+		dataType: dateTime
+		formatString: yyyy-mm-dd hh:nn:ss
+		lineageTag: d4d7952d-b35c-5e32-8e6a-154741b7abba
+		summarizeBy: none
+		sourceColumn: partitionsNewestModifiedAt
+
+		annotation SummarizationSetBy = User
+
+	partition Tables = m
+		mode: import
+		source =
+				let
+				    Source = PqaxTable("tableMeasures"),
+				    Selected = Table.SelectColumns(Source, {"footprintId", "collectedAt", "id", "name", "label", "sourceName", "detailDepth", "rowCount", "fileCount", "fileSize", "live", "nonLive", "unreferenced", "deleted", "stale", "metadata", "footers", "deletedSource", "listed", "waste", "overhead", "data", "total", "wasteShare", "overheadShare", "liveDataShare", "nonLiveDataShare", "unreferencedDataShare", "deletedDataShare", "staleDataShare", "metadataDataShare", "footersDataShare", "nonLiveFileCount", "nonLiveOldestRemovedAt", "nonLiveNewestRemovedAt", "unreferencedFileCount", "smallFileSize", "smallFileCount", "smallFileShare", "tinyFileSize", "tinyFileCount", "tinyFileShare", "fileSizesCount", "fileSizesSum", "fileSizesMinimum", "fileSizesFirstQuartile", "fileSizesMedian", "fileSizesThirdQuartile", "fileSizesMaximum", "vOrderShare", "vOrderBytesShare", "compressionRatio", "deletedRowShare", "averageFileSize", "averageRowGroupRows", "footerCoverage", "staleColumnShare", "nonLiveShare", "averagePartitionSize", "dictionaryFallbackShare", "lastCommitAt", "commitsPerDay", "daysSinceLastCommit", "hasVacuum", "lastVacuumAt", "hasOptimize", "lastOptimizeAt", "partitions", "partitionsKept", "partitionsOldestModifiedAt", "partitionsNewestModifiedAt"}, MissingField.UseNull),
+				    Utc = Table.TransformColumns(Selected, List.Transform({"collectedAt", "nonLiveOldestRemovedAt", "nonLiveNewestRemovedAt", "lastCommitAt", "lastVacuumAt", "lastOptimizeAt", "partitionsOldestModifiedAt", "partitionsNewestModifiedAt"}, each {_, PqaxUtc, type datetime})),
+				    Typed = Table.TransformColumnTypes(Utc, {{"footprintId", type text}, {"id", Int64.Type}, {"name", type text}, {"label", type text}, {"sourceName", type text}, {"detailDepth", type text}, {"rowCount", Int64.Type}, {"fileCount", Int64.Type}, {"fileSize", Int64.Type}, {"live", type number}, {"nonLive", type number}, {"unreferenced", type number}, {"deleted", type number}, {"stale", type number}, {"metadata", type number}, {"footers", type number}, {"deletedSource", type text}, {"listed", type logical}, {"waste", type number}, {"overhead", type number}, {"data", type number}, {"total", type number}, {"wasteShare", type number}, {"overheadShare", type number}, {"liveDataShare", type number}, {"nonLiveDataShare", type number}, {"unreferencedDataShare", type number}, {"deletedDataShare", type number}, {"staleDataShare", type number}, {"metadataDataShare", type number}, {"footersDataShare", type number}, {"nonLiveFileCount", Int64.Type}, {"unreferencedFileCount", Int64.Type}, {"smallFileSize", Int64.Type}, {"smallFileCount", Int64.Type}, {"smallFileShare", type number}, {"tinyFileSize", Int64.Type}, {"tinyFileCount", Int64.Type}, {"tinyFileShare", type number}, {"fileSizesCount", Int64.Type}, {"fileSizesSum", Int64.Type}, {"fileSizesMinimum", Int64.Type}, {"fileSizesFirstQuartile", Int64.Type}, {"fileSizesMedian", Int64.Type}, {"fileSizesThirdQuartile", Int64.Type}, {"fileSizesMaximum", Int64.Type}, {"vOrderShare", type number}, {"vOrderBytesShare", type number}, {"compressionRatio", type number}, {"deletedRowShare", type number}, {"averageFileSize", type number}, {"averageRowGroupRows", type number}, {"footerCoverage", type number}, {"staleColumnShare", type number}, {"nonLiveShare", type number}, {"averagePartitionSize", type number}, {"dictionaryFallbackShare", type number}, {"commitsPerDay", type number}, {"daysSinceLastCommit", Int64.Type}, {"hasVacuum", type logical}, {"hasOptimize", type logical}, {"partitions", Int64.Type}, {"partitionsKept", Int64.Type}})
+				in
+				    Typed
+
+	annotation PBI_ResultType = Table

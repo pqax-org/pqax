@@ -1,0 +1,16 @@
+relationship c3e5d3e6-c473-5dcd-8c11-7fbd62b7549d
+	fromColumn: Tables.footprintId
+	toColumn: Footprints.footprintId
+
+relationship 411176d0-b80b-53be-80e4-8dd40ecc5f34
+	fromColumn: Columns.footprintId
+	toColumn: Footprints.footprintId
+
+relationship 32da6289-bbcb-564f-b37f-c9afbd30e61c
+	fromColumn: Collection.footprintId
+	toColumn: Footprints.footprintId
+
+relationship 83efdd41-d057-5cfa-b294-35192ed0fea7
+	fromColumn: Footprints.collectionDate
+	toColumn: Date.Date
+

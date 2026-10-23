@@ -1,0 +1,26 @@
+/// The folder of a Parquet export of pqax export: the folder given to --to, with one subfolder per table.
+expression PqaxExportFolder = "C:\PQAX\export" meta [IsParameterQuery = true, IsParameterQueryRequired = true, Type = type text]
+	lineageTag: c3f8afa0-c258-574b-b6c0-1164a7990935
+
+	annotation PBI_ResultType = Text
+
+/// The rows of an output table of a Parquet export: every Parquet file of its subfolder, appended.
+expression PqaxTable =
+		(name as text) as table =>
+		let
+		    Path = Text.TrimEnd(PqaxExportFolder, {"\", "/"}) & "\" & name,
+		    Files = Table.SelectRows(Folder.Files(Path), each Text.Lower([Extension]) = ".parquet" and not Text.StartsWith([Name], ".")),
+		    Combined = Table.Combine(List.Transform(Files[Content], each Parquet.Document(_)))
+		in
+		    Combined
+	lineageTag: 41bb9a08-8988-5834-9d92-db2db2645fee
+
+	annotation PBI_ResultType = Function
+
+/// A timestamp of the export, which Parquet stores in UTC, as a datetime in UTC.
+expression PqaxUtc =
+		(value as any) as any =>
+		    if value is datetimezone then DateTimeZone.RemoveZone(DateTimeZone.SwitchZone(value, 0)) else value
+	lineageTag: 6695708f-2976-57bf-ba6f-31426076fb65
+
+	annotation PBI_ResultType = Function

@@ -1,0 +1,200 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/report/definition/visualContainer/2.12.0/schema.json",
+  "name": "a269181d8238510b8934",
+  "position": {
+    "x": 210,
+    "y": 410,
+    "z": 5,
+    "height": 300,
+    "width": 1060,
+    "tabOrder": 5
+  },
+  "visual": {
+    "visualType": "tableEx",
+    "query": {
+      "queryState": {
+        "Values": {
+          "projections": [
+            {
+              "field": {
+                "Column": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "Tables"
+                    }
+                  },
+                  "Property": "sourceName"
+                }
+              },
+              "queryRef": "Tables.sourceName",
+              "nativeQueryRef": "sourceName"
+            },
+            {
+              "field": {
+                "Column": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "Tables"
+                    }
+                  },
+                  "Property": "label"
+                }
+              },
+              "queryRef": "Tables.label",
+              "nativeQueryRef": "label"
+            },
+            {
+              "field": {
+                "Measure": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "Storage"
+                    }
+                  },
+                  "Property": "Non-live"
+                }
+              },
+              "queryRef": "Storage.Non-live",
+              "nativeQueryRef": "Non-live"
+            },
+            {
+              "field": {
+                "Measure": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "Storage"
+                    }
+                  },
+                  "Property": "Unreferenced"
+                }
+              },
+              "queryRef": "Storage.Unreferenced",
+              "nativeQueryRef": "Unreferenced"
+            },
+            {
+              "field": {
+                "Measure": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "Storage"
+                    }
+                  },
+                  "Property": "Non-live Files"
+                }
+              },
+              "queryRef": "Storage.Non-live Files",
+              "nativeQueryRef": "Non-live Files"
+            },
+            {
+              "field": {
+                "Measure": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "Storage"
+                    }
+                  },
+                  "Property": "Unreferenced Files"
+                }
+              },
+              "queryRef": "Storage.Unreferenced Files",
+              "nativeQueryRef": "Unreferenced Files"
+            },
+            {
+              "field": {
+                "Measure": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "Storage"
+                    }
+                  },
+                  "Property": "Non-live Oldest Removed At"
+                }
+              },
+              "queryRef": "Storage.Non-live Oldest Removed At",
+              "nativeQueryRef": "Non-live Oldest Removed At"
+            },
+            {
+              "field": {
+                "Measure": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "Storage"
+                    }
+                  },
+                  "Property": "Non-live Newest Removed At"
+                }
+              },
+              "queryRef": "Storage.Non-live Newest Removed At",
+              "nativeQueryRef": "Non-live Newest Removed At"
+            },
+            {
+              "field": {
+                "Measure": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "Storage"
+                    }
+                  },
+                  "Property": "Last Vacuum At"
+                }
+              },
+              "queryRef": "Storage.Last Vacuum At",
+              "nativeQueryRef": "Last Vacuum At"
+            },
+            {
+              "field": {
+                "Measure": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "Storage"
+                    }
+                  },
+                  "Property": "Non-live Change"
+                }
+              },
+              "queryRef": "Storage.Non-live Change",
+              "nativeQueryRef": "Non-live Change"
+            },
+            {
+              "field": {
+                "Measure": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "Storage"
+                    }
+                  },
+                  "Property": "Unreferenced Change"
+                }
+              },
+              "queryRef": "Storage.Unreferenced Change",
+              "nativeQueryRef": "Unreferenced Change"
+            }
+          ]
+        }
+      }
+    },
+    "drillFilterOtherVisuals": true,
+    "visualContainerObjects": {
+      "title": [
+        {
+          "properties": {
+            "show": {
+              "expr": {
+                "Literal": {
+                  "Value": "true"
+                }
+              }
+            },
+            "text": {
+              "expr": {
+                "Literal": {
+                  "Value": "'Tables'"
+                }
+              }
+            }
+          }
+        }
+      ]
+    }
+  }
+}

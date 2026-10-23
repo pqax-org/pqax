@@ -1,0 +1,172 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/report/definition/visualContainer/2.12.0/schema.json",
+  "name": "38b41a436e9d5c68b546",
+  "position": {
+    "x": 210,
+    "y": 510,
+    "z": 8,
+    "height": 200,
+    "width": 1060,
+    "tabOrder": 8
+  },
+  "visual": {
+    "visualType": "tableEx",
+    "query": {
+      "queryState": {
+        "Values": {
+          "projections": [
+            {
+              "field": {
+                "Column": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "Tables"
+                    }
+                  },
+                  "Property": "sourceName"
+                }
+              },
+              "queryRef": "Tables.sourceName",
+              "nativeQueryRef": "sourceName"
+            },
+            {
+              "field": {
+                "Column": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "Tables"
+                    }
+                  },
+                  "Property": "label"
+                }
+              },
+              "queryRef": "Tables.label",
+              "nativeQueryRef": "label"
+            },
+            {
+              "field": {
+                "Measure": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "Storage"
+                    }
+                  },
+                  "Property": "Total"
+                }
+              },
+              "queryRef": "Storage.Total",
+              "nativeQueryRef": "Total"
+            },
+            {
+              "field": {
+                "Measure": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "Storage"
+                    }
+                  },
+                  "Property": "Live"
+                }
+              },
+              "queryRef": "Storage.Live",
+              "nativeQueryRef": "Live"
+            },
+            {
+              "field": {
+                "Measure": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "Storage"
+                    }
+                  },
+                  "Property": "Waste"
+                }
+              },
+              "queryRef": "Storage.Waste",
+              "nativeQueryRef": "Waste"
+            },
+            {
+              "field": {
+                "Measure": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "Storage"
+                    }
+                  },
+                  "Property": "Waste Share"
+                }
+              },
+              "queryRef": "Storage.Waste Share",
+              "nativeQueryRef": "Waste Share"
+            },
+            {
+              "field": {
+                "Measure": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "Storage"
+                    }
+                  },
+                  "Property": "Overhead"
+                }
+              },
+              "queryRef": "Storage.Overhead",
+              "nativeQueryRef": "Overhead"
+            },
+            {
+              "field": {
+                "Measure": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "Storage"
+                    }
+                  },
+                  "Property": "Total Change"
+                }
+              },
+              "queryRef": "Storage.Total Change",
+              "nativeQueryRef": "Total Change"
+            },
+            {
+              "field": {
+                "Measure": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "Storage"
+                    }
+                  },
+                  "Property": "Waste Change"
+                }
+              },
+              "queryRef": "Storage.Waste Change",
+              "nativeQueryRef": "Waste Change"
+            }
+          ]
+        }
+      }
+    },
+    "drillFilterOtherVisuals": true,
+    "visualContainerObjects": {
+      "title": [
+        {
+          "properties": {
+            "show": {
+              "expr": {
+                "Literal": {
+                  "Value": "true"
+                }
+              }
+            },
+            "text": {
+              "expr": {
+                "Literal": {
+                  "Value": "'Tables'"
+                }
+              }
+            }
+          }
+        }
+      ]
+    }
+  }
+}

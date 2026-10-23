@@ -1,0 +1,142 @@
+table Columns
+	lineageTag: 31f57632-81f8-556f-951d-e65f80b02221
+
+	/// The identifier of the footprint in the export: the SHA-256 of the bytes of its PQAX file, in lowercase hex. The same file, standalone or embedded in a VPAX, has the same id.
+	column footprintId
+		dataType: string
+		isHidden
+		lineageTag: 2412fa9a-a8d0-54ec-85c8-c12a749c0437
+		summarizeBy: none
+		sourceColumn: footprintId
+
+		annotation SummarizationSetBy = User
+
+	/// When the footprint was collected: CompletedAt of the collection, else StartedAt, in UTC.
+	column collectedAt
+		dataType: dateTime
+		formatString: yyyy-mm-dd hh:nn:ss
+		lineageTag: 4d5644f8-1f0d-51c3-9284-8549b2ca3f5b
+		summarizeBy: none
+		sourceColumn: collectedAt
+
+		annotation SummarizationSetBy = User
+
+	/// Id of the column in its footprint.
+	column id
+		dataType: int64
+		formatString: #,0
+		lineageTag: fde1fe74-d452-5797-bf4a-47b913655ff6
+		summarizeBy: none
+		sourceColumn: id
+
+		annotation SummarizationSetBy = User
+
+	/// Id of its table in the footprint.
+	column table
+		dataType: int64
+		formatString: #,0
+		lineageTag: 65dae42e-0232-5422-8316-81b7948dc902
+		summarizeBy: none
+		sourceColumn: table
+
+		annotation SummarizationSetBy = User
+
+	/// The label of its table.
+	column tableLabel
+		dataType: string
+		lineageTag: 47663ab6-db13-5238-9896-33e2bddb9730
+		summarizeBy: none
+		sourceColumn: tableLabel
+
+		annotation SummarizationSetBy = User
+
+	/// Name of the column.
+	column name
+		dataType: string
+		lineageTag: 4eb4a373-22fd-532e-9d6d-faf1bfc83a7f
+		summarizeBy: none
+		sourceColumn: name
+
+		annotation SummarizationSetBy = User
+
+	/// Name of the column, else Column and its id.
+	column label
+		dataType: string
+		lineageTag: a5a3537e-6917-53c4-8182-0970968a6e01
+		summarizeBy: none
+		sourceColumn: label
+
+		annotation SummarizationSetBy = User
+
+	/// NullShare, 10.6: min(1, NullCount / ValueCount).
+	column nullShare
+		dataType: double
+		formatString: #,0.###
+		lineageTag: 548996f8-f2fe-51e5-89e6-ecc6eea0f7f2
+		summarizeBy: none
+		sourceColumn: nullShare
+
+		annotation SummarizationSetBy = User
+
+	/// CompressionRatio, 10.6: UncompressedSize / CompressedSize of the column.
+	column compressionRatio
+		dataType: double
+		formatString: #,0.###
+		lineageTag: d317db1e-6b90-5186-a9ca-f1de61df79f6
+		summarizeBy: none
+		sourceColumn: compressionRatio
+
+		annotation SummarizationSetBy = User
+
+	/// DictionaryShare, 10.6: DictionaryChunkCount / ChunkCount.
+	column dictionaryShare
+		dataType: double
+		formatString: #,0.###
+		lineageTag: 61314692-9b97-5eef-ab98-43fb9688f6d2
+		summarizeBy: none
+		sourceColumn: dictionaryShare
+
+		annotation SummarizationSetBy = User
+
+	/// DictionaryFallbackShare, 10.6: FallbackChunkCount / DictionaryChunkCount.
+	column dictionaryFallbackShare
+		dataType: double
+		formatString: #,0.###
+		lineageTag: c63d9ead-b505-5f05-beda-5151368a6d2e
+		summarizeBy: none
+		sourceColumn: dictionaryFallbackShare
+
+		annotation SummarizationSetBy = User
+
+	/// AverageValueLength, 10.6: UnencodedByteArrayDataBytes / (ValueCount - NullCount).
+	column averageValueLength
+		dataType: double
+		formatString: #,0.###
+		lineageTag: 0cb70f79-45e5-56a6-8583-93790a6d6b26
+		summarizeBy: none
+		sourceColumn: averageValueLength
+
+		annotation SummarizationSetBy = User
+
+	/// FilesWithoutColumnShare, 10.6: FileCountWithoutColumn / FooterCount of its table.
+	column filesWithoutColumnShare
+		dataType: double
+		formatString: #,0.###
+		lineageTag: 8c4edb19-55fe-5cbc-8239-bf5fc473c961
+		summarizeBy: none
+		sourceColumn: filesWithoutColumnShare
+
+		annotation SummarizationSetBy = User
+
+	partition Columns = m
+		mode: import
+		source =
+				let
+				    Source = PqaxTable("columnMeasures"),
+				    Selected = Table.SelectColumns(Source, {"footprintId", "collectedAt", "id", "table", "tableLabel", "name", "label", "nullShare", "compressionRatio", "dictionaryShare", "dictionaryFallbackShare", "averageValueLength", "filesWithoutColumnShare"}, MissingField.UseNull),
+				    Utc = Table.TransformColumns(Selected, List.Transform({"collectedAt"}, each {_, PqaxUtc, type datetime})),
+				    Typed = Table.TransformColumnTypes(Utc, {{"footprintId", type text}, {"id", Int64.Type}, {"table", Int64.Type}, {"tableLabel", type text}, {"name", type text}, {"label", type text}, {"nullShare", type number}, {"compressionRatio", type number}, {"dictionaryShare", type number}, {"dictionaryFallbackShare", type number}, {"averageValueLength", type number}, {"filesWithoutColumnShare", type number}})
+				in
+				    Typed
+
+	annotation PBI_ResultType = Table
