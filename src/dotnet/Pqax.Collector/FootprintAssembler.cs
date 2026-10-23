@@ -75,7 +75,7 @@ internal static class FootprintAssembler
             Namespace = table.Location.Namespace.ToArray(),
             Name = table.Location.Name,
             Location = table.Location.Location,
-            Format = "Delta",
+            Format = table.Location.Format,
             TableId = table.TableId,
             Description = table.Description,
             CreatedAt = table.CreatedAt,

@@ -6,7 +6,10 @@ namespace Pqax.Collector;
 /// <summary>How a <see cref="OneLakeStorage"/> connects.</summary>
 public sealed class OneLakeStorageOptions
 {
-    /// <summary>The DFS endpoint. The default is <see cref="OneLakeStorage.DefaultEndpoint"/>.</summary>
+    /// <summary>
+    /// The DFS endpoint. The default is <see cref="OneLakeStorage.DefaultEndpoint"/>; a regional OneLake endpoint, or the DFS
+    /// endpoint of a storage account with hierarchical namespace, such as <c>https://&lt;account&gt;.dfs.core.windows.net</c>.
+    /// </summary>
     public Uri Endpoint { get; set; } = OneLakeStorage.DefaultEndpoint;
 
     /// <summary>
