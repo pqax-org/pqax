@@ -4,7 +4,7 @@ The packages of a release share its version number, as section 7.1 of the [contr
 
 ## Unreleased
 
-Three tools: unattended sign-in for `pqax collect`, templates that collect a footprint on a schedule, and `pqax tables`, with the derived measures of the storage views in C# and in Python, and the object model defines those measures in its section 10. The format does not change.
+Three tools: unattended sign-in for `pqax collect`, templates that collect a footprint on a schedule, and `pqax tables`, with the derived measures of the storage views in C# and in Python, and the object model defines those measures in its section 10. C# and Python now offer every measure of section 10, as the storage views do. The format does not change.
 
 ### Format
 
@@ -16,7 +16,7 @@ Three tools: unattended sign-in for `pqax collect`, templates that collect a foo
 
 | Package | What changes | Format |
 |---|---|---|
-| `Pqax` | `StorageMeasures` computes the derived measures of the tables as section 10 of the object model defines them, and as the storage views do: the stack with its waste and overhead, the deleted rows, the small files, the ratios, and the pace of the commits. The waste, the overhead, the data, and the total of a stack are `double?`: the data and the shares are null when the live data is, and the other three when every component they add is absent. The commits per day divide the commits read only. | Reads 0.1 and 0.2, writes 0.2 |
+| `Pqax` | `StorageMeasures` computes the derived measures of the tables as section 10 of the object model defines them, and as the storage views do: the stack with its waste and overhead, the deleted rows, the small files, the ratios, and the pace of the commits. The waste, the overhead, the data, and the total of a stack are `double?`: the data and the shares are null when the live data is, and the other three when every component they add is absent. The commits per day divide the commits read only. It offers every measure of section 10, with the names and the nulls of the storage views: besides the measures that `pqax tables` shows, the share of each component of the stack, the file size figures, the V-Order shares, VACUUM and OPTIMIZE, and the partitions of a table, the measures of each column, `StorageMeasures.ForColumns`, and those of the collection, `StorageMeasures.ForCollection`. `Compute` reads the `partitions` table too. Only the two measures over a set of columns stay in the views. | Reads 0.1 and 0.2, writes 0.2 |
 | `Pqax.Cli` | `pqax collect` signs in with `--client-id` and `--client-secret-env`, `--client-certificate`, `--managed-identity`, `--azure-cli`, `--access-token-env`, or `--env-credential`, besides the device code, still the default, and the browser. A secret is read from an environment variable, never from the command line, and is not printed or written. A refused sign-in or request is one line with its code and the likely cause. `pqax tables` prints one row per table with its rows, files, live bytes, waste, and waste share, or one JSON object with `--json`; a measure that is null is `n/a` in the table and `null` in the JSON. | Reads 0.1 and 0.2, writes 0.2 |
 | `Pqax.Collector` | No change of the code. The README shows how to pass any `TokenCredential`, and the permissions of a service principal. | Writes 0.2 |
 | `Pqax.Collector.ParquetNet` | No change | Reads and writes no PQAX file |
@@ -29,7 +29,7 @@ Every package carries the PQAX icon, the mark of [brand/](brand/README.md).
 
 ### PyPI
 
-`pqax` has the module `measures`, the same measures as the storage views, computed as section 10 of the object model defines them, and the command `python -m pqax tables`, which prints `n/a` for a measure that is null. Reads 0.1 and 0.2, writes 0.2.
+`pqax` has the module `measures`, the same measures as the storage views, computed as section 10 of the object model defines them, and the command `python -m pqax tables`, which prints `n/a` for a measure that is null. The module offers every measure of section 10 that C# offers: `measure_tables` for the tables, with the shares of the stack, `files`, VACUUM and OPTIMIZE, and `partitions`, `measure_columns` for the columns, and `measure_collection` for the collection, and `measure` returns the three. The JSON of `pqax tables --json`, in C# and in Python, keeps its keys. Reads 0.1 and 0.2, writes 0.2.
 
 ### Templates
 
@@ -37,7 +37,7 @@ A new folder, `templates/`, with files to copy elsewhere. `github-actions/pqax-f
 
 ### Conformance kit
 
-`expected/measures/` holds the derived measures of every valid sample, as the storage views compute them, and `make_measures.py` rebuilds them. `cross_check.py` computes the measures with the three implementations and compares them with these files.
+`expected/measures/` holds the derived measures of every valid sample, as the storage views compute them, and `make_measures.py` rebuilds them. `cross_check.py` computes the measures with the three implementations and compares them with these files. The files hold every measure of section 10 that the three implementations share, for the tables, the columns, and the collection, and the comparison has no tolerance.
 
 ## 0.2.0 - 2026-10-21
 

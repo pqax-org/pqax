@@ -28,10 +28,29 @@
         "waste": 976.1,
         "overhead": 16316,
         "wasteShare": 0.006256610110825519,
-        "overheadShare": 0.10458236919191595
+        "overheadShare": 0.10458236919191595,
+        "shares": {
+          "live": 0.9937433898891744,
+          "nonLive": 0.004724025869970707,
+          "unreferenced": 0,
+          "deleted": 0.0015325842408548114,
+          "stale": 0,
+          "metadata": 0.07992385152329003,
+          "footers": 0.02465851766862593
+        }
       },
       "smallFiles": {"threshold": 134217728, "count": 3, "shareAtLeast": 1},
       "tinyFiles": {"threshold": 8388608, "count": 3, "shareAtLeast": 1},
+      "files": {
+        "count": 3,
+        "sum": 159121,
+        "minimum": 28252,
+        "firstQuartile": 28252,
+        "median": 47820,
+        "thirdQuartile": 83049,
+        "maximum": 83049,
+        "vOrder": {"share": 0.3333333333333333, "bytesShare": 0.17755041760672696}
+      },
       "measures": {
         "compressionRatio": 2.0073306897631222,
         "deletedRowShare": 0.0014705882352941176,
@@ -43,7 +62,21 @@
         "averagePartitionSize": 79560.5,
         "dictionaryFallbackShare": 0
       },
-      "maintenance": {"lastCommitAt": "2023-11-14T22:15:20.000Z", "commitsPerDay": 4, "daysSinceLastCommit": 1055}
+      "maintenance": {
+        "lastCommitAt": "2023-11-14T22:15:20.000Z",
+        "commitsPerDay": 4,
+        "daysSinceLastCommit": 1055,
+        "hasVacuum": false,
+        "lastVacuumAt": null,
+        "hasOptimize": true,
+        "lastOptimizeAt": "2023-11-14T22:14:50.000Z"
+      },
+      "partitions": {
+        "count": 2,
+        "kept": 2,
+        "oldestModifiedAt": "2023-11-14T22:15:00.000Z",
+        "newestModifiedAt": "2023-11-14T22:15:10.000Z"
+      }
     },
     {
       "id": 2,
@@ -67,10 +100,29 @@
         "waste": 0,
         "overhead": 2626,
         "wasteShare": 0,
-        "overheadShare": 0.06797825524203986
+        "overheadShare": 0.06797825524203986,
+        "shares": {
+          "live": 1,
+          "nonLive": 0,
+          "unreferenced": 0,
+          "deleted": 0,
+          "stale": 0,
+          "metadata": 0.0355164380015532,
+          "footers": 0.03246181724048667
+        }
       },
       "smallFiles": {"threshold": 134217728, "count": 2, "shareAtLeast": 1},
       "tinyFiles": {"threshold": 8388608, "count": 2, "shareAtLeast": 1},
+      "files": {
+        "count": 2,
+        "sum": 39884,
+        "minimum": 1781,
+        "firstQuartile": 1781,
+        "median": 38103,
+        "thirdQuartile": 38103,
+        "maximum": 38103,
+        "vOrder": {"share": 0, "bytesShare": 0}
+      },
       "measures": {
         "compressionRatio": 1.961599916179899,
         "deletedRowShare": 0,
@@ -82,7 +134,152 @@
         "averagePartitionSize": null,
         "dictionaryFallbackShare": 0
       },
-      "maintenance": {"lastCommitAt": "2023-11-14T22:18:20.000Z", "commitsPerDay": 2, "daysSinceLastCommit": 1055}
+      "maintenance": {
+        "lastCommitAt": "2023-11-14T22:18:20.000Z",
+        "commitsPerDay": 2,
+        "daysSinceLastCommit": 1055,
+        "hasVacuum": false,
+        "lastVacuumAt": null,
+        "hasOptimize": false,
+        "lastOptimizeAt": null
+      },
+      "partitions": {"count": null, "kept": 0, "oldestModifiedAt": null, "newestModifiedAt": null}
     }
-  ]
+  ],
+  "columns": [
+    {
+      "id": 1,
+      "table": 1,
+      "name": "id",
+      "label": "id",
+      "nullShare": 0,
+      "compressionRatio": 7.034014658821101,
+      "dictionaryShare": 0,
+      "dictionaryFallbackShare": null,
+      "averageValueLength": null,
+      "filesWithoutColumnShare": 0
+    },
+    {
+      "id": 2,
+      "table": 1,
+      "name": "category",
+      "label": "category",
+      "nullShare": 0,
+      "compressionRatio": 6.684577808792742,
+      "dictionaryShare": 1,
+      "dictionaryFallbackShare": 0,
+      "averageValueLength": null,
+      "filesWithoutColumnShare": 0
+    },
+    {
+      "id": 3,
+      "table": 1,
+      "name": "name",
+      "label": "name",
+      "nullShare": 0,
+      "compressionRatio": 6.205227492739594,
+      "dictionaryShare": 1,
+      "dictionaryFallbackShare": 0,
+      "averageValueLength": null,
+      "filesWithoutColumnShare": 0
+    },
+    {
+      "id": 4,
+      "table": 1,
+      "name": "amount",
+      "label": "amount",
+      "nullShare": 0,
+      "compressionRatio": 1.0614928070161773,
+      "dictionaryShare": 0,
+      "dictionaryFallbackShare": null,
+      "averageValueLength": null,
+      "filesWithoutColumnShare": 0
+    },
+    {
+      "id": 5,
+      "table": 1,
+      "name": "Year",
+      "label": "Year",
+      "nullShare": null,
+      "compressionRatio": null,
+      "dictionaryShare": null,
+      "dictionaryFallbackShare": null,
+      "averageValueLength": null,
+      "filesWithoutColumnShare": null
+    },
+    {
+      "id": 6,
+      "table": 2,
+      "name": "id",
+      "label": "id",
+      "nullShare": 0,
+      "compressionRatio": 5.701924744234438,
+      "dictionaryShare": 0,
+      "dictionaryFallbackShare": null,
+      "averageValueLength": null,
+      "filesWithoutColumnShare": 0
+    },
+    {
+      "id": 7,
+      "table": 2,
+      "name": "category",
+      "label": "category",
+      "nullShare": 0,
+      "compressionRatio": 5.8958837772397095,
+      "dictionaryShare": 1,
+      "dictionaryFallbackShare": 0,
+      "averageValueLength": null,
+      "filesWithoutColumnShare": 0
+    },
+    {
+      "id": 8,
+      "table": 2,
+      "name": "name",
+      "label": "name",
+      "nullShare": 0,
+      "compressionRatio": 6.685,
+      "dictionaryShare": 0.6666666666666666,
+      "dictionaryFallbackShare": 0,
+      "averageValueLength": null,
+      "filesWithoutColumnShare": 0
+    },
+    {
+      "id": 9,
+      "table": 2,
+      "name": "amount",
+      "label": "amount",
+      "nullShare": 0,
+      "compressionRatio": 1.0609091202374423,
+      "dictionaryShare": 0,
+      "dictionaryFallbackShare": null,
+      "averageValueLength": null,
+      "filesWithoutColumnShare": 0
+    },
+    {
+      "id": 10,
+      "table": 2,
+      "name": "Year",
+      "label": "Year",
+      "nullShare": null,
+      "compressionRatio": null,
+      "dictionaryShare": null,
+      "dictionaryFallbackShare": null,
+      "averageValueLength": null,
+      "filesWithoutColumnShare": 1
+    }
+  ],
+  "collection": {
+    "totals": {
+      "sources": 2,
+      "tables": 2,
+      "columns": 10,
+      "files": 5,
+      "fileSize": 199005,
+      "rowCount": 21100,
+      "footprint": 213583,
+      "waste": 976.1,
+      "overhead": 18942
+    },
+    "depths": {"Pages": 2}
+  }
 }

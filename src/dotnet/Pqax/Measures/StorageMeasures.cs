@@ -6,10 +6,12 @@ using System.Linq;
 namespace Pqax;
 
 /// <summary>
-/// The derived measures of the tables of a footprint: the storage stack with its waste and overhead, the deleted rows,
-/// the small files, the ratios, and the pace of the commits, as section 10 of the object model defines them. They follow
-/// the view model of the storage views, <c>src/typescript/views/src/model.ts</c>, function by function and with its
-/// names, so that the numbers are the same. A value that cannot be computed is null, never 0.
+/// The derived measures of a footprint, as section 10 of the object model defines them: for each table the storage stack
+/// with its waste, its overhead, and the share of each component, the file sizes, the small files, and the V-Order
+/// shares, the history, the ratios, and the partitions; the measures of each column; and those of the collection. They
+/// follow the view model of the storage views, <c>src/typescript/views/src/model.ts</c>, function by function and with
+/// its names, so that the numbers are the same. The two measures over a set of columns stay in the views. A value that
+/// cannot be computed is null, never 0.
 /// </summary>
 public static class StorageMeasures
 {
@@ -167,12 +169,13 @@ public static class StorageMeasures
     }
 
     /// <summary>
-    /// The measures of a document: the summary, and the <c>files</c> table when the manifest states rows for it. A
-    /// <c>files</c> table that cannot be read is left out with a warning, and the measures use the totals of the summary.
+    /// The measures of a document: the summary, and the <c>files</c> and <c>partitions</c> tables when the manifest states
+    /// rows for them. A detail table that cannot be read is left out with a warning, and the measures use the totals of
+    /// the summary.
     /// </summary>
     /// <param name="document">An open document.</param>
     /// <param name="options">The thresholds of the small files; null for the defaults.</param>
-    /// <returns>The measures of every table.</returns>
+    /// <returns>The measures of every table, of every column, and of the collection.</returns>
     public static FootprintMeasures Compute(PqaxDocument document, MeasureOptions? options = null)
     {
         if (document == null)
@@ -181,22 +184,30 @@ public static class StorageMeasures
         }
 
         var warnings = new List<string>();
-        IReadOnlyList<FileRow>? files = null;
-        if (document.RowCount("files") > 0)
+        IReadOnlyList<FileRow>? files = Detail<FileRow>(document, "files", document.ReadFiles, warnings);
+        IReadOnlyList<PartitionRow>? partitions = Detail<PartitionRow>(document, "partitions", document.ReadPartitions, warnings);
+        IReadOnlyList<TableStorage> tables = ForTables(document.Summary, files, document.Manifest.Collection, options, partitions);
+        return new FootprintMeasures(tables, ForColumns(document.Summary), ForCollection(document.Summary, tables), files != null && files.Count > 0, warnings);
+    }
+
+    /// <summary>A detail table when the manifest states rows for it, else null; a warning when it cannot be read.</summary>
+    private static IReadOnlyList<T>? Detail<T>(PqaxDocument document, string name, Func<IReadOnlyList<T>> read, List<string> warnings)
+    {
+        if (document.RowCount(name) <= 0)
         {
-            try
-            {
-                files = document.ReadFiles();
-            }
-            catch (Exception e) when (e is PqaxFormatException || e is IOException)
-            {
-                string code = e is PqaxFormatException format ? $" ({format.Code})" : string.Empty;
-                warnings.Add($"The files table could not be read{code}. The measures use the totals of the summary.");
-            }
+            return null;
         }
 
-        IReadOnlyList<TableStorage> tables = ForTables(document.Summary, files, document.Manifest.Collection, options);
-        return new FootprintMeasures(tables, files != null && files.Count > 0, warnings);
+        try
+        {
+            return read();
+        }
+        catch (Exception e) when (e is PqaxFormatException || e is IOException)
+        {
+            string code = e is PqaxFormatException format ? $" ({format.Code})" : string.Empty;
+            warnings.Add($"The {name} table could not be read{code}. The measures use the totals of the summary.");
+            return null;
+        }
     }
 
     /// <summary>The measures of the rows of <c>tables</c>, in the order of the file.</summary>
@@ -204,8 +215,9 @@ public static class StorageMeasures
     /// <param name="files">The <c>files</c> table, or null when the file does not have it or it was not read.</param>
     /// <param name="collection">The collection of the manifest, for the days since the last commit; null when unknown.</param>
     /// <param name="options">The thresholds of the small files; null for the defaults.</param>
+    /// <param name="partitions">The <c>partitions</c> table, or null when the file does not have it or it was not read.</param>
     /// <returns>One <see cref="TableStorage"/> for each row of <c>tables</c>.</returns>
-    public static IReadOnlyList<TableStorage> ForTables(Summary summary, IReadOnlyList<FileRow>? files, CollectionInfo? collection, MeasureOptions? options = null)
+    public static IReadOnlyList<TableStorage> ForTables(Summary summary, IReadOnlyList<FileRow>? files, CollectionInfo? collection, MeasureOptions? options = null, IReadOnlyList<PartitionRow>? partitions = null)
     {
         if (summary == null)
         {
@@ -215,6 +227,7 @@ public static class StorageMeasures
         long threshold = options != null && options.SmallFileSize > 0 ? options.SmallFileSize : DefaultSmallFileSize;
         long tinyThreshold = options != null && options.TinyFileSize > 0 ? options.TinyFileSize : DefaultTinyFileSize;
         Dictionary<long, FilesOfTable> byTable = FilesByTable(files);
+        Dictionary<long, PartitionsOfTable> partitionsByTable = PartitionsByTable(partitions);
         DateTimeOffset? collectedAt = collection?.CompletedAt ?? collection?.StartedAt;
 
         var operationsByTable = new Dictionary<long, List<OperationRow>>();
@@ -272,34 +285,94 @@ public static class StorageMeasures
                 DeletedSource = deletedSource,
             });
 
-            // The small files: counted from the files, else bounded from the quartiles of fileSizes.
+            // The file sizes and the small files: from the files, else from fileSizes, whose quartiles bound the small files.
             SmallFiles smallFiles;
             SmallFiles tinyFiles;
+            double? sizeCount;
+            double? sum;
+            double? minimum;
+            double? firstQuartile;
+            double? median;
+            double? thirdQuartile;
+            double? maximum;
             if (fromFiles != null && fromFiles.Sizes.Count > 0)
             {
-                smallFiles = Below(fromFiles.Sizes, threshold);
-                tinyFiles = Below(fromFiles.Sizes, tinyThreshold);
+                List<double> sorted = fromFiles.Sizes;
+                int n = sorted.Count;
+                sizeCount = n;
+                sum = 0;
+                foreach (double value in sorted)
+                {
+                    sum += value;
+                }
+
+                // The quartiles by position, as the collector takes them: sorted[n/4], sorted[n/2], sorted[3n/4].
+                minimum = sorted[0];
+                firstQuartile = sorted[n / 4];
+                median = sorted[n / 2];
+                thirdQuartile = sorted[3 * n / 4];
+                maximum = sorted[n - 1];
+                smallFiles = Below(sorted, threshold);
+                tinyFiles = Below(sorted, tinyThreshold);
             }
             else
             {
                 Distribution? sizes = table.FileSizes;
-                double? count = Member(sizes?.Count) ?? fileCount;
-                double? minimum = Member(sizes?.Minimum);
-                double? firstQuartile = Member(sizes?.FirstQuartile);
-                double? median = Member(sizes?.Median);
-                double? thirdQuartile = Member(sizes?.ThirdQuartile);
-                double? maximum = Member(sizes?.Maximum);
-                smallFiles = new SmallFiles(threshold, null, SmallShareAtLeast(count, minimum, firstQuartile, median, thirdQuartile, maximum, threshold));
-                tinyFiles = new SmallFiles(tinyThreshold, null, SmallShareAtLeast(count, minimum, firstQuartile, median, thirdQuartile, maximum, tinyThreshold));
+                sizeCount = Member(sizes?.Count) ?? fileCount;
+                sum = Member(sizes?.Sum) ?? fileSize;
+                minimum = Member(sizes?.Minimum);
+                firstQuartile = Member(sizes?.FirstQuartile);
+                median = Member(sizes?.Median);
+                thirdQuartile = Member(sizes?.ThirdQuartile);
+                maximum = Member(sizes?.Maximum);
+                smallFiles = new SmallFiles(threshold, null, SmallShareAtLeast(sizeCount, minimum, firstQuartile, median, thirdQuartile, maximum, threshold));
+                tinyFiles = new SmallFiles(tinyThreshold, null, SmallShareAtLeast(sizeCount, minimum, firstQuartile, median, thirdQuartile, maximum, tinyThreshold));
             }
 
-            // The pace of the commits.
+            // The V-Order shares: from the files when one of them says, else from vOrderedFileCount over fileCount.
+            double? vOrderShare = null;
+            double? vOrderBytesShare = null;
+            if (fromFiles != null && fromFiles.VOrderKnown > 0)
+            {
+                vOrderShare = (double)fromFiles.VOrdered / fromFiles.VOrderKnown;
+                vOrderBytesShare = Ratio(fromFiles.VOrderedBytes, fromFiles.VOrderKnownBytes);
+            }
+            else
+            {
+                double? vOrdered = Size(table.VOrderedFileCount);
+                if (vOrdered.HasValue && fileCount > 0)
+                {
+                    vOrderShare = Math.Min(1, vOrdered.Value / fileCount.Value);
+                }
+            }
+
+            var fileMeasures = new FileMeasures(Whole(sizeCount), sum, minimum, firstQuartile, median, thirdQuartile, maximum, vOrderShare, vOrderBytesShare);
+
+            // The history: the pace of the commits, and the VACUUM and OPTIMIZE among the operations, null without any.
             DateTimeOffset? lastOperationAt = null;
+            DateTimeOffset? lastVacuumAt = null;
+            DateTimeOffset? lastOptimizeAt = null;
+            bool? hasVacuum = null;
+            bool? hasOptimize = null;
             if (validId.HasValue && operationsByTable.TryGetValue(validId.Value, out List<OperationRow>? operations))
             {
+                hasVacuum = false;
+                hasOptimize = false;
                 foreach (OperationRow operation in operations)
                 {
                     lastOperationAt = Later(lastOperationAt, operation.LastAt);
+                    string name = operation.Name!.ToUpperInvariant();
+                    if (name.Contains("VACUUM"))
+                    {
+                        hasVacuum = true;
+                        lastVacuumAt = Later(lastVacuumAt, operation.LastAt);
+                    }
+
+                    if (name.Contains("OPTIMIZE"))
+                    {
+                        hasOptimize = true;
+                        lastOptimizeAt = Later(lastOptimizeAt, operation.LastAt);
+                    }
                 }
             }
 
@@ -307,12 +380,20 @@ public static class StorageMeasures
             var maintenance = new MaintenanceMeasures(
                 lastCommitAt,
                 CommitsPerDay(Size(table.CommitsRead), table.OldestCommitAt, lastCommitAt),
-                DaysBetween(lastCommitAt, collectedAt));
+                DaysBetween(lastCommitAt, collectedAt),
+                hasVacuum,
+                lastVacuumAt,
+                hasOptimize,
+                lastOptimizeAt);
+
+            // The partitions: partitionCount, else the partitions kept.
+            PartitionsOfTable? kept = validId.HasValue && partitionsByTable.TryGetValue(validId.Value, out PartitionsOfTable? foundPartitions) ? foundPartitions : null;
+            var partitionMeasures = new PartitionMeasures(Whole(table.PartitionCount) ?? kept?.Kept, kept?.Kept ?? 0, kept?.Oldest, kept?.Newest);
 
             // The ratios.
             Distribution? rowGroups = table.RowGroupRowCounts;
             double? footerCount = Size(table.FooterCount);
-            Distribution? partitions = table.PartitionSizes;
+            Distribution? partitionSizes = table.PartitionSizes;
             double? fallback = null;
             double? dictionary = null;
             if (validId.HasValue && columnsByTable.TryGetValue(validId.Value, out List<ColumnRow>? columns))
@@ -338,14 +419,109 @@ public static class StorageMeasures
                 Ratio(footerCount, fileCount),
                 Ratio(staleColumnSize, compressedSize),
                 fileSize.HasValue && nonLiveFileSize.HasValue ? Ratio(nonLiveFileSize, fileSize.Value + nonLiveFileSize.Value) : null,
-                Ratio(Member(partitions?.Sum), Member(partitions?.Count)) ?? Ratio(fileSize, Size(table.PartitionCount)),
+                Ratio(Member(partitionSizes?.Sum), Member(partitionSizes?.Count)) ?? Ratio(fileSize, Size(table.PartitionCount)),
                 Ratio(fallback, dictionary));
 
             result.Add(new TableStorage(validId, row, table.Name, Label(table, row, validId), Whole(table.RowCount), Whole(table.FileCount), Whole(table.FileSize),
-                stack, smallFiles, tinyFiles, measures, maintenance));
+                stack, smallFiles, tinyFiles, fileMeasures, measures, maintenance, partitionMeasures));
         }
 
         return result;
+    }
+
+    /// <summary>The measures of the rows of <c>columns</c>, in the order of the file, as section 10.6 defines them.</summary>
+    /// <param name="summary">The summary tables.</param>
+    /// <returns>One <see cref="ColumnStorage"/> for each row of <c>columns</c>.</returns>
+    public static IReadOnlyList<ColumnStorage> ForColumns(Summary summary)
+    {
+        if (summary == null)
+        {
+            throw new ArgumentNullException(nameof(summary));
+        }
+
+        // The footers read of each table, by the first row that has its id.
+        var footerCountById = new Dictionary<long, double?>();
+        foreach (TableRow table in summary.Tables)
+        {
+            if (table.Id > 0 && !footerCountById.ContainsKey(table.Id))
+            {
+                footerCountById.Add(table.Id, Size(table.FooterCount));
+            }
+        }
+
+        var seen = new HashSet<long>();
+        var result = new List<ColumnStorage>(summary.Columns.Count);
+        for (int row = 0; row < summary.Columns.Count; row++)
+        {
+            ColumnRow column = summary.Columns[row];
+            long? validId = column.Id > 0 && seen.Add(column.Id) ? column.Id : null;
+            long? table = IsId(column.Table) && footerCountById.ContainsKey(column.Table!.Value) ? column.Table : null;
+            double? valueCount = Size(column.ValueCount);
+            double? nullCount = Size(column.NullCount);
+            double? dictionaryChunkCount = Size(column.DictionaryChunkCount);
+            double? nonNull = valueCount.HasValue && nullCount.HasValue ? valueCount.Value - nullCount.Value : null;
+            double? footerCount = table.HasValue ? footerCountById[table.Value] : null;
+            result.Add(new ColumnStorage(
+                validId,
+                row,
+                table,
+                column.Name,
+                column.Name ?? (validId.HasValue ? $"Column {validId.Value}" : $"Column at row {row + 1}"),
+                nullCount.HasValue && valueCount > 0 ? Math.Min(1, nullCount.Value / valueCount!.Value) : null,
+                Ratio(Size(column.UncompressedSize), Size(column.CompressedSize)),
+                Ratio(dictionaryChunkCount, Size(column.ChunkCount)),
+                Ratio(Size(column.FallbackChunkCount), dictionaryChunkCount),
+                Ratio(Size(column.UnencodedByteArrayDataBytes), nonNull),
+                Ratio(Size(column.FileCountWithoutColumn), footerCount)));
+        }
+
+        return result;
+    }
+
+    /// <summary>The measures of the collection of section 10.7: the counts, the sums over the tables, and the depths.</summary>
+    /// <param name="summary">The summary tables.</param>
+    /// <param name="tables">The measures of the tables, from <see cref="ForTables"/>.</param>
+    /// <returns>The measures of the collection.</returns>
+    public static CollectionMeasures ForCollection(Summary summary, IReadOnlyList<TableStorage> tables)
+    {
+        if (summary == null)
+        {
+            throw new ArgumentNullException(nameof(summary));
+        }
+
+        if (tables == null)
+        {
+            throw new ArgumentNullException(nameof(tables));
+        }
+
+        var sources = new HashSet<long>(summary.Sources.Where(source => source.Id > 0).Select(source => source.Id));
+        var depths = new Dictionary<string, long>();
+        var order = new List<string>();
+        foreach (TableRow table in summary.Tables)
+        {
+            string depth = table.DetailDepth ?? "Unknown";
+            if (depths.TryGetValue(depth, out long count))
+            {
+                depths[depth] = count + 1;
+            }
+            else
+            {
+                depths.Add(depth, 1);
+                order.Add(depth);
+            }
+        }
+
+        return new CollectionMeasures(
+            sources.Count,
+            summary.Tables.Count,
+            summary.Columns.Count,
+            SumWhole(tables.Select(t => t.FileCount)),
+            SumWhole(tables.Select(t => t.FileSize)),
+            SumWhole(tables.Select(t => t.RowCount)),
+            SumKnown(tables.Select(t => t.Stack.Total).ToArray()),
+            SumKnown(tables.Select(t => t.Stack.Waste).ToArray()),
+            SumKnown(tables.Select(t => t.Stack.Overhead).ToArray()),
+            order.Select(depth => new KeyValuePair<string, long>(depth, depths[depth])).ToList());
     }
 
     /// <summary>What the <c>files</c> table says about one table.</summary>
@@ -353,9 +529,60 @@ public static class StorageMeasures
     {
         public List<double> Sizes { get; } = new List<double>();
 
+        public long VOrdered { get; set; }
+
+        public long VOrderKnown { get; set; }
+
+        public double VOrderedBytes { get; set; }
+
+        public double VOrderKnownBytes { get; set; }
+
         public double Deleted { get; set; }
 
         public int DeletedKnown { get; set; }
+    }
+
+    /// <summary>What the <c>partitions</c> table says about one table: the rows, and the range of <c>lastModifiedAt</c>.</summary>
+    private sealed class PartitionsOfTable
+    {
+        public long Kept { get; set; }
+
+        public DateTimeOffset? Oldest { get; set; }
+
+        public DateTimeOffset? Newest { get; set; }
+    }
+
+    private static Dictionary<long, PartitionsOfTable> PartitionsByTable(IReadOnlyList<PartitionRow>? partitions)
+    {
+        var result = new Dictionary<long, PartitionsOfTable>();
+        if (partitions == null)
+        {
+            return result;
+        }
+
+        foreach (PartitionRow partition in partitions)
+        {
+            if (!IsId(partition.Table))
+            {
+                continue;
+            }
+
+            if (!result.TryGetValue(partition.Table!.Value, out PartitionsOfTable? entry))
+            {
+                entry = new PartitionsOfTable();
+                result.Add(partition.Table.Value, entry);
+            }
+
+            entry.Kept++;
+            DateTimeOffset? modified = partition.LastModifiedAt;
+            if (modified.HasValue)
+            {
+                entry.Newest = Later(entry.Newest, modified);
+                entry.Oldest = !entry.Oldest.HasValue || modified.Value < entry.Oldest.Value ? modified : entry.Oldest;
+            }
+        }
+
+        return result;
     }
 
     private static Dictionary<long, FilesOfTable> FilesByTable(IReadOnlyList<FileRow>? files)
@@ -385,6 +612,17 @@ public static class StorageMeasures
                 entry.Sizes.Add(fileSize.Value);
             }
 
+            if (file.IsVOrdered.HasValue)
+            {
+                entry.VOrderKnown++;
+                entry.VOrderKnownBytes += fileSize ?? 0;
+                if (file.IsVOrdered.Value)
+                {
+                    entry.VOrdered++;
+                    entry.VOrderedBytes += fileSize ?? 0;
+                }
+            }
+
             // Only a file with a size counts, so that the files that give an estimate are among the sizes.
             double? estimate = fileSize.HasValue ? DeletedEstimate(fileSize, Size(file.DeletedRowCount), Size(file.RowCount)) : null;
             if (estimate.HasValue)
@@ -392,6 +630,12 @@ public static class StorageMeasures
                 entry.Deleted += estimate.Value;
                 entry.DeletedKnown++;
             }
+        }
+
+        // Sorted, for the quartiles by position and for the sum, which the views add from the smallest.
+        foreach (FilesOfTable entry in result.Values)
+        {
+            entry.Sizes.Sort();
         }
 
         return result;
@@ -462,6 +706,23 @@ public static class StorageMeasures
     private static double? Size(long? value) => value >= 0 ? value.Value : null;
 
     private static long? Whole(long? value) => value >= 0 ? value : null;
+
+    private static long? Whole(double? value) => value >= 0 ? (long)value.Value : null;
+
+    /// <summary>The sum of the values that are present, null when none is.</summary>
+    private static long? SumWhole(IEnumerable<long?> values)
+    {
+        long? total = null;
+        foreach (long? value in values)
+        {
+            if (value.HasValue)
+            {
+                total = (total ?? 0) + value.Value;
+            }
+        }
+
+        return total;
+    }
 
     /// <summary>A member of a distribution, as a size.</summary>
     private static double? Member(long? value) => Size(value);

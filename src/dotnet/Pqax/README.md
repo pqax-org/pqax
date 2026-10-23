@@ -146,34 +146,45 @@ The codes are those of the [rules of the conformance kit](https://github.com/pqa
 
 The validator never throws `PqaxFormatException`: it throws only for a null argument, and when the file cannot be read at all. A file does not have to be valid to be read: the reader opens most invalid files.
 
-## Measure the tables
+## Measure the tables, the columns, and the collection
 
-`StorageMeasures` computes the derived measures of each table as the [storage views](https://github.com/pqax-org/pqax/blob/main/src/typescript/views/README.md#derived-values) define them, function by function, with the same numbers: the storage stack with its waste and overhead, the deleted rows, the small files, the ratios, and the pace of the commits.
+`StorageMeasures` computes every derived measure of [section 10 of the object model](https://github.com/pqax-org/pqax/blob/main/docs/object-model.md#10-derived-measures) for the tables, the columns, and the collection, with the names and the numbers of the [storage views](https://github.com/pqax-org/pqax/blob/main/src/typescript/views/README.md): the storage stack with its waste, its overhead, and the share of each component, the file sizes, the small files, and the V-Order shares, the history with VACUUM and OPTIMIZE, the ratios, the partitions, the measures of each column, and the totals of the collection. Only the two measures over a set of columns, which the treemap of the views draws, are not here.
 
 ```csharp
 using PqaxDocument doc = PqaxDocument.Open("footprint.pqax");
-FootprintMeasures measures = StorageMeasures.Compute(doc);       // reads the files table when the file has it
+FootprintMeasures measures = StorageMeasures.Compute(doc);       // reads the files and partitions tables when the file has them
 foreach (TableStorage table in measures.Tables.OrderByDescending(t => t.Stack.Waste))
 {
-    Console.WriteLine($"{table.Label}: {table.Stack.Waste:N0} bytes of waste, {table.Stack.WasteShare:P1} of the data");
+    Console.WriteLine($"{table.Label}: {table.Stack.Waste:N0} bytes of waste, {table.Stack.WasteShare:P1} of the data, " +
+        $"median file {table.Files.Median:N0} bytes, V-Ordered {table.Files.VOrderShare:P0}, last VACUUM {table.Maintenance.LastVacuumAt}");
 }
+foreach (ColumnStorage column in measures.Columns.Where(c => c.NullShare > 0.5))
+{
+    Console.WriteLine($"{column.Label}: {column.NullShare:P0} null");
+}
+Console.WriteLine($"{measures.Collection.Tables} tables, {measures.Collection.Footprint:N0} bytes stored");
 ```
 
 | Member | What it is |
 |---|---|
-| `StorageMeasures.Compute(document, options)` | The measures of every table, from the summary and the `files` table. A `files` table that cannot be read becomes a warning, and the measures use the totals of the summary. |
-| `StorageMeasures.ForTables(summary, files, collection, options)` | The same from the tables, for a caller that read them |
+| `StorageMeasures.Compute(document, options)` | The measures of every table, column, and of the collection, from the summary and the `files` and `partitions` tables. A detail table that cannot be read becomes a warning, and the measures use the totals of the summary. |
+| `StorageMeasures.ForTables(summary, files, collection, options, partitions)` | The measures of the tables, for a caller that read the tables |
+| `StorageMeasures.ForColumns(summary)`, `ForCollection(summary, tables)` | The measures of the columns, and those of the collection from the tables that `ForTables` returned |
 | `StorageMeasures.StackOf`, `DeletedEstimate`, `SmallShareAtLeast`, `CommitsPerDay`, `DaysBetween`, `Ratio` | The derived values, one function each, as `stackOf`, `deletedEstimate`, `smallShareAtLeast`, `commitsPerDay`, `daysBetween`, and `ratio` of the views |
 | `StorageMeasures.StackComponents`, `WasteComponents`, `OverheadComponents` | The names of the components: `live`, `nonLive`, `unreferenced`, `deleted`, `stale`, `metadata`, `footers`; the first four after `live` are the waste, the last two the overhead |
-| `FootprintMeasures` | `Tables`, `FilesRead`, `Warnings` |
-| `TableStorage` | `Id`, `Row`, `Name`, `Label`, `RowCount`, `FileCount`, `FileSize`, `Stack`, `SmallFiles`, `TinyFiles`, `Measures`, `Maintenance`, and `WriteTo(Utf8JsonWriter)`, which writes the JSON of `pqax tables --json` for one table |
-| `StorageStack` | The seven components, `DeletedSource`, `Listed`, `Data`, `Total`, `Waste`, `Overhead`, `WasteShare`, `OverheadShare` |
+| `FootprintMeasures` | `Tables`, `Columns`, `Collection`, `FilesRead`, `Warnings` |
+| `TableStorage` | `Id`, `Row`, `Name`, `Label`, `RowCount`, `FileCount`, `FileSize`, `Stack`, `SmallFiles`, `TinyFiles`, `Files`, `Measures`, `Maintenance`, `Partitions`, and `WriteTo(Utf8JsonWriter)`, which writes the JSON of `pqax tables --json` for one table |
+| `StorageStack` | The seven components, `DeletedSource`, `Listed`, `Data`, `Total`, `Waste`, `Overhead`, `WasteShare`, `OverheadShare`, `Component(key)`, and `Share(key)`, the share of a component |
 | `SmallFiles` | `Threshold`, `Count` from the `files` table, `ShareAtLeast` |
+| `FileMeasures` | `Count`, `Sum`, `Minimum`, `FirstQuartile`, `Median`, `ThirdQuartile`, `Maximum`, `VOrderShare`, `VOrderBytesShare` |
 | `TableMeasures` | `CompressionRatio`, `DeletedRowShare`, `AverageFileSize`, `AverageRowGroupRows`, `FooterCoverage`, `StaleColumnShare`, `NonLiveShare`, `AveragePartitionSize`, `DictionaryFallbackShare` |
-| `MaintenanceMeasures` | `LastCommitAt`, `CommitsPerDay`, `DaysSinceLastCommit` |
+| `MaintenanceMeasures` | `LastCommitAt`, `CommitsPerDay`, `DaysSinceLastCommit`, `HasVacuum`, `LastVacuumAt`, `HasOptimize`, `LastOptimizeAt` |
+| `PartitionMeasures` | `Count`, `Kept`, `OldestModifiedAt`, `NewestModifiedAt` |
+| `ColumnStorage` | `Id`, `Row`, `Table`, `Name`, `Label`, `NullShare`, `CompressionRatio`, `DictionaryShare`, `DictionaryFallbackShare`, `AverageValueLength`, `FilesWithoutColumnShare` |
+| `CollectionMeasures` | `Sources`, `Tables`, `Columns`, `Files`, `FileSize`, `RowCount`, `Footprint`, `Waste`, `Overhead`, `Depths` |
 | `MeasureOptions` | `SmallFileSize`, 128 MiB by default, and `TinyFileSize`, 8 MiB |
 
-A value that cannot be computed is `null`, never 0: a stack component whose field the file lacks, such as the unreferenced files of a file of format 0.1, is `null`. The waste, the overhead, the data, and the total count such a component as 0, as the views do, so they are never `null`. The conformance kit holds the measures of the views for every sample, in `conformance/expected/measures`, and the tests compare these with them.
+A value that cannot be computed is `null`, never 0: a stack component whose field the file lacks, such as the unreferenced files of a file of format 0.1, is `null`. The waste, the overhead, and the total count such a component as 0, as the views do, and are `null` only when every component they add is absent. The conformance kit holds the measures of the views for every sample, in `conformance/expected/measures`, and the tests compare these with them.
 
 ## Write
 
@@ -290,7 +301,7 @@ The reader refuses a file with a `PqaxFormatException` only in these cases:
 | Not in the package | Where it is |
 |---|---|
 | Collect a footprint from a lakehouse or a folder, or read Parquet and Delta files | The package `Pqax.Collector` |
-| The measures of the columns, the V-Order share, the partitions, and the tree of the treemap | The view model of [`@pqax/views`](https://github.com/pqax-org/pqax/blob/main/src/typescript/views/README.md). `StorageMeasures` has the measures of the tables. |
+| The tree of the treemap, and the two measures over a set of columns that it draws | The view model of [`@pqax/views`](https://github.com/pqax-org/pqax/blob/main/src/typescript/views/README.md). `StorageMeasures` has every other measure. |
 | Write a VPAX file, or embed a footprint in one | `System.IO.Packaging`, as above, and later the VPAX library |
 | Obfuscate names | Later, in the VPAX obfuscator, from `FootprintBuilder.From` |
 | Asynchronous I/O | Not in 0.2 |

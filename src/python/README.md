@@ -110,28 +110,32 @@ The fields are named as in the file. An `add_` method refuses a field that its t
 
 `from_document` keeps the ids, the collection, the obfuscation fields, the other members of the manifest, and the fields and tables that this version does not define. It loses what the reader does not keep: the entries that the manifest does not list, the members of a table that are not arrays, and the members of an element of `parts` other than `name` and `tables`. It writes format version 0.2, and its own part names.
 
-## Measure the tables
+## Measure the tables, the columns, and the collection
 
-`pqax.measures` computes the derived measures of each table as the [storage views](https://github.com/pqax-org/pqax/blob/main/src/typescript/views/README.md#derived-values) define them, function by function, with the same numbers: the storage stack with its waste and overhead, the deleted rows, the small files, the ratios, and the pace of the commits.
+`pqax.measures` computes every derived measure of [section 10 of the object model](https://github.com/pqax-org/pqax/blob/main/docs/object-model.md#10-derived-measures) for the tables, the columns, and the collection, with the names and the numbers of the [storage views](https://github.com/pqax-org/pqax/blob/main/src/typescript/views/README.md): the storage stack with its waste, its overhead, and the share of each component, the file sizes, the small files, and the V-Order shares, the history with VACUUM and OPTIMIZE, the ratios, the partitions, the measures of each column, and the totals of the collection. Only the two measures over a set of columns, which the treemap of the views draws, are not here.
 
 ```python
 import pqax
 
 with pqax.open("footprint.pqax") as doc:
-    result = pqax.measures.measure(doc)          # reads the files table when the file has it
-for table in sorted(result["tables"], key=lambda t: -t["stack"]["waste"]):
-    print(table["label"], table["stack"]["waste"], table["stack"]["wasteShare"])
+    result = pqax.measures.measure(doc)          # reads the files and partitions tables when the file has them
+for table in sorted(result["tables"], key=lambda t: -(t["stack"]["waste"] or 0)):
+    print(table["label"], table["stack"]["waste"], table["stack"]["wasteShare"],
+          table["files"]["median"], table["maintenance"]["lastVacuumAt"], table["partitions"]["count"])
+print([column["label"] for column in result["columns"] if (column["nullShare"] or 0) > 0.5])
+print(result["collection"]["totals"]["footprint"], result["collection"]["depths"])
 ```
 
 | Name | What it is |
 |---|---|
-| `measure(doc, small_file_size=..., tiny_file_size=...)` | `{"filesRead": ..., "warnings": [...], "tables": [...]}`, one dict per table. A `files` table that cannot be read becomes a warning, and the measures use the totals of the summary. |
-| `measure_tables(summary, files=None, collection=None, ...)` | The list of the tables, from tables already read |
+| `measure(doc, small_file_size=..., tiny_file_size=...)` | `{"filesRead": ..., "warnings": [...], "tables": [...], "columns": [...], "collection": {...}}`. A `files` or `partitions` table that cannot be read becomes a warning, and the measures use the totals of the summary. |
+| `measure_tables(summary, files=None, collection=None, partitions=None, ...)` | The list of the tables, from tables already read |
+| `measure_columns(summary)`, `measure_collection(summary, tables)` | The list of the columns, and the collection from the tables that `measure_tables` returned |
 | `stack_of`, `deleted_estimate`, `small_share_at_least`, `commits_per_day`, `days_between`, `ratio` | The derived values, one function each, as `stackOf`, `deletedEstimate`, `smallShareAtLeast`, `commitsPerDay`, `daysBetween`, and `ratio` of the views |
 | `STACK_COMPONENTS`, `WASTE_COMPONENTS`, `OVERHEAD_COMPONENTS` | The names of the components |
 | `DEFAULT_SMALL_FILE_SIZE`, `DEFAULT_TINY_FILE_SIZE` | 128 MiB and 8 MiB |
 
-The dict of a table has the keys of the JSON of `pqax tables --json`, in the names of the views: `id`, `name`, `label`, `rowCount`, `fileCount`, `fileSize`, `stack`, `smallFiles`, `tinyFiles`, `measures`, and `maintenance`. A value that cannot be computed is `None`, never 0; the waste, the overhead, the data, and the total count a missing component as 0, as the views do. An integral float is an `int`. The conformance kit holds the measures of the views for every sample, in `conformance/expected/measures`, and the tests compare these with them.
+The keys are the names of the view model. The dict of a table has `id`, `name`, `label`, `rowCount`, `fileCount`, `fileSize`, `stack` with `shares`, `smallFiles`, `tinyFiles`, `files` with `vOrder`, `measures`, `maintenance`, and `partitions`; `python -m pqax tables --json` prints the keys it printed in version 0.2.0. A column has `id`, `table`, `name`, `label`, and its six measures, and the collection `totals` and `depths`. A value that cannot be computed is `None`, never 0; the waste, the overhead, and the total count a missing component as 0, as the views do, and are `None` only when every component they add is missing. An integral float is an `int`, and a time is the text of the file. The conformance kit holds the measures of the views for every sample, in `conformance/expected/measures`, and the tests compare these with them.
 
 ## Command line
 
@@ -154,7 +158,7 @@ python -m pqax tables footprint.pqax     # one row per table: rows, files, live 
 | `validate(path_or_file)`, `validate_embedded(path_or_file, part_name)` | A `ValidationResult`: `is_valid`, `checks`, `issues`, `codes` |
 | `Issue` | `code`, `message`, `part`, `table`, `field` |
 | `to_dataframe(table, library=None)` | A pandas or polars data frame |
-| `measures` | The derived measures of the tables. See above. |
+| `measures` | The derived measures of the tables, the columns, and the collection. See above. |
 | `Builder`, `BuilderOptions` | The writer |
 | `format_timestamp(datetime)`, `parse_timestamp(text)` | Timestamps in the form of the format, `2026-10-05T08:15:30.000Z` |
 | `TABLES`, `SUMMARY_TABLES`, `DETAIL_TABLES`, `FIELDS`, `REQUIRED`, `REFERENCES` | The names of the format |

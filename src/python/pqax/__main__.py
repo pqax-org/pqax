@@ -178,6 +178,19 @@ def _joined(collection: Dict[str, Any], app: str, version: str) -> Optional[str]
     return f"{first} {second}" if isinstance(second, str) else first
 
 
+# The keys of a table in the JSON of pqax tables --json, as in version 0.2.0: the measures that the command shows.
+_SHOWN_MAINTENANCE = ("lastCommitAt", "commitsPerDay", "daysSinceLastCommit")
+
+
+def _shown(table: Dict[str, Any]) -> Dict[str, Any]:
+    """A table of measures.measure_tables with the keys of the JSON of the command."""
+    shown = {key: table[key] for key in ("id", "name", "label", "rowCount", "fileCount", "fileSize", "stack",
+                                         "smallFiles", "tinyFiles", "measures", "maintenance")}
+    shown["stack"] = {key: value for key, value in table["stack"].items() if key != "shares"}
+    shown["maintenance"] = {key: table["maintenance"][key] for key in _SHOWN_MAINTENANCE}
+    return shown
+
+
 def _tables(path: str, part: Optional[str], order: str, top: Optional[int], as_json: bool, wide: bool) -> int:
     embedded = _embedded_part(path, part)
     with (open_embedded(path, embedded) if embedded else open_document(path)) as document:
@@ -202,7 +215,7 @@ def _tables(path: str, part: Optional[str], order: str, top: Optional[int], as_j
             "level": level if isinstance(level, int) and not isinstance(level, bool) else None,
             "smallFileSize": measures.DEFAULT_SMALL_FILE_SIZE, "tinyFileSize": measures.DEFAULT_TINY_FILE_SIZE,
             "sort": order, "top": top, "tableCount": len(result["tables"]), "filesRead": result["filesRead"],
-            "warnings": result["warnings"], "tables": tables,
+            "warnings": result["warnings"], "tables": [_shown(table) for table in tables],
         }, indent=2, ensure_ascii=False))
         return 0
     count = len(result["tables"])
