@@ -52,9 +52,25 @@ public class MeasuresTests
             ["overhead"] = table.Stack.Overhead,
             ["wasteShare"] = Number(table.Stack.WasteShare),
             ["overheadShare"] = Number(table.Stack.OverheadShare),
+            ["shares"] = new JsonObject(StorageMeasures.StackComponents.Select(key => KeyValuePair.Create(key, Number(table.Stack.Share(key))))),
         },
         ["smallFiles"] = Small(table.SmallFiles),
         ["tinyFiles"] = Small(table.TinyFiles),
+        ["files"] = new JsonObject
+        {
+            ["count"] = Number(table.Files.Count),
+            ["sum"] = Number(table.Files.Sum),
+            ["minimum"] = Number(table.Files.Minimum),
+            ["firstQuartile"] = Number(table.Files.FirstQuartile),
+            ["median"] = Number(table.Files.Median),
+            ["thirdQuartile"] = Number(table.Files.ThirdQuartile),
+            ["maximum"] = Number(table.Files.Maximum),
+            ["vOrder"] = table.Files.VOrderShare is null ? null : new JsonObject
+            {
+                ["share"] = Number(table.Files.VOrderShare),
+                ["bytesShare"] = Number(table.Files.VOrderBytesShare),
+            },
+        },
         ["measures"] = new JsonObject
         {
             ["compressionRatio"] = Number(table.Measures.CompressionRatio),
@@ -69,10 +85,58 @@ public class MeasuresTests
         },
         ["maintenance"] = new JsonObject
         {
-            ["lastCommitAt"] = table.Maintenance.LastCommitAt?.ToUniversalTime().ToString("yyyy-MM-dd'T'HH:mm:ss.fff'Z'", CultureInfo.InvariantCulture),
+            ["lastCommitAt"] = Time(table.Maintenance.LastCommitAt),
             ["commitsPerDay"] = Number(table.Maintenance.CommitsPerDay),
             ["daysSinceLastCommit"] = Number(table.Maintenance.DaysSinceLastCommit),
+            ["hasVacuum"] = table.Maintenance.HasVacuum,
+            ["lastVacuumAt"] = Time(table.Maintenance.LastVacuumAt),
+            ["hasOptimize"] = table.Maintenance.HasOptimize,
+            ["lastOptimizeAt"] = Time(table.Maintenance.LastOptimizeAt),
         },
+        ["partitions"] = new JsonObject
+        {
+            ["count"] = Number(table.Partitions.Count),
+            ["kept"] = table.Partitions.Kept,
+            ["oldestModifiedAt"] = Time(table.Partitions.OldestModifiedAt),
+            ["newestModifiedAt"] = Time(table.Partitions.NewestModifiedAt),
+        },
+    };
+
+    /// <summary>A time as the expected files write it: UTC with milliseconds.</summary>
+    private static string? Time(DateTimeOffset? value) =>
+        value?.UtcDateTime.ToString("yyyy-MM-dd'T'HH:mm:ss.fff'Z'", CultureInfo.InvariantCulture);
+
+    /// <summary>A column in the JSON shape of the interface, from the public members of the C# object.</summary>
+    public static JsonObject ToJson(ColumnStorage column) => new()
+    {
+        ["id"] = Number(column.Id),
+        ["table"] = Number(column.Table),
+        ["name"] = column.Name,
+        ["label"] = column.Label,
+        ["nullShare"] = Number(column.NullShare),
+        ["compressionRatio"] = Number(column.CompressionRatio),
+        ["dictionaryShare"] = Number(column.DictionaryShare),
+        ["dictionaryFallbackShare"] = Number(column.DictionaryFallbackShare),
+        ["averageValueLength"] = Number(column.AverageValueLength),
+        ["filesWithoutColumnShare"] = Number(column.FilesWithoutColumnShare),
+    };
+
+    /// <summary>The collection in the JSON shape of the interface, from the public members of the C# object.</summary>
+    public static JsonObject ToJson(CollectionMeasures collection) => new()
+    {
+        ["totals"] = new JsonObject
+        {
+            ["sources"] = collection.Sources,
+            ["tables"] = collection.Tables,
+            ["columns"] = collection.Columns,
+            ["files"] = Number(collection.Files),
+            ["fileSize"] = Number(collection.FileSize),
+            ["rowCount"] = Number(collection.RowCount),
+            ["footprint"] = Number(collection.Footprint),
+            ["waste"] = Number(collection.Waste),
+            ["overhead"] = Number(collection.Overhead),
+        },
+        ["depths"] = new JsonObject(collection.Depths.Select(pair => KeyValuePair.Create(pair.Key, (JsonNode?)JsonValue.Create(pair.Value)))),
     };
 
     private static JsonObject Small(SmallFiles files) => new()
@@ -84,7 +148,7 @@ public class MeasuresTests
 
     /// <summary>
     /// The differences between two JSON values: numbers as doubles, exactly or within a relative tolerance, a key
-    /// named lastCommitAt as an instant, and every member of both objects.
+    /// that ends in At (lastCommitAt, lastVacuumAt, oldestModifiedAt, ...) as an instant, and every member of both objects.
     /// </summary>
     public static void Compare(JsonNode? actual, JsonNode? expected, string path, double tolerance, List<string> differences)
     {
@@ -141,7 +205,8 @@ public class MeasuresTests
             return;
         }
 
-        if (path.EndsWith(".lastCommitAt", StringComparison.Ordinal))
+        if (path[(path.LastIndexOf('.') + 1)..].EndsWith("At", StringComparison.Ordinal)
+            && expectedValue.GetValueKind() == System.Text.Json.JsonValueKind.String && actualValue.GetValueKind() == System.Text.Json.JsonValueKind.String)
         {
             DateTimeOffset a = DateTimeOffset.Parse((string)actualValue!, CultureInfo.InvariantCulture);
             DateTimeOffset e = DateTimeOffset.Parse((string)expectedValue!, CultureInfo.InvariantCulture);
@@ -201,6 +266,8 @@ public class MeasuresTests
 
         var differences = new List<string>();
         Compare(new JsonArray(measures.Tables.Select(table => (JsonNode?)ToJson(table)).ToArray()), expected["tables"], "tables", Tolerance, differences);
+        Compare(new JsonArray(measures.Columns.Select(column => (JsonNode?)ToJson(column)).ToArray()), expected["columns"], "columns", Tolerance, differences);
+        Compare(ToJson(measures.Collection), expected["collection"], "collection", Tolerance, differences);
         Assert.True(differences.Count == 0, string.Join("\n", differences));
         Assert.Equal(Enumerable.Range(0, measures.Tables.Count), measures.Tables.Select(table => table.Row));
     }

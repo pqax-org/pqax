@@ -193,6 +193,30 @@ public class TablesTests
         return list.Select(t => t.Table).ToList();
     }
 
+    // The keys of a table that pqax tables --json prints: those of the expected measures less stack.shares, files,
+    // partitions, and the keys of maintenance after the first three, which the kit gained with the other measures of
+    // section 10 and the command does not print.
+    private static readonly string[] CliTableKeys = ["id", "name", "label", "rowCount", "fileCount", "fileSize", "stack", "smallFiles", "tinyFiles", "measures", "maintenance"];
+
+    private static readonly string[] CliStackKeys = ["live", "nonLive", "unreferenced", "deleted", "stale", "metadata", "footers", "deletedSource", "listed", "data", "total", "waste", "overhead", "wasteShare", "overheadShare"];
+
+    private static readonly string[] CliMaintenanceKeys = ["lastCommitAt", "commitsPerDay", "daysSinceLastCommit"];
+
+    private static JsonObject Only(JsonNode source, string[] keys) => new(keys.Select(key => KeyValuePair.Create(key, source[key]?.DeepClone())));
+
+    /// <summary>An expected table restricted to the keys that the command prints.</summary>
+    private static JsonObject CliShape(JsonObject expected)
+    {
+        JsonObject table = Only(expected, CliTableKeys);
+        table["stack"] = Only(expected["stack"]!, CliStackKeys);
+        table["maintenance"] = Only(expected["maintenance"]!, CliMaintenanceKeys);
+        return table;
+    }
+
+    /// <summary>The expected tables of a sample, in the order of a sort, restricted to the keys that the command prints.</summary>
+    private static JsonArray CliTables(JsonObject expected, string sort) =>
+        new(Sorted(expected["tables"]!.AsArray().Select(t => t!.AsObject()), sort).Select(t => (JsonNode?)CliShape(t)).ToArray());
+
     /// <summary>The differences between two tables of the JSON: numbers as doubles, exactly, lastCommitAt as an instant.</summary>
     private static void Compare(JsonNode? actual, JsonNode? expected, string path, List<string> differences)
     {
@@ -283,9 +307,47 @@ public class TablesTests
         Assert.Equal(expected["warnings"]!.AsArray().Count, json["warnings"]!.AsArray().Count);
 
         var differences = new List<string>();
-        var want = new JsonArray(Sorted(expected["tables"]!.AsArray().Select(t => t!.AsObject()), "waste").Select(t => t.DeepClone()).ToArray());
-        Compare(json["tables"], want, "tables", differences);
+        Compare(json["tables"], CliTables(expected, "waste"), "tables", differences);
         Assert.True(differences.Count == 0, string.Join("\n", differences));
+
+        // The command prints only the keys it printed before the other measures of section 10.
+        Assert.False(json.ContainsKey("columns"));
+        Assert.False(json.ContainsKey("collection"));
+        Assert.All(json["tables"]!.AsArray(), table =>
+        {
+            Assert.Equal(CliTableKeys, table!.AsObject().Select(pair => pair.Key));
+            Assert.Equal(CliStackKeys, table["stack"]!.AsObject().Select(pair => pair.Key));
+            Assert.Equal(CliMaintenanceKeys, table["maintenance"]!.AsObject().Select(pair => pair.Key));
+        });
+    }
+
+    [Fact]
+    public void The_json_prints_only_the_keys_it_printed_before_on_a_footprint_with_every_measure()
+    {
+        var builder = new FootprintBuilder(new CollectionInfo { CollectorApp = "pqax-tests", CollectorAppVersion = "0.0", CompletedAt = new DateTimeOffset(2026, 10, 11, 0, 0, 0, TimeSpan.Zero), Level = 2 });
+        long table = builder.AddTable(new TableRow { Name = "t", Format = "Delta", DetailDepth = "Files", FileCount = 2, FileSize = 300, PartitionCount = 1, VOrderedFileCount = 1 });
+        builder.AddColumn(new ColumnRow { Table = table, Name = "c", ValueCount = 10, NullCount = 1 });
+        builder.AddOperation(new OperationRow { Table = table, Name = "VACUUM END", CommitCount = 1, LastAt = new DateTimeOffset(2026, 9, 1, 0, 0, 0, TimeSpan.Zero) });
+        builder.AddPartition(new PartitionRow { Table = table, LastModifiedAt = new DateTimeOffset(2026, 9, 1, 0, 0, 0, TimeSpan.Zero) });
+        builder.AddFile(new FileRow { Table = table, FileSize = 100, IsVOrdered = true });
+        builder.AddFile(new FileRow { Table = table, FileSize = 200, IsVOrdered = false });
+        string path = Path.Combine(Path.GetTempPath(), "pqax-keys-" + Guid.NewGuid().ToString("N") + ".pqax");
+        try
+        {
+            builder.Write(path);
+            JsonObject json = Json(path);
+            Assert.Equal(
+                ["file", "embeddedPart", "format", "formatVersion", "collector", "library", "collectedAt", "level", "smallFileSize", "tinyFileSize", "sort", "top", "tableCount", "filesRead", "warnings", "tables"],
+                json.Select(pair => pair.Key));
+            JsonObject printed = Assert.Single(json["tables"]!.AsArray())!.AsObject();
+            Assert.Equal(CliTableKeys, printed.Select(pair => pair.Key));
+            Assert.Equal(CliStackKeys, printed["stack"]!.AsObject().Select(pair => pair.Key));
+            Assert.Equal(CliMaintenanceKeys, printed["maintenance"]!.AsObject().Select(pair => pair.Key));
+        }
+        finally
+        {
+            File.Delete(path);
+        }
     }
 
     [Theory]
@@ -667,7 +729,7 @@ public class TablesTests
             Assert.NotEmpty(json["warnings"]!.AsArray());
             // Without the files, the measures are those of the summary alone.
             var differences = new List<string>();
-            Compare(json["tables"], new JsonArray(Sorted(ExpectedMeasures("summary-only")["tables"]!.AsArray().Select(t => t!.AsObject()), "waste").Select(t => t.DeepClone()).ToArray()), "tables", differences);
+            Compare(json["tables"], CliTables(ExpectedMeasures("summary-only"), "waste"), "tables", differences);
             Assert.True(differences.Count == 0, string.Join("\n", differences));
 
             (exit, text, error) = Tables(path);

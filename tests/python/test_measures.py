@@ -33,8 +33,9 @@ def instant(text):
 
 
 def differences(actual, expected, path="", tolerance=TOLERANCE):
-    """The differences between two JSON values: numbers exactly or within a relative tolerance, lastCommitAt as an
-    instant, an integral float as a fault, since the module returns it as an int."""
+    """The differences between two JSON values: numbers exactly or within a relative tolerance, a time (a key that
+    ends in At, such as lastCommitAt or newestModifiedAt) as an instant, an integral float as a fault, since the module
+    returns it as an int."""
     found = []
     if isinstance(expected, dict):
         if not isinstance(actual, dict):
@@ -53,7 +54,7 @@ def differences(actual, expected, path="", tolerance=TOLERANCE):
         return found
     if isinstance(actual, float) and actual.is_integer():
         found.append(f"{path}: {actual!r} is an integral float, not an int")
-    if path.endswith(".lastCommitAt") and isinstance(expected, str) and isinstance(actual, str):
+    if path.rsplit(".", 1)[-1].endswith("At") and isinstance(expected, str) and isinstance(actual, str):
         if instant(actual) != instant(expected):
             found.append(f"{path}: got {actual}, expected {expected}")
         return found
@@ -85,17 +86,25 @@ def test_the_measures_of_a_sample_are_those_of_the_views(name):
         result = measures.measure(doc)
     assert result["filesRead"] == expected["filesRead"]
     assert len(result["warnings"]) == len(expected["warnings"])
+    assert list(result) == ["filesRead", "warnings", "tables", "columns", "collection"]
     found = differences(result["tables"], expected["tables"], "tables")
+    found += differences(result["columns"], expected["columns"], "columns")
+    found += differences(result["collection"], expected["collection"], "collection")
     assert not found, "\n".join(found)
 
 
 @pytest.mark.parametrize("name", sorted(KIT))
-def test_measure_tables_of_the_summary_and_files_gives_the_same(name):
+def test_measure_tables_columns_and_collection_give_the_same(name):
     expected = load_json(MEASURES / f"{name}.json")
     with open_sample(name) as doc:
         files = doc.table("files") if doc.row_count("files") > 0 else None
-        tables = measures.measure_tables(doc.summary, files, doc.collection)
+        partitions = doc.table("partitions") if doc.row_count("partitions") > 0 else None
+        tables = measures.measure_tables(doc.summary, files, doc.collection, partitions)
+        columns = measures.measure_columns(doc.summary)
+        collection = measures.measure_collection(doc.summary, tables)
     found = differences(tables, expected["tables"], "tables")
+    found += differences(columns, expected["columns"], "columns")
+    found += differences(collection, expected["collection"], "collection")
     assert not found, "\n".join(found)
 
 
@@ -222,6 +231,9 @@ def test_stack_of_draws_the_overlap_of_non_live_and_unreferenced_once():
         "live": 830, "nonLive": 200, "unreferenced": 0, "deleted": 100, "stale": 20, "metadata": 30, "footers": 50,
         "deletedSource": "files", "listed": True, "data": 1150, "total": 1230, "waste": 320, "overhead": 80,
         "wasteShare": 320 / 1150, "overheadShare": 80 / 1150,
+        # Section 10.2: each component over Data, 1150.
+        "shares": {"live": 830 / 1150, "nonLive": 200 / 1150, "unreferenced": 0, "deleted": 100 / 1150,
+                   "stale": 20 / 1150, "metadata": 30 / 1150, "footers": 50 / 1150},
     }
     more = stack(1000, 0, 0, 0, 100, 0, unreferenced_file_size=250)
     assert (more["nonLive"], more["unreferenced"], more["waste"], more["total"]) == (100, 150, 250, 1250)
@@ -383,7 +395,12 @@ def test_a_missing_input_gives_none_and_never_0():
     assert result["smallFiles"]["count"] is None and result["smallFiles"]["shareAtLeast"] is None
     assert result["tinyFiles"]["shareAtLeast"] is None
     assert all(value is None for value in result["measures"].values()), result["measures"]
-    assert result["maintenance"] == {"lastCommitAt": None, "commitsPerDay": None, "daysSinceLastCommit": None}
+    assert result["maintenance"] == {"lastCommitAt": None, "commitsPerDay": None, "daysSinceLastCommit": None,
+                                     "hasVacuum": None, "lastVacuumAt": None, "hasOptimize": None,
+                                     "lastOptimizeAt": None}
+    assert all(value is None for value in result["stack"]["shares"].values()), result["stack"]["shares"]
+    assert all(value is None for value in result["files"].values()), result["files"]
+    assert result["partitions"] == {"count": None, "kept": 0, "oldestModifiedAt": None, "newestModifiedAt": None}
 
 
 @pytest.mark.parametrize("value", [-5, "1000", True, float("nan"), float("inf"), [1000], {"a": 1}])

@@ -178,6 +178,26 @@ def instant(text):
     return datetime.fromisoformat(text.replace("Z", "+00:00"))
 
 
+# The keys of a table that pqax tables --json prints: those of the expected measures less stack.shares, files,
+# partitions, and the keys of maintenance after the first three, which the kit gained with the other measures of
+# section 10 and the command does not print.
+CLI_TABLE_KEYS = ["id", "name", "label", "rowCount", "fileCount", "fileSize", "stack", "smallFiles", "tinyFiles",
+                  "measures", "maintenance"]
+CLI_STACK_KEYS = ["live", "nonLive", "unreferenced", "deleted", "stale", "metadata", "footers", "deletedSource",
+                  "listed", "data", "total", "waste", "overhead", "wasteShare", "overheadShare"]
+CLI_MAINTENANCE_KEYS = ["lastCommitAt", "commitsPerDay", "daysSinceLastCommit"]
+
+
+def cli_shape(tables_):
+    """The expected tables restricted to the keys that the command prints."""
+    def table(expected):
+        shaped = {key: expected[key] for key in CLI_TABLE_KEYS}
+        shaped["stack"] = {key: expected["stack"][key] for key in CLI_STACK_KEYS}
+        shaped["maintenance"] = {key: expected["maintenance"][key] for key in CLI_MAINTENANCE_KEYS}
+        return shaped
+    return [table(expected) for expected in tables_]
+
+
 def same_tables(actual, expected):
     """Exact equality, with lastCommitAt as an instant."""
     def normal(tables_):
@@ -214,7 +234,13 @@ def test_the_json_has_the_header_and_the_tables_of_the_expected_measures(name, a
     assert document["tableCount"] == len(expected["tables"])
     assert document["filesRead"] == expected["filesRead"]
     assert len(document["warnings"]) == len(expected["warnings"])
-    assert same_tables(document["tables"], sorted_tables(expected["tables"], "waste"))
+    assert same_tables(document["tables"], cli_shape(sorted_tables(expected["tables"], "waste")))
+    # The command prints only the keys it printed before the other measures of section 10.
+    assert "columns" not in document and "collection" not in document
+    for table in document["tables"]:
+        assert list(table) == CLI_TABLE_KEYS
+        assert list(table["stack"]) == CLI_STACK_KEYS
+        assert list(table["maintenance"]) == CLI_MAINTENANCE_KEYS
 
 
 @pytest.mark.parametrize("sort", SORTS)
@@ -457,7 +483,7 @@ def test_a_files_table_that_cannot_be_read_is_a_warning_and_the_summary_is_used(
     assert document["filesRead"] is False
     assert document["warnings"]
     expected = load_json(MEASURES / "summary-only.json")["tables"]
-    assert same_tables(document["tables"], sorted_tables(expected, "waste"))
+    assert same_tables(document["tables"], cli_shape(sorted_tables(expected, "waste")))
     code, out, err = tables(path)
     assert code == 0
     assert err.strip()
