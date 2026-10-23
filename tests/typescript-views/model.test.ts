@@ -17,7 +17,9 @@ import {
 } from "./synthetic";
 
 const EXPECTED = expectedByName();
-const ALL = Object.values(EXPECTED).map((expected) => expected.file).sort();
+const EVERY = Object.values(EXPECTED).map((expected) => expected.file).sort();
+/** The samples built from the fixture: every sample but the two of the comparison test, which have their own lakehouse. */
+const ALL = EVERY.filter((file) => !file.startsWith("diff-"));
 /** The samples of format 0.2: every sample but format-0.1.pqax. */
 const FORMAT_02 = ALL.filter((file) => file !== "format-0.1.pqax");
 const DAY_MS = 86_400_000;
@@ -261,7 +263,7 @@ describe("the samples of the kit", () => {
     expect(model.tables.map((t) => t.fileCount)).toEqual(expected.tables.map((t) => t.fileCount));
   });
 
-  it.each(ALL)("%s holds the invariants of the model and of the tree", async (file) => {
+  it.each(EVERY)("%s holds the invariants of the model and of the tree", async (file) => {
     const { model } = await modelOf(file);
     expectInvariants(model);
     expectTree(columnTree(model));

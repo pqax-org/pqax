@@ -1,0 +1,32 @@
+{
+  "file": "diff-after.pqax",
+  "embeddedPart": null,
+  "embeddedCompression": null,
+  "format": "pqax",
+  "formatVersion": "0.2",
+  "parts": ["summary.json", "partitions.json", "files.json", "commits.json"],
+  "rows": {
+    "sources": 1,
+    "tables": 7,
+    "columns": 22,
+    "partitionSpecs": 1,
+    "partitionFields": 1,
+    "operations": 18,
+    "partitions": 3,
+    "files": 11,
+    "commits": 25
+  },
+  "tablesFileSize": 288600,
+  "tablesRowCount": 31860,
+  "columnChunksCompressedSize": 0,
+  "tables": [
+    {"id": 1, "fileCount": 2, "columnChunkCount": 0, "columnChunkCompressedSize": 0},
+    {"id": 2, "fileCount": 5, "columnChunkCount": 0, "columnChunkCompressedSize": 0},
+    {"id": 3, "fileCount": 2, "columnChunkCount": 0, "columnChunkCompressedSize": 0},
+    {"id": 4, "fileCount": 1, "columnChunkCount": 0, "columnChunkCompressedSize": 0},
+    {"id": 5, "fileCount": 1, "columnChunkCount": 0, "columnChunkCompressedSize": 0},
+    {"id": 6, "fileCount": 3, "columnChunkCount": 0, "columnChunkCompressedSize": 0},
+    {"id": 7, "fileCount": 1, "columnChunkCount": 0, "columnChunkCompressedSize": 0}
+  ],
+  "largestColumns": []
+}

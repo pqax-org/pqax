@@ -18,10 +18,12 @@ Everything in the kit is synthetic. No name in it comes from a real lakehouse.
 | `samples/invalid/expected.json` | The codes that a validator must report for each invalid file |
 | `expected/<sample>.json` | The results that a reader must get from each valid file |
 | `expected/measures/<sample>.json` | The derived measures of the tables, the columns, and the collection of each valid file, as the storage views compute them |
+| `expected/diff/diff-before.diff-after.json` | The comparison of the two samples of the comparison test, as `pqax diff --json` writes it |
 | `fixtures/lakehouse` | A synthetic lakehouse and warehouse in the OneLake layout: Delta logs and Parquet files written by DuckDB, and one data file that no commit references |
 | `fixtures/probe-dump` | The output of the probe that preceded the collector on the fixture. It is the input of `make_kit.py`, and the oracle of the collector tests. The section on the probe dump describes every field. |
 | `make_kit.py` | Rebuilds `samples/` and `expected/` from `fixtures/probe-dump` |
 | `make_measures.py` | Rebuilds `expected/measures/` with the view model of `@pqax/views` |
+| `make_diff.py` | Rebuilds the two samples of the comparison test with `pqax.Builder`, and `expected/diff/` |
 | `check_schema.py` | Validates the samples against the schema |
 | `.gitattributes` | Keeps git from changing the line ends of the fixtures, whose sizes the probe dump records |
 
@@ -44,6 +46,24 @@ All are built from the fixture: a lakehouse table with 3 files, 10 row groups, a
 | `embedded-deflated.vpax` | The same, with `Footprint.pqax` deflated | Reading a footprint that must be inflated first |
 
 The two `.vpax` files are not real VPAX files. `DaxModel.json` is a placeholder, `{}`, and the package has no other part. They test only how a reader finds and opens the embedded footprint.
+
+The comparison test has two more valid samples, which are not built from the fixture. `make_diff.py` writes them with `pqax.Builder`, the writer of the Python package: two footprints of one synthetic lakehouse, `Diff_Lakehouse`, collected a week apart, with 7 tables each at the `Files` and `Summary` depths, partitions with their values, and the 8 most recent commits of each table. Between the two, the lakehouse changed in the ways below, which `SCENARIO` in the script declares.
+
+| File | Content | What it tests |
+|---|---|---|
+| `diff-before.pqax` | The older footprint, collected on 1 October 2026: `sales`, `orders`, `customers`, `products`, `legacy`, `raw.staging`, `audit` | That `pqax diff` reports exactly the changes made, against `expected/diff/` |
+| `diff-after.pqax` | The newer footprint, collected on 8 October 2026: `events`, `sales`, `clients`, `orders`, `products`, `raw.staging`, `audit` | The same |
+
+| Table | What changed | What the diff must report |
+|---|---|---|
+| `sales` | Grown: a partition deleted (1 file removed), 2 files appended, one of them in a new partition, and the deletion vector of a kept file grew. Column mapping: `amt` renamed `amount` with the same FieldId, `note` dropped, `discount` dropped and added again with a new FieldId, `region` added. 5 commits more, and 2 out of the 8 kept. | Kept, matched by TableId, changed; files 2 added, 1 removed, 3 kept, 1 changed; partitions 1 added, 1 removed, 2 kept, 2 changed; commits 5 added, 2 removed, 3 kept; columns `discount` and `region` added, `discount` and `note` removed, `amt` kept and renamed |
+| `orders` | Shrunk: `price` widened from `int` to `bigint`, an OPTIMIZE that rewrote 4 files as 1, then a VACUUM that deleted the unreferenced files older than the retention. No field ids. | Kept, changed; files 1 added, 4 removed; columns matched by name, `price` changed in type; `maintenance.hasVacuum` false to true |
+| `customers` | Renamed `clients`, with the same TableId and the same data | Kept and renamed |
+| `products` | Dropped and created again with a new TableId | Removed and added, both recreated |
+| `legacy` | Dropped | Removed |
+| `events` | Created | Added |
+| `raw.staging` | A folder of Parquet files with no table format and no TableId; one file and one column added | Kept, matched by name |
+| `audit` | The same data, kept at the `Files` depth before and at the `Summary` depth after | Kept and unchanged; its files are not compared |
 
 The additions in `extensions.pqax`:
 
@@ -164,6 +184,21 @@ Every expected file has all these keys.
 
 The names are those of the view model, which section 10.8 of the object model maps. A missing value is `null`. A test compares the numbers exactly, with no tolerance, and a time, a key that ends in `At`, as a moment, since C# writes it with three decimals and the views and Python keep the text of the file.
 
+### Expected diff
+
+`expected/diff/diff-before.diff-after.json` holds what `pqax diff diff-before.pqax diff-after.pqax --json` writes, in C# and in Python, as section 13 of the [object model](../docs/object-model.md) proposes. `make_diff.py` writes it without an implementation of the diff: the pairs of tables and columns, the tables recreated, and the counts of the files, partitions, and commits come from `SCENARIO`, which the script checks against the data it writes; the totals come from the rows it writes; and the measures come from the storage views, as `expected/measures` does.
+
+| Key | Content |
+|---|---|
+| `older`, `newer` | The header of each file: `file`, `embeddedPart`, `format`, `formatVersion`, `collector`, `library`, `collectedAt`, `level`, `tableCount`, `filesRead`, `warnings` |
+| `smallFileSize`, `tinyFileSize`, `sort`, `top` | The thresholds of the measures, and the order and the cut of the command: `total` and `null` |
+| `counts` | The tables `added`, `removed`, `kept`, and the kept ones `changed` |
+| `collection` | The measures of section 10.7 and the tables at each depth, as `depths.Files`, each a compared value |
+| `added`, `removed` | The tables, in the order of the command: `id`, `label`, `name`, `namespace`, `tableId`, `snapshotId`, `detailDepth`, `columnCount`, `fileCount`, `fileSize`, `rowCount`, `total` and `waste` of the stack, and `recreated` |
+| `kept` | The kept tables, in the order of the command: `status`, `matchedBy`, `renamed`, `older` and `newer` with the keys of an added table, `totals` and `measures` of compared values, `columns` with `added`, `removed`, and `kept`, and `files`, `partitions`, and `commits` |
+
+A compared value is `{"older": ..., "newer": ..., "delta": ...}`, the delta the newer minus the older, in milliseconds for a time, `null` for a boolean, a text, or a list, and when either value is `null`. The totals of a table are its fields of section 6.4, with the members of its distributions as `fileSizes.median`; its measures have the paths of `expected/measures`, such as `stack.waste`, with `files.vOrder.share` and `files.vOrder.bytesShare` for the V-Order shares. A kept column has the same keys, with the totals of section 6.5 and the six measures of section 10.6. A time is written with three decimals in `Z`. A test compares the numbers exactly, with no tolerance.
+
 ## How to use the kit
 
 ### A reader test
@@ -238,6 +273,15 @@ npm ci && npm run build                          # at the root: the reader and t
 python conformance/make_measures.py              # rewrites expected/measures/ from the views
 python conformance/make_measures.py --check      # writes nothing; exit code 1 when a file is not up to date
 ```
+
+The expected diff comes from the views too, so it is rebuilt last:
+
+```bash
+python conformance/make_diff.py                  # rewrites the two samples of the comparison test and expected/diff/
+python conformance/make_diff.py --check          # writes nothing; exit code 1 when a file is not up to date
+```
+
+`make_kit.py` writes the two samples of the comparison test and their `expected/<sample>.json` too, with `make_diff.py`, since it deletes the files of `samples/`; it does not write the expected diff, which needs `node`. `make_diff.py` writes the samples with `pqax.Builder` from `src/python`, and changes to the lakehouse go to its `SCENARIO` and its two lists of tables.
 
 `make_measures.py` runs a small script through `node` on every sample, with the built packages; it runs `npm run build` itself when a `dist/` folder is older than its sources, unless `--no-build` is given. It needs only the standard library of Python. The script takes from the model of the views every measure that the files hold: for each table, the stack with the `share` of each component, the small files, `files` with `vOrder`, `measures`, `maintenance`, and `partitions`; for each column, its six measures, with its `name` from the `columns` table of the file and its `table` from the key of its table; and `collection.totals` and `collection.depths`. A view flag, such as the `source` of the file sizes, is left out. A change of the measures goes to the views first, then to `StorageMeasures` in C# and to `pqax.measures` in Python, until the three agree.
 
