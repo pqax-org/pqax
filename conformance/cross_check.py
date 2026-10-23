@@ -20,7 +20,8 @@ with a message.
 
 Measures: pqax.measures in Python, StorageMeasures in C#, and the view model of @pqax/views through node compute the
 derived measures of every file, which must equal conformance/expected/measures/<sample>.json, the measures of the
-views, value for value. The file that pqax collect writes must give the measures of expected/measures/sample.json too,
+views, value for value with no tolerance: every measure of section 10 of the object model for the tables, the columns,
+and the collection, except the two over a set of columns that only the views offer. A time compares as a moment. The file that pqax collect writes must give the measures of expected/measures/sample.json too,
 except daysSinceLastCommit, which counts the days to the time of the collection.
 
 Exit code 0 when every check that ran passed, 1 when one failed, 2 when nothing could run. Standard library only.
@@ -170,7 +171,8 @@ def instant(value: Any) -> Any:
 
 
 def differences(actual: Any, expected: Any, path: str) -> List[str]:
-    """Where two measures differ, value for value; numbers compare exactly, and lastCommitAt as a moment."""
+    """Where two measures differ, value for value; numbers compare exactly, and a time, a key that ends in At, as a
+    moment."""
     if isinstance(expected, dict) and isinstance(actual, dict):
         problems = [f"{path}.{key} is missing" for key in expected if key not in actual]
         problems += [f"{path}.{key} is extra" for key in actual if key not in expected]
@@ -183,7 +185,7 @@ def differences(actual: Any, expected: Any, path: str) -> List[str]:
             return [f"{path} has {len(actual)} items, expected {len(expected)}"]
         return [problem for index, (a, e) in enumerate(zip(actual, expected))
                 for problem in differences(a, e, f"{path}[{index}]")]
-    if path.endswith(".lastCommitAt"):
+    if path.endswith("At"):
         actual, expected = instant(actual), instant(expected)
     same = (type(actual) is bool) == (type(expected) is bool) and actual == expected
     return [] if same else [f"{path} {actual!r}, expected {expected!r}"]
@@ -193,6 +195,8 @@ def check_measures(measured: Dict[str, Any], expected: Dict[str, Any], collected
     """What differs between the measures of an implementation and expected/measures. For a file that pqax collect
     wrote, the days since the last commit are left out: they count to the time of the collection."""
     problems = differences(measured.get("tables"), expected["tables"], "tables")
+    problems += differences(measured.get("columns"), expected["columns"], "columns")
+    problems += differences(measured.get("collection"), expected["collection"], "collection")
     if collected:
         problems = [problem for problem in problems if ".maintenance.daysSinceLastCommit " not in problem]
     if measured.get("filesRead") != expected["filesRead"]:
@@ -312,9 +316,46 @@ if (args.Length > 0 && args[0] == "measures")
             json.WriteStartArray("tables");
             foreach (TableStorage table in measures.Tables)
             {
-                table.WriteTo(json);
+                MeasuredTable(json, table);
             }
             json.WriteEndArray();
+            json.WriteStartArray("columns");
+            foreach (ColumnStorage column in measures.Columns)
+            {
+                json.WriteStartObject();
+                Number(json, "id", column.Id);
+                Number(json, "table", column.Table);
+                Text(json, "name", column.Name);
+                json.WriteString("label", column.Label);
+                Number(json, "nullShare", column.NullShare);
+                Number(json, "compressionRatio", column.CompressionRatio);
+                Number(json, "dictionaryShare", column.DictionaryShare);
+                Number(json, "dictionaryFallbackShare", column.DictionaryFallbackShare);
+                Number(json, "averageValueLength", column.AverageValueLength);
+                Number(json, "filesWithoutColumnShare", column.FilesWithoutColumnShare);
+                json.WriteEndObject();
+            }
+            json.WriteEndArray();
+            CollectionMeasures collection = measures.Collection;
+            json.WriteStartObject("collection");
+            json.WriteStartObject("totals");
+            json.WriteNumber("sources", collection.Sources);
+            json.WriteNumber("tables", collection.Tables);
+            json.WriteNumber("columns", collection.Columns);
+            Number(json, "files", collection.Files);
+            Number(json, "fileSize", collection.FileSize);
+            Number(json, "rowCount", collection.RowCount);
+            Number(json, "footprint", collection.Footprint);
+            Number(json, "waste", collection.Waste);
+            Number(json, "overhead", collection.Overhead);
+            json.WriteEndObject();
+            json.WriteStartObject("depths");
+            foreach (KeyValuePair<string, long> pair in collection.Depths)
+            {
+                json.WriteNumber(pair.Key, pair.Value);
+            }
+            json.WriteEndObject();
+            json.WriteEndObject();
         }
         catch (Exception error)
         {
@@ -324,6 +365,73 @@ if (args.Length > 0 && args[0] == "measures")
     }
     json.WriteEndArray();
     return 0;
+
+    // A table with every measure, in the shape of expected/measures: the keys of pqax tables --json, which
+    // TableStorage.WriteTo writes, and the measures that the command does not show.
+    static void MeasuredTable(Utf8JsonWriter json, TableStorage table)
+    {
+        using var buffer = new MemoryStream();
+        using (var writer = new Utf8JsonWriter(buffer))
+        {
+            table.WriteTo(writer);
+        }
+        var node = System.Text.Json.Nodes.JsonNode.Parse(buffer.ToArray())!.AsObject();
+        var shares = new System.Text.Json.Nodes.JsonObject();
+        foreach (string key in StorageMeasures.StackComponents)
+        {
+            shares[key] = Node(table.Stack.Share(key));
+        }
+        node["stack"]!.AsObject()["shares"] = shares;
+        FileMeasures files = table.Files;
+        node["files"] = new System.Text.Json.Nodes.JsonObject
+        {
+            ["count"] = Node(files.Count), ["sum"] = Node(files.Sum), ["minimum"] = Node(files.Minimum),
+            ["firstQuartile"] = Node(files.FirstQuartile), ["median"] = Node(files.Median),
+            ["thirdQuartile"] = Node(files.ThirdQuartile), ["maximum"] = Node(files.Maximum),
+            ["vOrder"] = files.VOrderShare.HasValue
+                ? new System.Text.Json.Nodes.JsonObject { ["share"] = Node(files.VOrderShare), ["bytesShare"] = Node(files.VOrderBytesShare) }
+                : null,
+        };
+        var maintenance = node["maintenance"]!.AsObject();
+        maintenance["hasVacuum"] = table.Maintenance.HasVacuum;
+        maintenance["lastVacuumAt"] = Time(table.Maintenance.LastVacuumAt);
+        maintenance["hasOptimize"] = table.Maintenance.HasOptimize;
+        maintenance["lastOptimizeAt"] = Time(table.Maintenance.LastOptimizeAt);
+        node["partitions"] = new System.Text.Json.Nodes.JsonObject
+        {
+            ["count"] = Node(table.Partitions.Count), ["kept"] = table.Partitions.Kept,
+            ["oldestModifiedAt"] = Time(table.Partitions.OldestModifiedAt), ["newestModifiedAt"] = Time(table.Partitions.NewestModifiedAt),
+        };
+        node.WriteTo(json);
+    }
+
+    static System.Text.Json.Nodes.JsonNode? Node(double? value) => value.HasValue ? System.Text.Json.Nodes.JsonValue.Create(value.Value) : null;
+
+    static string? Time(DateTimeOffset? value) => value?.UtcDateTime.ToString("yyyy-MM-dd'T'HH:mm:ss.fff'Z'", CultureInfo.InvariantCulture);
+
+    static void Number(Utf8JsonWriter json, string name, double? value)
+    {
+        if (value.HasValue)
+        {
+            json.WriteNumber(name, value.Value);
+        }
+        else
+        {
+            json.WriteNull(name);
+        }
+    }
+
+    static void Text(Utf8JsonWriter json, string name, string? value)
+    {
+        if (value != null)
+        {
+            json.WriteString(name, value);
+        }
+        else
+        {
+            json.WriteNull(name);
+        }
+    }
 }
 if (args.Length == 0 || args[0] != "inspect")
 {

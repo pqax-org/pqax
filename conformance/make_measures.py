@@ -6,12 +6,15 @@ Usage, from the root of the repository:
 
 Input: the valid samples, samples/*.pqax and samples/*.vpax. Output, which replaces everything in the folder:
 
-    expected/measures/<sample>.json     the derived measures of every table of the sample
+    expected/measures/<sample>.json     the derived measures of the tables, the columns, and the collection
 
 The measures are those of the view model of @pqax/views, src/typescript/views/src/model.ts: the script runs
-buildModel(await readFootprint(doc)) through node on each sample and keeps, for each table, the storage stack, the
-small files, the ratios, and the pace of the commits. The C# and Python implementations of the measures are tested
-against these files, and cross_check.py compares the three.
+buildModel(await readFootprint(doc)) through node on each sample and keeps every measure of section 10 of the object
+model that the model computes: for each table, the storage stack with the share of each component, the small files, the
+file size figures and the V-Order shares, the ratios, the history with VACUUM and OPTIMIZE, and the partitions; for
+each column, its six measures; and the totals and the depths of the collection. The two measures over a set of
+columns, which only the views offer, are left out. The C# and Python implementations of the measures are tested against
+these files, and cross_check.py compares the three.
 
 --check writes nothing and exits with 1 when a file differs from what the views compute, or is missing or extra.
 --no-build uses the dist/ folders of the two TypeScript packages as they are; otherwise the script runs npm run build
@@ -56,11 +59,20 @@ const tableJson = (t) => {
   stack.overhead = t.stack.overhead;
   stack.wasteShare = t.stack.wasteShare;
   stack.overheadShare = t.stack.overheadShare;
+  stack.shares = {};
+  for (const key of views.STACK_COMPONENTS) stack.shares[key] = component(key).share;
   const small = (s) => ({ threshold: s.threshold, count: s.count, shareAtLeast: s.shareAtLeast });
   const m = t.measures;
+  const f = t.files;
+  const h = t.maintenance;
   return {
     id: t.id, name: t.name, label: t.label, rowCount: t.rowCount, fileCount: t.fileCount, fileSize: t.fileSize, stack,
     smallFiles: small(t.files.smallFiles), tinyFiles: small(t.files.tinyFiles),
+    files: {
+      count: f.count, sum: f.sum, minimum: f.minimum, firstQuartile: f.firstQuartile, median: f.median,
+      thirdQuartile: f.thirdQuartile, maximum: f.maximum,
+      vOrder: f.vOrder === null ? null : { share: f.vOrder.share, bytesShare: f.vOrder.bytesShare },
+    },
     measures: {
       compressionRatio: m.compressionRatio, deletedRowShare: m.deletedRowShare, averageFileSize: m.averageFileSize,
       averageRowGroupRows: m.averageRowGroupRows, footerCoverage: m.footerCoverage,
@@ -68,21 +80,37 @@ const tableJson = (t) => {
       dictionaryFallbackShare: m.dictionaryFallbackShare,
     },
     maintenance: {
-      lastCommitAt: t.maintenance.lastCommitAt, commitsPerDay: t.maintenance.commitsPerDay,
-      daysSinceLastCommit: t.maintenance.daysSinceLastCommit,
+      lastCommitAt: h.lastCommitAt, commitsPerDay: h.commitsPerDay, daysSinceLastCommit: h.daysSinceLastCommit,
+      hasVacuum: h.hasVacuum, lastVacuumAt: h.lastVacuumAt, hasOptimize: h.hasOptimize, lastOptimizeAt: h.lastOptimizeAt,
+    },
+    partitions: {
+      count: t.partitions.count, kept: t.partitions.kept, oldestModifiedAt: t.partitions.oldestModifiedAt,
+      newestModifiedAt: t.partitions.newestModifiedAt,
     },
   };
 };
+// The model of a column has its label only; the name is the field of the file, a column model for each row.
+const columnJson = (c, row, names, tableIds) => ({
+  id: c.id, table: tableIds.get(c.tableKey) ?? null, name: typeof names?.[row] === "string" ? names[row] : null,
+  label: c.label,
+  nullShare: c.nullShare, compressionRatio: c.compressionRatio, dictionaryShare: c.dictionaryShare,
+  dictionaryFallbackShare: c.dictionaryFallbackShare, averageValueLength: c.averageValueLength,
+  filesWithoutColumnShare: c.filesWithoutColumnShare,
+});
 const results = [];
 for (const file of process.argv.slice(2)) {
   try {
     const source = await fromFile(file);
     const doc = file.toLowerCase().endsWith(".vpax") ? await pqax.openEmbedded(source) : await pqax.openPqax(source);
     const model = views.buildModel(await views.readFootprint(doc));
+    const tableIds = new Map(model.tables.filter((t) => t.id !== null).map((t) => [t.key, t.id]));
+    const names = doc.summary.columns?.name;
     results.push({
       file: file.split(/[\\/]/).pop(), embeddedPart: doc.embeddedPart ?? null,
       smallFileSize: views.DEFAULT_SMALL_FILE_SIZE, tinyFileSize: views.DEFAULT_TINY_FILE_SIZE,
       filesRead: model.hasFiles, warnings: model.warnings, tables: model.tables.map(tableJson),
+      columns: model.columns.map((c, row) => columnJson(c, row, names, tableIds)),
+      collection: { totals: { ...model.collection.totals }, depths: { ...model.collection.depths } },
     });
   } catch (error) {
     results.push({ file, error: String(error) });

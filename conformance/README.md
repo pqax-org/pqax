@@ -17,7 +17,7 @@ Everything in the kit is synthetic. No name in it comes from a real lakehouse.
 | `samples/invalid/*.pqax` | Files that break one rule each. Every validator rejects them. |
 | `samples/invalid/expected.json` | The codes that a validator must report for each invalid file |
 | `expected/<sample>.json` | The results that a reader must get from each valid file |
-| `expected/measures/<sample>.json` | The derived measures of the tables of each valid file, as the storage views compute them |
+| `expected/measures/<sample>.json` | The derived measures of the tables, the columns, and the collection of each valid file, as the storage views compute them |
 | `fixtures/lakehouse` | A synthetic lakehouse and warehouse in the OneLake layout: Delta logs and Parquet files written by DuckDB, and one data file that no commit references |
 | `fixtures/probe-dump` | The output of the probe that preceded the collector on the fixture. It is the input of `make_kit.py`, and the oracle of the collector tests. The section on the probe dump describes every field. |
 | `make_kit.py` | Rebuilds `samples/` and `expected/` from `fixtures/probe-dump` |
@@ -129,17 +129,27 @@ Every expected file has all these keys.
 
 ### Expected measures
 
-`expected/measures/<sample>.json` holds the derived measures of every table of a valid sample, as the view model of the storage views computes them: `buildModel(await readFootprint(doc))` of [`@pqax/views`](../src/typescript/views/README.md#derived-values). The C# library (`StorageMeasures`) and the Python package (`pqax.measures`) implement the same measures and must give the same values. In the files of the kit they are equal to the last bit: the three languages add and divide in the same order.
+`expected/measures/<sample>.json` holds the derived measures of section 10 of the [object model](../docs/object-model.md) for every table, every column, and the collection of a valid sample, as the view model of the storage views computes them: `buildModel(await readFootprint(doc))` of [`@pqax/views`](../src/typescript/views/README.md). It holds every measure of section 10 except ColumnNullShare and ColumnCompressionRatio, the two over a set of columns, which only the views offer. The C# library (`StorageMeasures`) and the Python package (`pqax.measures`) implement the same measures and must give the same values. In the files of the kit they are equal to the last bit: the three languages add and divide in the same order.
 
 ```json
 {"file": "sample.pqax", "embeddedPart": null, "smallFileSize": 134217728, "tinyFileSize": 8388608, "filesRead": true, "warnings": [],
  "tables": [{"id": 1, "name": "sales", "label": "sales", "rowCount": 17000, "fileCount": 3, "fileSize": 159121,
              "stack": {"live": 155034.9, "nonLive": 737, "unreferenced": 0, "deleted": 239.1, "stale": 0, "metadata": 12469, "footers": 3847,
                        "deletedSource": "files", "listed": true, "data": 156011, "total": 172327, "waste": 976.1, "overhead": 16316,
-                       "wasteShare": 0.006256610110825519, "overheadShare": 0.10458236919191595},
+                       "wasteShare": 0.006256610110825519, "overheadShare": 0.10458236919191595,
+                       "shares": {"live": 0.9937433898891744, "...": "..."}},
              "smallFiles": {"threshold": 134217728, "count": 3, "shareAtLeast": 1}, "tinyFiles": {"...": "..."},
+             "files": {"count": 3, "sum": 159121, "minimum": 28252, "firstQuartile": 28252, "median": 47820, "thirdQuartile": 83049,
+                       "maximum": 83049, "vOrder": {"share": 0.3333333333333333, "bytesShare": 0.17755041760672696}},
              "measures": {"compressionRatio": 2.0073306897631222, "...": "..."},
-             "maintenance": {"lastCommitAt": "2023-11-14T22:15:20.000Z", "commitsPerDay": 4, "daysSinceLastCommit": 1055}}]}
+             "maintenance": {"lastCommitAt": "2023-11-14T22:15:20.000Z", "commitsPerDay": 4, "daysSinceLastCommit": 1055,
+                             "hasVacuum": false, "lastVacuumAt": null, "hasOptimize": true, "lastOptimizeAt": "2023-11-14T22:14:50.000Z"},
+             "partitions": {"count": 2, "kept": 2, "oldestModifiedAt": "2023-11-14T22:15:00.000Z", "...": "..."}}],
+ "columns": [{"id": 1, "table": 1, "name": "id", "label": "id", "nullShare": 0, "compressionRatio": 7.034014658821101,
+              "dictionaryShare": 0, "dictionaryFallbackShare": null, "averageValueLength": null, "filesWithoutColumnShare": 0}],
+ "collection": {"totals": {"sources": 2, "tables": 2, "columns": 10, "files": 5, "fileSize": 199005, "rowCount": 21100,
+                           "footprint": 213583, "waste": 976.1, "overhead": 18942},
+                "depths": {"Column chunks": 2}}}
 ```
 
 | Key | Content |
@@ -148,9 +158,11 @@ Every expected file has all these keys.
 | `smallFileSize`, `tinyFileSize` | The thresholds of the small files: the defaults of the views, 128 MiB and 8 MiB |
 | `filesRead` | Whether the `files` table was read and has rows: then the deleted rows and the small files come from the files |
 | `warnings` | What the views could not read |
-| `tables` | One object per row of `tables`, in the order of the file, with the keys of `pqax tables --json`: `stack` with the seven components (`null` when absent) and the sums, `smallFiles` and `tinyFiles`, `measures` with the ratios of the views, and `maintenance`. A missing value is `null`. |
+| `tables` | One object per row of `tables`, in the order of the file. It has the keys of `pqax tables --json`: `id`, `name`, `label`, `rowCount`, `fileCount`, `fileSize`, `stack` with the seven components (`null` when absent) and the sums, `smallFiles` and `tinyFiles`, `measures` with the ratios of section 10.5, and `maintenance` with `lastCommitAt`, `commitsPerDay`, and `daysSinceLastCommit`. It has the measures that the command does not show too: `stack.shares`, the share of each component; `files`, the file size figures and `vOrder`, `null` or the V-Order shares `share` and `bytesShare`; `hasVacuum`, `lastVacuumAt`, `hasOptimize`, and `lastOptimizeAt` in `maintenance`; and `partitions`, with `count`, `kept`, `oldestModifiedAt`, and `newestModifiedAt`. |
+| `columns` | One object per row of `columns`, in the order of the file: `id`, `table`, the id of its table or `null` when no table of the file has it, `name`, `label`, and the six measures of section 10.6, `nullShare`, `compressionRatio`, `dictionaryShare`, `dictionaryFallbackShare`, `averageValueLength`, and `filesWithoutColumnShare` |
+| `collection` | The measures of section 10.7: `totals` with `sources`, `tables`, `columns`, `files`, `fileSize`, `rowCount`, `footprint`, `waste`, and `overhead`, and `depths`, the number of tables for each `detailDepth` |
 
-A test compares the numbers exactly, and `lastCommitAt` as a moment, since C# writes it with three decimals and the views keep the text of the file.
+The names are those of the view model, which section 10.8 of the object model maps. A missing value is `null`. A test compares the numbers exactly, with no tolerance, and a time, a key that ends in `At`, as a moment, since C# writes it with three decimals and the views and Python keep the text of the file.
 
 ## How to use the kit
 
@@ -227,7 +239,7 @@ python conformance/make_measures.py              # rewrites expected/measures/ f
 python conformance/make_measures.py --check      # writes nothing; exit code 1 when a file is not up to date
 ```
 
-`make_measures.py` runs a small script through `node` on every sample, with the built packages; it runs `npm run build` itself when a `dist/` folder is older than its sources, unless `--no-build` is given. It needs only the standard library of Python. A change of the measures goes to the views first, then to `StorageMeasures` in C# and to `pqax.measures` in Python, until the three agree.
+`make_measures.py` runs a small script through `node` on every sample, with the built packages; it runs `npm run build` itself when a `dist/` folder is older than its sources, unless `--no-build` is given. It needs only the standard library of Python. The script takes from the model of the views every measure that the files hold: for each table, the stack with the `share` of each component, the small files, `files` with `vOrder`, `measures`, `maintenance`, and `partitions`; for each column, its six measures, with its `name` from the `columns` table of the file and its `table` from the key of its table; and `collection.totals` and `collection.depths`. A view flag, such as the `source` of the file sizes, is left out. A change of the measures goes to the views first, then to `StorageMeasures` in C# and to `pqax.measures` in Python, until the three agree.
 
 ## The probe dump
 
@@ -394,7 +406,7 @@ python conformance/cross_check.py --skip dotnet    # leaves out an implementatio
 | Reader | `pqax.open` | `PqaxDocument.Open` | `openPqax`, through `node` |
 | Measures | `pqax.measures.measure` | `StorageMeasures.Compute`, through the runner | `buildModel` of `@pqax/views`, through `node` and `make_measures.py` |
 
-The files are `sample.pqax`, `sample.pqax` with at most 20 rows in a detail part, and `extensions.pqax`, as each writer writes them, the fixture as the collector writes it, which must give the results of `expected/sample.json`, and the samples `sample.pqax`, `multipart.pqax`, `extensions.pqax`, and `format-0.1.pqax` of the kit. Every validator must accept every file. Every reader must get the `rows`, the length of every table read whole, and `tablesFileSize`, `tablesRowCount`, `columnChunksCompressedSize`, `tables`, and `largestColumns` of the expected file of the sample. A written file has format version 0.2 and part names of its writer, so the parts are not compared. The measures of every file, by the three implementations, must equal `expected/measures/` of its sample value for value; for the collected fixture, the days since the last commit are left out, since they count to the time of the collection.
+The files are `sample.pqax`, `sample.pqax` with at most 20 rows in a detail part, and `extensions.pqax`, as each writer writes them, the fixture as the collector writes it, which must give the results of `expected/sample.json`, and the samples `sample.pqax`, `multipart.pqax`, `extensions.pqax`, and `format-0.1.pqax` of the kit. Every validator must accept every file. Every reader must get the `rows`, the length of every table read whole, and `tablesFileSize`, `tablesRowCount`, `columnChunksCompressedSize`, `tables`, and `largestColumns` of the expected file of the sample. A written file has format version 0.2 and part names of its writer, so the parts are not compared. The measures of every file, by the three implementations, must equal `expected/measures/` of its sample value for value, for the tables, the columns, and the collection; for the collected fixture, the days since the last commit are left out, since they count to the time of the collection.
 
 The script needs only the standard library. It skips, with a message, what is not there: `dotnet` or the .NET 10 SDK, `node`, a build of the TypeScript package, which it runs with `npm run build` when `dist/` is older than the sources unless `--no-build` is given. The exit code is 0 when every check passes, 1 when one fails, and 2 when nothing can run.
 
