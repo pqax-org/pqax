@@ -216,9 +216,12 @@ public static class StorageMeasures
 {
     public const long DefaultSmallFileSize = 134217728, DefaultTinyFileSize = 8388608;
     public static IReadOnlyList<string> StackComponents, WasteComponents, OverheadComponents;   // "live", "nonLive", ...
-    public static FootprintMeasures Compute(PqaxDocument document, MeasureOptions? options = null);   // reads files when the manifest lists rows
+    public static FootprintMeasures Compute(PqaxDocument document, MeasureOptions? options = null);   // reads files and partitions when the manifest lists rows
     public static IReadOnlyList<TableStorage> ForTables(Summary summary, IReadOnlyList<FileRow>? files, CollectionInfo? collection,
-                                                        MeasureOptions? options = null);   // one per row of tables, in the order of the file
+                                                        MeasureOptions? options = null, IReadOnlyList<PartitionRow>? partitions = null);
+                                                        // one per row of tables, in the order of the file
+    public static IReadOnlyList<ColumnStorage> ForColumns(Summary summary);   // one per row of columns, in the order of the file
+    public static CollectionMeasures ForCollection(Summary summary, IReadOnlyList<TableStorage> tables);   // tables: from ForTables
     public static StorageStack StackOf(StackInput input);
     public static double? DeletedEstimate(double? fileSize, double? deletedRowCount, double? rowCount);
     public static double? SmallShareAtLeast(double? count, double? minimum, double? firstQuartile, double? median,
@@ -228,29 +231,54 @@ public static class StorageMeasures
     public static double? Ratio(double? a, double? b);
 }
 public sealed class MeasureOptions { long SmallFileSize; long TinyFileSize; }
-public sealed class FootprintMeasures { IReadOnlyList<TableStorage> Tables; bool FilesRead; IReadOnlyList<string> Warnings; }
+public sealed class FootprintMeasures
+{
+    IReadOnlyList<TableStorage> Tables; IReadOnlyList<ColumnStorage> Columns; CollectionMeasures Collection;
+    bool FilesRead; IReadOnlyList<string> Warnings;
+}
 public sealed class TableStorage
 {
     long? Id; int Row; string? Name; string Label; long? RowCount; long? FileCount; long? FileSize;
-    StorageStack Stack; SmallFiles SmallFiles; SmallFiles TinyFiles; TableMeasures Measures; MaintenanceMeasures Maintenance;
-    void WriteTo(Utf8JsonWriter writer);   // one table of the JSON of pqax tables --json
+    StorageStack Stack; SmallFiles SmallFiles; SmallFiles TinyFiles; FileMeasures Files; TableMeasures Measures;
+    MaintenanceMeasures Maintenance; PartitionMeasures Partitions;
+    void WriteTo(Utf8JsonWriter writer);   // one table of the JSON of pqax tables --json, which shows some of the measures
 }
 public sealed class StorageStack
 {
     double? Live, NonLive, Unreferenced, Deleted, Stale, Metadata, Footers;   // the seven components
     double? Waste, Overhead, Data, Total, WasteShare, OverheadShare; bool Listed; string? DeletedSource;   // "files" or "table"
     double? Component(string key);
+    double? Share(string key);   // the share of a component: the component over Data
 }
 public sealed class SmallFiles { long Threshold; long? Count; double? ShareAtLeast; }   // SmallFileCount and SmallFileShare, or the tiny ones
+public sealed class FileMeasures   // the file size figures of section 10.3, from the files or from FileSizes, and the V-Order shares
+{
+    long? Count; double? Sum, Minimum, FirstQuartile, Median, ThirdQuartile, Maximum; double? VOrderShare, VOrderBytesShare;
+}
 public sealed class TableMeasures
 {
     double? CompressionRatio, DeletedRowShare, AverageFileSize, AverageRowGroupRows, FooterCoverage, StaleColumnShare,
             NonLiveShare, AveragePartitionSize, DictionaryFallbackShare;
 }
-public sealed class MaintenanceMeasures { DateTimeOffset? LastCommitAt; double? CommitsPerDay; long? DaysSinceLastCommit; }
+public sealed class MaintenanceMeasures
+{
+    DateTimeOffset? LastCommitAt; double? CommitsPerDay; long? DaysSinceLastCommit;
+    bool? HasVacuum; DateTimeOffset? LastVacuumAt; bool? HasOptimize; DateTimeOffset? LastOptimizeAt;
+}
+public sealed class PartitionMeasures { long? Count; long Kept; DateTimeOffset? OldestModifiedAt, NewestModifiedAt; }   // Partitions, PartitionsKept, ...
+public sealed class ColumnStorage
+{
+    long? Id; int Row; long? Table; string? Name; string Label;   // Table: the id of its table, null when no table of the file has it
+    double? NullShare, CompressionRatio, DictionaryShare, DictionaryFallbackShare, AverageValueLength, FilesWithoutColumnShare;
+}
+public sealed class CollectionMeasures
+{
+    long Sources, Tables, Columns; long? Files, FileSize, RowCount; double? Footprint, Waste, Overhead;
+    IReadOnlyDictionary<string, long> Depths;   // the tables for each DetailDepth, "Unknown" for a table without one
+}
 ```
 
-The library offers the measures of a table that `pqax tables` shows: the storage stack of section 10.2 without the shares of the components; SmallFileCount, SmallFileShare, TinyFileCount, and TinyFileShare of section 10.3; LastCommitAt, CommitsPerDay, and DaysSinceLastCommit of section 10.4; and the ratios of section 10.5 except the counts and times of the partitions. It does not offer yet the file size figures, the V-Order shares, VACUUM and OPTIMIZE, the partitions, the measures of a column, or those of the collection.
+The library offers every measure of section 10, as decision 7 of the [decisions](decisions.md) asks. For a table: the storage stack of 10.2 with the share of each component; the file size figures, SmallFileCount, SmallFileShare, TinyFileCount, TinyFileShare, VOrderShare, and VOrderBytesShare of 10.3; LastCommitAt, CommitsPerDay, DaysSinceLastCommit, HasVacuum, LastVacuumAt, HasOptimize, and LastOptimizeAt of 10.4; and the ratios and the partitions of 10.5. For a column, the six measures of 10.6, and for the collection, those of 10.7. The two measures over a set of columns of 10.6, ColumnNullShare and ColumnCompressionRatio, are left to the views. The names are those of section 10 in the casing of C#, grouped as the view model of 10.8 groups them: `Stack`, `Files`, `Maintenance`, `Measures`, and `Partitions` of a table, `ColumnStorage` for a column, and `CollectionMeasures` with the totals and `Depths`. VOrderShare and VOrderBytesShare are on `FileMeasures`, where the view model has the object `vOrder`. `pqax tables` shows some of the measures, and its JSON, which `TableStorage.WriteTo` writes, keeps the keys it had in version 0.2.0.
 
 ### 4.4 TypeScript package `pqax`
 
@@ -313,8 +341,12 @@ A writer, `pqax.Builder`, with the shape of the C# builder, is a should: the kit
 The derived measures of section 10 of the [object model](object-model.md) are in the module `pqax.measures`, as decided on 22 October 2026: pure functions over the tables that the reader returns, standard library only. A measure that cannot be computed is `None`. A result is a dict with the names of the JSON of `pqax tables --json`, which are those of the storage views, and a whole number in a float is returned as an `int`. The two thresholds are optional keyword arguments, 128 MiB and 8 MiB by default.
 
 ```python
-pqax.measures.measure(doc, *, small_file_size=..., tiny_file_size=...) -> dict   # {"filesRead", "warnings", "tables": [...]}
-pqax.measures.measure_tables(summary, files=None, collection=None, *, small_file_size=..., tiny_file_size=...) -> list[dict]
+pqax.measures.measure(doc, *, small_file_size=..., tiny_file_size=...) -> dict
+                                     # {"filesRead", "warnings", "tables": [...], "columns": [...], "collection": {...}}
+pqax.measures.measure_tables(summary, files=None, collection=None, partitions=None, *, small_file_size=...,
+                             tiny_file_size=...) -> list[dict]
+pqax.measures.measure_columns(summary) -> list[dict]
+pqax.measures.measure_collection(summary, tables) -> dict   # tables: what measure_tables returned
 pqax.measures.stack_of(file_size, deleted, footer_size, stale_column_size, non_live_file_size, metadata_size,
                        unreferenced_file_size=None, deleted_source=None) -> dict
 pqax.measures.deleted_estimate(file_size, deleted_row_count, row_count)
@@ -326,7 +358,7 @@ pqax.measures.DEFAULT_SMALL_FILE_SIZE, DEFAULT_TINY_FILE_SIZE, STACK_COMPONENTS,
 python -m pqax tables <file> [--part NAME] [--sort waste|total|rows|files|name] [--top N] [--wide] [--json]
 ```
 
-The dict of a table has `id`, `name`, `label`, `rowCount`, `fileCount`, `fileSize`, `stack`, `smallFiles`, `tinyFiles`, `measures`, and `maintenance`: the measures that the C# library offers, as section 4.3 lists them.
+The module offers the measures that the C# library offers, as section 4.3 lists them: every measure of section 10 except the two over a set of columns. It has one function for each group: `measure_tables` for the tables, `measure_columns` for the columns, and `measure_collection` for the collection, and `measure` reads a document and calls the three. The dict of a table has `id`, `name`, `label`, `rowCount`, `fileCount`, `fileSize`; `stack` with the seven components, the sums, and `shares`, the share of each component; `smallFiles` and `tinyFiles`; `files` with the file size figures and `vOrder`, null or `{"share", "bytesShare"}`; `measures`; `maintenance`; and `partitions` with `count`, `kept`, `oldestModifiedAt`, and `newestModifiedAt`. The dict of a column has `id`, `table`, `name`, `label`, and the six measures of section 10.6, and that of the collection has `totals` and `depths`, as `collection` of the view model. A time is the text of the file. The JSON of `python -m pqax tables --json` keeps the keys it had in version 0.2.0, as in C#.
 
 ### 4.6 Collector
 
