@@ -1,0 +1,46 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/report/definition/visualContainer/2.12.0/schema.json",
+  "name": "e96d23341b55502b8929",
+  "position": {
+    "x": 10,
+    "y": 10,
+    "z": 0,
+    "height": 80,
+    "width": 1260,
+    "tabOrder": 0
+  },
+  "visual": {
+    "visualType": "textbox",
+    "objects": {
+      "general": [
+        {
+          "properties": {
+            "paragraphs": [
+              {
+                "textRuns": [
+                  {
+                    "value": "The storage stack of the tables over time",
+                    "textStyle": {
+                      "fontWeight": "bold",
+                      "fontSize": "14pt"
+                    }
+                  }
+                ]
+              },
+              {
+                "textRuns": [
+                  {
+                    "value": "Section 10.2 of the object model: Live is the data the tables still hold; the waste is Non-live, Unreferenced, Deleted, and Stale; the overhead is Metadata and Footers. Total is the seven together, and Waste Share is Waste over Data, Live plus Waste. A period shows the tables of its last collection day, each table once, from its latest collection of that day. Sizes are in units of 1,000 bytes.",
+                    "textStyle": {
+                      "fontSize": "10pt"
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    }
+  }
+}

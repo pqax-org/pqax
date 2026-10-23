@@ -1,0 +1,4 @@
+# What Power BI Desktop writes next to a project, and the sample that make_sample.py builds
+**/.pbi/localSettings.json
+**/.pbi/cache.abf
+sample/

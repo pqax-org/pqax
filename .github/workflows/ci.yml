@@ -38,7 +38,8 @@ jobs:
       - name: Cross-implementation check
         run: python conformance/cross_check.py
 
-  # Every Python that pyproject.toml accepts, and the oldest and the newest of them with pandas and polars.
+  # Every Python that pyproject.toml accepts, and the oldest and the newest of them with pandas, polars, pyarrow, and
+  # deltalake.
   python-compat:
     runs-on: ubuntu-latest
     strategy:
@@ -47,8 +48,8 @@ jobs:
         python: ["3.10", "3.11", "3.12", "3.13", "3.14"]
         extras: ["dev"]
         include:
-          - { python: "3.10", extras: "dev,pandas,polars" }
-          - { python: "3.14", extras: "dev,pandas,polars" }
+          - { python: "3.10", extras: "dev,pandas,polars,parquet,delta" }
+          - { python: "3.14", extras: "dev,pandas,polars,parquet,delta" }
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7

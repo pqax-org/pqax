@@ -101,3 +101,14 @@ The logo of PQAX, in [brand/](../brand/README.md). The drafts were made in five 
 | 2026-10-23 | The wordmark is PQAX in Red Hat Display Bold, version 5.0.0 under the SIL Open Font License 1.1, with the kerning of the font plus 6% of the cap height between the letters, as paths, so that no font file travels with the logo. | Decided, 23 October 2026 |
 | 2026-10-23 | The wordmark is slate 800 `#1E293B` on a light background and slate 200 `#E2E8F0` on a dark one. pqax.org and pqax.tools take the same two colors for their text, with the rest of their palette from the slate scale. | Decided, 23 October 2026 |
 | 2026-10-23 | The files live in `brand/` of this repository: the SVG sources and the PNG exports. The sites use the mark as favicon and the lock-up in the header; the NuGet packages carry the mark as their icon; the README shows the lock-up of the reader's mode. | Decided, 23 October 2026 |
+
+## The export and the Power BI template
+
+Proposed on 24 October 2026 with `pqax export` and `templates/powerbi`, and waiting for the maintainer.
+
+| Date | Decision | Status |
+|---|---|---|
+| 2026-10-24 | The Power BI template lives in this repository as a PBIP project, a TMDL model and a PBIR report in text, and is not published as a `.pbit` download. The text is reviewed and diffed with the code, a test checks its columns against the columns of `pqax export` in every build, and a download would have to be built by hand in Power BI Desktop at each release and could drift from the export. A user copies the folder, or takes it from the source archive of a release. | Proposed |
+| 2026-10-24 | A footprint in an export is identified by `footprintId`, the SHA-256 of the bytes of its PQAX file in lowercase hex, of the embedded part for a VPAX. It needs nothing from the collector, gives the same id to the same file wherever it is copied or embedded, and lets the export refuse a footprint twice. A file rewritten with other bytes and the same content gets another id. | Proposed |
+| 2026-10-24 | In the export, a measure has its name of section 10 of the object model with a lower-case first letter, and the stack component shares, which section 10 does not name, are `<component>DataShare`, such as `nonLiveDataShare`, since `nonLiveShare` is NonLiveShare of 10.5. The file size figures are `fileSizesCount` to `fileSizesMaximum`. | Proposed |
+| 2026-10-24 | The measures of the template add, for a period, the tables of its last collection day, each table, by source name and label, from its latest collection of that day, since a size is a stock and adding the days would count it again. | Proposed |

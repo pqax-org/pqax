@@ -1,0 +1,36 @@
+/// The calendar of the collections, from 1 January 2026 to the end of the next year. It references no other table,
+/// so that it also works in Direct Lake.
+table Date
+	dataCategory: Time
+	lineageTag: c4f2d0b3-89b0-5dc6-a231-fab85c6ed4de
+
+	column Date
+		dataType: dateTime
+		isKey
+		formatString: yyyy-mm-dd
+		lineageTag: ba92e962-92ab-513e-b873-267e1875e093
+		summarizeBy: none
+		isNameInferred
+		sourceColumn: [Date]
+
+		annotation SummarizationSetBy = User
+
+	column Month = DATE ( YEAR ( 'Date'[Date] ), MONTH ( 'Date'[Date] ), 1 )
+		dataType: dateTime
+		formatString: mmm yyyy
+		lineageTag: a6d8b2ad-bb19-55e4-a21c-0c87b3810a40
+		summarizeBy: none
+
+		annotation SummarizationSetBy = User
+
+	column Year = YEAR ( 'Date'[Date] )
+		dataType: int64
+		formatString: 0
+		lineageTag: c670ef02-e8f0-54ac-b23b-8750042dafd9
+		summarizeBy: none
+
+		annotation SummarizationSetBy = User
+
+	partition Date = calculated
+		mode: import
+		source = CALENDAR ( DATE ( 2026, 1, 1 ), DATE ( YEAR ( TODAY () ) + 1, 12, 31 ) )

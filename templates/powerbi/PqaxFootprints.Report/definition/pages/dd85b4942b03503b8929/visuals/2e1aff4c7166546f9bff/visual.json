@@ -1,0 +1,46 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/report/definition/visualContainer/2.12.0/schema.json",
+  "name": "2e1aff4c7166546f9bff",
+  "position": {
+    "x": 10,
+    "y": 10,
+    "z": 0,
+    "height": 80,
+    "width": 1260,
+    "tabOrder": 0
+  },
+  "visual": {
+    "visualType": "textbox",
+    "objects": {
+      "general": [
+        {
+          "properties": {
+            "paragraphs": [
+              {
+                "textRuns": [
+                  {
+                    "value": "Non-live and unreferenced files over time",
+                    "textStyle": {
+                      "fontWeight": "bold",
+                      "fontSize": "14pt"
+                    }
+                  }
+                ]
+              },
+              {
+                "textRuns": [
+                  {
+                    "value": "Section 10.2: Non-live is min(NonLiveFileSize, UnreferencedFileSize) when the storage was listed, else NonLiveFileSize, an upper bound: the files that left the table and that the log still tracks, as far as the storage can still hold them. Unreferenced is UnreferencedFileSize less Non-live, a lower bound: the files that no non-live file explains. A VACUUM lowers both. The removal times are those of 10.4. A period shows the tables of its last collection day, each table once, from its latest collection of that day. Sizes are in units of 1,000 bytes.",
+                    "textStyle": {
+                      "fontSize": "10pt"
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    }
+  }
+}

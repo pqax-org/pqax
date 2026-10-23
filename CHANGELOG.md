@@ -31,9 +31,13 @@ Every package carries the PQAX icon, the mark of [brand/](brand/README.md).
 
 `pqax` has the module `measures`, the same measures as the storage views, computed as section 10 of the object model defines them, and the command `python -m pqax tables`, which prints `n/a` for a measure that is null. The module offers every measure of section 10 that C# offers: `measure_tables` for the tables, with the shares of the stack, `files`, VACUUM and OPTIMIZE, and `partitions`, `measure_columns` for the columns, and `measure_collection` for the collection, and `measure` returns the three. The JSON of `pqax tables --json`, in C# and in Python, keeps its keys. Reads 0.1 and 0.2, writes 0.2.
 
+`python -m pqax export` and the module `pqax.export` write the tables of a footprint and its derived measures as CSV with the standard library, as Parquet with the new extra `pqax[parquet]` (pyarrow), or as Delta with the new extra `pqax[delta]` (deltalake). Every row carries `footprintId`, the SHA-256 of the PQAX file, and `collectedAt`, so that the exports of several days append to one table per name; a footprint already in the folder is refused, or skipped with `--if-exists skip`. The tables are those of the format with their fields, and `tableMeasures`, `columnMeasures`, `collectionMeasures`, and `footprints`. The export reads the footprint embedded in a VPAX too.
+
 ### Templates
 
 A new folder, `templates/`, with files to copy elsewhere. `github-actions/pqax-footprint.yml` collects a workspace every day as a service principal, signed in with OpenID Connect or a client secret, checks the footprint, and keeps it as an artifact and optionally in the repository. `fabric/pqax-footprint.ipynb` collects from a Fabric notebook with the token of the notebook. Neither has run against a real workspace yet: their READMEs say what is verified.
+
+`powerbi/` is a Power BI project, a TMDL model and a PBIR report, over a folder of Parquet files written by `pqax export`: a Footprints table, Tables and Columns with their measures per collection, a Date table, and DAX measures for the last collection of a period and the change from the collection before. Its three pages show the storage stack per table over time, the non-live and unreferenced files, and the small files, with the definitions of section 10 in the descriptions. `make_sample.py` builds a synthetic export of fourteen days from a sample of the kit. The README says how to point the model at the Delta tables of a lakehouse in Direct Lake. It opened and refreshed in Power BI Desktop on that sample; Direct Lake has not run yet.
 
 ### Conformance kit
 

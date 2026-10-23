@@ -1,0 +1,172 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/report/definition/visualContainer/2.12.0/schema.json",
+  "name": "47f111395fd65b83bc29",
+  "position": {
+    "x": 210,
+    "y": 410,
+    "z": 5,
+    "height": 300,
+    "width": 1060,
+    "tabOrder": 5
+  },
+  "visual": {
+    "visualType": "tableEx",
+    "query": {
+      "queryState": {
+        "Values": {
+          "projections": [
+            {
+              "field": {
+                "Column": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "Tables"
+                    }
+                  },
+                  "Property": "sourceName"
+                }
+              },
+              "queryRef": "Tables.sourceName",
+              "nativeQueryRef": "sourceName"
+            },
+            {
+              "field": {
+                "Column": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "Tables"
+                    }
+                  },
+                  "Property": "label"
+                }
+              },
+              "queryRef": "Tables.label",
+              "nativeQueryRef": "label"
+            },
+            {
+              "field": {
+                "Measure": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "Storage"
+                    }
+                  },
+                  "Property": "Files"
+                }
+              },
+              "queryRef": "Storage.Files",
+              "nativeQueryRef": "Files"
+            },
+            {
+              "field": {
+                "Measure": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "Storage"
+                    }
+                  },
+                  "Property": "Average File Size"
+                }
+              },
+              "queryRef": "Storage.Average File Size",
+              "nativeQueryRef": "Average File Size"
+            },
+            {
+              "field": {
+                "Measure": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "Storage"
+                    }
+                  },
+                  "Property": "Median File Size"
+                }
+              },
+              "queryRef": "Storage.Median File Size",
+              "nativeQueryRef": "Median File Size"
+            },
+            {
+              "field": {
+                "Measure": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "Storage"
+                    }
+                  },
+                  "Property": "Small File Share"
+                }
+              },
+              "queryRef": "Storage.Small File Share",
+              "nativeQueryRef": "Small File Share"
+            },
+            {
+              "field": {
+                "Measure": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "Storage"
+                    }
+                  },
+                  "Property": "Tiny File Share"
+                }
+              },
+              "queryRef": "Storage.Tiny File Share",
+              "nativeQueryRef": "Tiny File Share"
+            },
+            {
+              "field": {
+                "Measure": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "Storage"
+                    }
+                  },
+                  "Property": "Last Optimize At"
+                }
+              },
+              "queryRef": "Storage.Last Optimize At",
+              "nativeQueryRef": "Last Optimize At"
+            },
+            {
+              "field": {
+                "Measure": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "Storage"
+                    }
+                  },
+                  "Property": "Files Change"
+                }
+              },
+              "queryRef": "Storage.Files Change",
+              "nativeQueryRef": "Files Change"
+            }
+          ]
+        }
+      }
+    },
+    "drillFilterOtherVisuals": true,
+    "visualContainerObjects": {
+      "title": [
+        {
+          "properties": {
+            "show": {
+              "expr": {
+                "Literal": {
+                  "Value": "true"
+                }
+              }
+            },
+            "text": {
+              "expr": {
+                "Literal": {
+                  "Value": "'Tables'"
+                }
+              }
+            }
+          }
+        }
+      ]
+    }
+  }
+}

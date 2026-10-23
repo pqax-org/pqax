@@ -1,0 +1,197 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/report/definition/visualContainer/2.12.0/schema.json",
+  "name": "097c6d7b5b985af19943",
+  "position": {
+    "x": 210,
+    "y": 200,
+    "z": 7,
+    "height": 300,
+    "width": 1060,
+    "tabOrder": 7
+  },
+  "visual": {
+    "visualType": "columnChart",
+    "query": {
+      "queryState": {
+        "Category": {
+          "projections": [
+            {
+              "field": {
+                "Column": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "Date"
+                    }
+                  },
+                  "Property": "Date"
+                }
+              },
+              "queryRef": "Date.Date",
+              "nativeQueryRef": "Date"
+            }
+          ]
+        },
+        "Y": {
+          "projections": [
+            {
+              "field": {
+                "Measure": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "Storage"
+                    }
+                  },
+                  "Property": "Live"
+                }
+              },
+              "queryRef": "Storage.Live",
+              "nativeQueryRef": "Live"
+            },
+            {
+              "field": {
+                "Measure": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "Storage"
+                    }
+                  },
+                  "Property": "Non-live"
+                }
+              },
+              "queryRef": "Storage.Non-live",
+              "nativeQueryRef": "Non-live"
+            },
+            {
+              "field": {
+                "Measure": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "Storage"
+                    }
+                  },
+                  "Property": "Unreferenced"
+                }
+              },
+              "queryRef": "Storage.Unreferenced",
+              "nativeQueryRef": "Unreferenced"
+            },
+            {
+              "field": {
+                "Measure": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "Storage"
+                    }
+                  },
+                  "Property": "Deleted"
+                }
+              },
+              "queryRef": "Storage.Deleted",
+              "nativeQueryRef": "Deleted"
+            },
+            {
+              "field": {
+                "Measure": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "Storage"
+                    }
+                  },
+                  "Property": "Stale"
+                }
+              },
+              "queryRef": "Storage.Stale",
+              "nativeQueryRef": "Stale"
+            },
+            {
+              "field": {
+                "Measure": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "Storage"
+                    }
+                  },
+                  "Property": "Metadata"
+                }
+              },
+              "queryRef": "Storage.Metadata",
+              "nativeQueryRef": "Metadata"
+            },
+            {
+              "field": {
+                "Measure": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "Storage"
+                    }
+                  },
+                  "Property": "Footers"
+                }
+              },
+              "queryRef": "Storage.Footers",
+              "nativeQueryRef": "Footers"
+            }
+          ]
+        }
+      }
+    },
+    "drillFilterOtherVisuals": true,
+    "objects": {
+      "valueAxis": [
+        {
+          "properties": {
+            "labelDisplayUnits": {
+              "expr": {
+                "Literal": {
+                  "Value": "1D"
+                }
+              }
+            }
+          }
+        }
+      ],
+      "legend": [
+        {
+          "properties": {
+            "show": {
+              "expr": {
+                "Literal": {
+                  "Value": "true"
+                }
+              }
+            },
+            "position": {
+              "expr": {
+                "Literal": {
+                  "Value": "'Bottom'"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "visualContainerObjects": {
+      "title": [
+        {
+          "properties": {
+            "show": {
+              "expr": {
+                "Literal": {
+                  "Value": "true"
+                }
+              }
+            },
+            "text": {
+              "expr": {
+                "Literal": {
+                  "Value": "'Storage stack by collection day'"
+                }
+              }
+            }
+          }
+        }
+      ]
+    }
+  }
+}

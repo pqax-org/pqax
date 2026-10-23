@@ -1,0 +1,229 @@
+table Footprints
+	lineageTag: cc49fefc-be25-5cb3-9430-6109f55b252a
+
+	/// The time of the latest collection in the period, in UTC.
+	measure 'Latest Collection At' =
+			MAX ( Footprints[collectedAt] )
+		formatString: yyyy-mm-dd hh:nn
+		lineageTag: d0879d32-8751-5052-99ff-83648a18e3a1
+
+	/// The footprints exported, one per collection.
+	measure 'Collections' =
+			COUNTROWS ( Footprints )
+		formatString: #,0
+		lineageTag: f5eec9c1-3e7b-524f-8ab3-12e8474002f1
+
+	/// The days with at least one collection.
+	measure 'Collection Days' =
+			DISTINCTCOUNT ( Footprints[collectionDate] )
+		formatString: #,0
+		lineageTag: 20047380-38cf-5807-a688-c0ef262c435f
+
+	/// The identifier of the footprint in the export: the SHA-256 of the bytes of its PQAX file, in lowercase hex. The same file, standalone or embedded in a VPAX, has the same id.
+	column footprintId
+		dataType: string
+		lineageTag: 411e3f38-cee3-538d-b96b-656130e76cd2
+		summarizeBy: none
+		sourceColumn: footprintId
+
+		annotation SummarizationSetBy = User
+
+	/// When the footprint was collected: CompletedAt of the collection, else StartedAt, in UTC.
+	column collectedAt
+		dataType: dateTime
+		formatString: yyyy-mm-dd hh:nn:ss
+		lineageTag: 45030d92-07f3-58dc-a8b4-c976f9aaa9c7
+		summarizeBy: none
+		sourceColumn: collectedAt
+
+		annotation SummarizationSetBy = User
+
+	/// The UTC date of collectedAt. The Date table filters the footprints by it.
+	column collectionDate
+		dataType: dateTime
+		formatString: yyyy-mm-dd
+		lineageTag: a957e0a7-3aa2-5e2c-b609-33657912fd39
+		summarizeBy: none
+		sourceColumn: collectionDate
+
+		annotation SummarizationSetBy = User
+
+	/// The name of the file that was exported.
+	column file
+		dataType: string
+		lineageTag: 7d18ad50-0d04-5984-95f9-0663cbe1db25
+		summarizeBy: none
+		sourceColumn: file
+
+		annotation SummarizationSetBy = User
+
+	/// The part of the package that holds the footprint, such as Footprint.pqax in a VPAX; empty for a PQAX file.
+	column embeddedPart
+		dataType: string
+		lineageTag: df272143-9508-55ed-93e4-abb53e372491
+		summarizeBy: none
+		sourceColumn: embeddedPart
+
+		annotation SummarizationSetBy = User
+
+	/// Always pqax.
+	column format
+		dataType: string
+		lineageTag: dc955807-c9b7-5170-ba23-59498f6c05c5
+		summarizeBy: none
+		sourceColumn: format
+
+		annotation SummarizationSetBy = User
+
+	/// The version of the format of the file.
+	column formatVersion
+		dataType: string
+		lineageTag: b1900afc-a87d-53d8-b10d-1c4270731e99
+		summarizeBy: none
+		sourceColumn: formatVersion
+
+		annotation SummarizationSetBy = User
+
+	/// Collection, 6.2: the application that ran the collection.
+	column collectorApp
+		dataType: string
+		lineageTag: 09f63908-7660-564b-9fd5-a630803cf914
+		summarizeBy: none
+		sourceColumn: collectorApp
+
+		annotation SummarizationSetBy = User
+
+	/// Collection, 6.2: the version of the application.
+	column collectorAppVersion
+		dataType: string
+		lineageTag: 11791226-373c-5d5d-b6ac-8c7ff5dbf376
+		summarizeBy: none
+		sourceColumn: collectorAppVersion
+
+		annotation SummarizationSetBy = User
+
+	/// Collection, 6.2: the library that implemented it.
+	column collectorLib
+		dataType: string
+		lineageTag: c4114e13-8c27-50f1-91e4-368ed91a86d8
+		summarizeBy: none
+		sourceColumn: collectorLib
+
+		annotation SummarizationSetBy = User
+
+	/// Collection, 6.2: the version of the library.
+	column collectorLibVersion
+		dataType: string
+		lineageTag: 154b101d-d674-5814-8231-17d36e51d2dc
+		summarizeBy: none
+		sourceColumn: collectorLibVersion
+
+		annotation SummarizationSetBy = User
+
+	/// Collection, 6.2: when the collection started.
+	column startedAt
+		dataType: dateTime
+		formatString: yyyy-mm-dd hh:nn:ss
+		lineageTag: a2f1011d-ccbf-57aa-9a53-c64c5740ec0f
+		summarizeBy: none
+		sourceColumn: startedAt
+
+		annotation SummarizationSetBy = User
+
+	/// Collection, 6.2: when the collection completed.
+	column completedAt
+		dataType: dateTime
+		formatString: yyyy-mm-dd hh:nn:ss
+		lineageTag: 82038daa-ebdd-543b-b00c-0e39740baad5
+		summarizeBy: none
+		sourceColumn: completedAt
+
+		annotation SummarizationSetBy = User
+
+	/// Collection, 6.2: the highest collection level requested, 1 to 4.
+	column level
+		dataType: int64
+		formatString: #,0
+		lineageTag: 3fd0c51f-068f-57f2-919c-3787ae9df6ea
+		summarizeBy: none
+		sourceColumn: level
+
+		annotation SummarizationSetBy = User
+
+	/// Collection, 6.2: whether minimum and maximum values were collected.
+	column includesDataValues
+		dataType: boolean
+		lineageTag: ae39eddf-1de8-5a0e-941d-ffe581527dfd
+		summarizeBy: none
+		sourceColumn: includesDataValues
+
+		annotation SummarizationSetBy = User
+
+	/// Collection, 6.2: whether partition values were collected.
+	column includesPartitionValues
+		dataType: boolean
+		lineageTag: ebada7f7-fc27-543a-90d9-e7e717f63574
+		summarizeBy: none
+		sourceColumn: includesPartitionValues
+
+		annotation SummarizationSetBy = User
+
+	/// Collection, 6.2: the storage requests made.
+	column requestCount
+		dataType: int64
+		formatString: #,0
+		lineageTag: 6a7c7732-ea29-53ea-a275-aabaabd838a0
+		summarizeBy: none
+		sourceColumn: requestCount
+
+		annotation SummarizationSetBy = User
+
+	/// Collection, 6.2: the bytes read from storage.
+	column bytesRead
+		dataType: int64
+		formatString: #,0
+		lineageTag: 3dfe3e5f-3e4c-58ae-9694-7636cc4b1343
+		summarizeBy: none
+		sourceColumn: bytesRead
+
+		annotation SummarizationSetBy = User
+
+	/// Set when the names were obfuscated.
+	column obfuscatorDictionaryId
+		dataType: string
+		lineageTag: 49d12adf-1bac-5122-b28d-b8730303138e
+		summarizeBy: none
+		sourceColumn: obfuscatorDictionaryId
+
+		annotation SummarizationSetBy = User
+
+	/// The library that obfuscated the names.
+	column obfuscatorLib
+		dataType: string
+		lineageTag: eefc86b5-7a01-5b08-b0d5-1beb574a6ddc
+		summarizeBy: none
+		sourceColumn: obfuscatorLib
+
+		annotation SummarizationSetBy = User
+
+	/// The version of that library.
+	column obfuscatorLibVersion
+		dataType: string
+		lineageTag: 7bdb1daa-4cfe-56ca-a754-ee7bbb4f023a
+		summarizeBy: none
+		sourceColumn: obfuscatorLibVersion
+
+		annotation SummarizationSetBy = User
+
+	partition Footprints = m
+		mode: import
+		source =
+				let
+				    Source = PqaxTable("footprints"),
+				    Selected = Table.SelectColumns(Source, {"footprintId", "collectedAt", "collectionDate", "file", "embeddedPart", "format", "formatVersion", "collectorApp", "collectorAppVersion", "collectorLib", "collectorLibVersion", "startedAt", "completedAt", "level", "includesDataValues", "includesPartitionValues", "requestCount", "bytesRead", "obfuscatorDictionaryId", "obfuscatorLib", "obfuscatorLibVersion"}, MissingField.UseNull),
+				    Utc = Table.TransformColumns(Selected, List.Transform({"collectedAt", "startedAt", "completedAt"}, each {_, PqaxUtc, type datetime})),
+				    Typed = Table.TransformColumnTypes(Utc, {{"footprintId", type text}, {"collectionDate", type date}, {"file", type text}, {"embeddedPart", type text}, {"format", type text}, {"formatVersion", type text}, {"collectorApp", type text}, {"collectorAppVersion", type text}, {"collectorLib", type text}, {"collectorLibVersion", type text}, {"level", Int64.Type}, {"includesDataValues", type logical}, {"includesPartitionValues", type logical}, {"requestCount", Int64.Type}, {"bytesRead", Int64.Type}, {"obfuscatorDictionaryId", type text}, {"obfuscatorLib", type text}, {"obfuscatorLibVersion", type text}})
+				in
+				    Typed
+
+	annotation PBI_ResultType = Table

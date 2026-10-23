@@ -1,0 +1,134 @@
+table Collection
+	lineageTag: 2f9dcd8e-c779-585e-bfa2-c90b191adb83
+
+	/// The identifier of the footprint in the export: the SHA-256 of the bytes of its PQAX file, in lowercase hex. The same file, standalone or embedded in a VPAX, has the same id.
+	column footprintId
+		dataType: string
+		isHidden
+		lineageTag: b4c04ba0-2a00-51a4-bd08-b9424685abca
+		summarizeBy: none
+		sourceColumn: footprintId
+
+		annotation SummarizationSetBy = User
+
+	/// When the footprint was collected: CompletedAt of the collection, else StartedAt, in UTC.
+	column collectedAt
+		dataType: dateTime
+		formatString: yyyy-mm-dd hh:nn:ss
+		lineageTag: 6a64897f-3af3-59d2-9eb1-bfe6ef50175d
+		summarizeBy: none
+		sourceColumn: collectedAt
+
+		annotation SummarizationSetBy = User
+
+	/// Sources, 10.7: the sources with a distinct Id.
+	column sources
+		dataType: int64
+		formatString: #,0
+		lineageTag: 32ec7a01-0458-57e4-be87-4e5236517ab0
+		summarizeBy: none
+		sourceColumn: sources
+
+		annotation SummarizationSetBy = User
+
+	/// Tables, 10.7: the tables.
+	column tables
+		dataType: int64
+		formatString: #,0
+		lineageTag: 40584214-28d5-5a01-b9da-39571a61c325
+		summarizeBy: none
+		sourceColumn: tables
+
+		annotation SummarizationSetBy = User
+
+	/// Columns, 10.7: the columns.
+	column columns
+		dataType: int64
+		formatString: #,0
+		lineageTag: fdaacddb-4703-5f1e-a2fe-64e3ef1eb556
+		summarizeBy: none
+		sourceColumn: columns
+
+		annotation SummarizationSetBy = User
+
+	/// Files, 10.7: the sum of FileCount over the tables that have it.
+	column files
+		dataType: int64
+		formatString: #,0
+		lineageTag: f09b9c81-93cb-5987-8bb1-09ce6d6f50db
+		summarizeBy: none
+		sourceColumn: files
+
+		annotation SummarizationSetBy = User
+
+	/// FileSize, 10.7: the sum of FileSize over the tables that have it.
+	column fileSize
+		dataType: int64
+		formatString: #,0
+		lineageTag: b435e2b5-594b-59e3-be3b-f51ac9602e47
+		summarizeBy: none
+		sourceColumn: fileSize
+
+		annotation SummarizationSetBy = User
+
+	/// RowCount, 10.7: the sum of RowCount over the tables that have it.
+	column rowCount
+		dataType: int64
+		formatString: #,0
+		lineageTag: 10b5024c-33df-5d06-8608-86da3c686388
+		summarizeBy: none
+		sourceColumn: rowCount
+
+		annotation SummarizationSetBy = User
+
+	/// Footprint, 10.7: the sum of the Total of the stacks.
+	column footprint
+		dataType: double
+		formatString: #,0.###
+		lineageTag: a0dac32b-3c3f-5378-bf5d-fb075be4944a
+		summarizeBy: none
+		sourceColumn: footprint
+
+		annotation SummarizationSetBy = User
+
+	/// Waste, 10.7: the sum of the Waste of the stacks.
+	column waste
+		dataType: double
+		formatString: #,0.###
+		lineageTag: ed956c82-0966-58d8-b8eb-8afe245224a3
+		summarizeBy: none
+		sourceColumn: waste
+
+		annotation SummarizationSetBy = User
+
+	/// Overhead, 10.7: the sum of the Overhead of the stacks.
+	column overhead
+		dataType: double
+		formatString: #,0.###
+		lineageTag: 7ce88c90-c5f3-59e2-a374-299cc18eefdf
+		summarizeBy: none
+		sourceColumn: overhead
+
+		annotation SummarizationSetBy = User
+
+	/// Depths, 10.7: the number of tables for each value of DetailDepth, as JSON.
+	column depths
+		dataType: string
+		lineageTag: c182c88b-238b-5068-8a98-60cb0675a904
+		summarizeBy: none
+		sourceColumn: depths
+
+		annotation SummarizationSetBy = User
+
+	partition Collection = m
+		mode: import
+		source =
+				let
+				    Source = PqaxTable("collectionMeasures"),
+				    Selected = Table.SelectColumns(Source, {"footprintId", "collectedAt", "sources", "tables", "columns", "files", "fileSize", "rowCount", "footprint", "waste", "overhead", "depths"}, MissingField.UseNull),
+				    Utc = Table.TransformColumns(Selected, List.Transform({"collectedAt"}, each {_, PqaxUtc, type datetime})),
+				    Typed = Table.TransformColumnTypes(Utc, {{"footprintId", type text}, {"sources", Int64.Type}, {"tables", Int64.Type}, {"columns", Int64.Type}, {"files", Int64.Type}, {"fileSize", Int64.Type}, {"rowCount", Int64.Type}, {"footprint", type number}, {"waste", type number}, {"overhead", type number}, {"depths", type text}})
+				in
+				    Typed
+
+	annotation PBI_ResultType = Table
