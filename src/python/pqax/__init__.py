@@ -24,7 +24,7 @@ from ._errors import (
 )
 from ._json import format_timestamp, parse_timestamp
 from ._schema import DETAIL_TABLES, FIELDS, FORMAT_VERSION, REFERENCES, REQUIRED, ROWS_PER_PART, SUMMARY_TABLES, TABLES
-from . import measures
+from . import export, measures
 from .builder import Builder, BuilderOptions
 from .dataframe import to_dataframe
 from .reader import PqaxDocument, open, open_embedded

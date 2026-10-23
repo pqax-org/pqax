@@ -271,6 +271,17 @@ def main(argv: Optional[List[str]] = None) -> int:
                         help="add the shares of the files under 8 MiB and 128 MiB, the metadata, and the footers")
     tables.add_argument("--json", action="store_true",
                         help="write one JSON object with the collection and every measure of each table")
+    export = commands.add_parser("export", help="write the tables of a footprint and their measures as CSV, Parquet, "
+                                                "or Delta, appending to the exports of earlier days")
+    export.add_argument("file", help="a .pqax file, or a .vpax file that embeds one")
+    export.add_argument("--to", required=True, metavar="FOLDER", help="the folder of the export, created when missing")
+    export.add_argument("--format", choices=("csv", "parquet", "delta"), default="csv",
+                        help="csv, or parquet with pqax[parquet], or delta with pqax[delta] (default: csv)")
+    export.add_argument("--part", help=f"the embedded part of a package (default: {EMBEDDED_PART} when the file "
+                                       f"has no manifest.json)")
+    export.add_argument("--if-exists", choices=("error", "skip"), default="error",
+                        help="when the folder already has the footprint: exit with 1, or write nothing and exit with 0 "
+                             "(default: error)")
     for command in (check, info, tables):
         command.add_argument("file", help="a .pqax file, or a .vpax file that embeds one")
         command.add_argument("--part", help=f"the embedded part of a package (default: {EMBEDDED_PART} when the file "
@@ -282,6 +293,9 @@ def main(argv: Optional[List[str]] = None) -> int:
         if arguments.command == "tables":
             return _tables(arguments.file, arguments.part, arguments.sort, arguments.top, arguments.json,
                            arguments.wide)
+        if arguments.command == "export":
+            from .export import command as export_command
+            return export_command(arguments.file, arguments.to, arguments.format, arguments.part, arguments.if_exists)
         return _info(arguments.file, arguments.part)
     except OSError as error:
         print(f"pqax: {error}", file=sys.stderr)

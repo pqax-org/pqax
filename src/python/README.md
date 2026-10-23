@@ -7,7 +7,7 @@
 | Version | 0.2.0 |
 | Format | Reads 0.1 and 0.2, writes 0.2. Reads every other version 0.x. |
 | Python | 3.10 or later |
-| Dependencies | None. `to_dataframe` uses pandas, or polars 1.0 or later, when one is installed. |
+| Dependencies | None. `to_dataframe` uses pandas, or polars 1.0 or later, when one is installed. `export` writes Parquet with pyarrow and Delta with deltalake, when they are installed. |
 
 ## Install
 
@@ -15,6 +15,8 @@
 pip install pqax                       # the package and the pqax command
 pip install "pqax[pandas]"             # with pandas, for to_dataframe
 pip install "pqax[polars]"             # with polars, for to_dataframe
+pip install "pqax[parquet]"            # with pyarrow, for export to Parquet
+pip install "pqax[delta]"              # with deltalake and pyarrow, for export to Delta
 ```
 
 From the root of the repository:
@@ -25,7 +27,7 @@ pip install -e "src/python[pandas]"    # with pandas, for to_dataframe
 pip install -e "src/python[dev]"       # with pytest and jsonschema, for the tests
 ```
 
-Python versions: 3.10 or later. The tests run on 3.10 and 3.14, each without extras and with both pandas and polars. The package has no dependency: the `pandas` and `polars` extras only install the library that `to_dataframe` uses.
+Python versions: 3.10 or later. The tests run on 3.10 and 3.14, each without extras and with both pandas and polars. The package has no dependency: the `pandas` and `polars` extras only install the library that `to_dataframe` uses, and the `parquet` and `delta` extras the libraries that `export` uses. The tests run with pyarrow and deltalake where they run with pandas and polars.
 
 ## Read a file
 
@@ -144,9 +146,64 @@ python -m pqax check footprint.pqax      # exit code 0 when valid, 1 when not, 2
 python -m pqax info footprint.pqax       # format, version, collection, parts with their tables and rows
 python -m pqax info model.vpax           # a VPAX file: the PQAX file that it embeds as Footprint.pqax
 python -m pqax tables footprint.pqax     # one row per table: rows, files, live bytes, waste, and waste share
+python -m pqax export footprint.pqax --to exports   # the tables and their measures as CSV, Parquet, or Delta
 ```
 
 `check` prints one line for each issue, its code first, then a summary line. The commands take `--part NAME` for another embedded part. `tables` takes `--sort waste|total|rows|files|name`, `--top N`, `--wide` for the small files and the overhead, and `--json` for one JSON object; it writes what `pqax tables` of [Pqax.Cli](https://github.com/pqax-org/pqax/blob/main/src/dotnet/Pqax.Cli/README.md#tables) writes. The installed package also has a `pqax` command.
+
+## Export the tables, day after day
+
+`pqax.export` writes the tables of a footprint and its derived measures as CSV, Parquet, or Delta, so that a BI tool or a lakehouse can load them. The exports of several days go into the same folder and append to the same tables, and each row says which footprint it comes from. The [Power BI template](https://github.com/pqax-org/pqax/blob/main/templates/powerbi/README.md) reads them.
+
+```bash
+python -m pqax export footprint.pqax --to exports                    # CSV, with the standard library only
+python -m pqax export footprint.pqax --to exports --format parquet   # needs pqax[parquet]
+python -m pqax export model.vpax --to Tables --format delta          # needs pqax[delta]; the embedded footprint
+```
+
+```python
+from pqax import export
+
+result = export.export("footprint.pqax", "exports", format="parquet")
+print(result["footprintId"], result["collectedAt"], result["tables"])
+```
+
+| Extra | Installs | For |
+|---|---|---|
+| `pqax[parquet]` | pyarrow 16 or later | `--format parquet` |
+| `pqax[delta]` | deltalake 1.0 or later, and pyarrow | `--format delta` |
+
+Without the library, the export raises `ImportError` naming the extra, and the command exits with 2, before anything is written.
+
+The output tables:
+
+| Table | One row for each |
+|---|---|
+| `sources`, `tables`, `columns`, ..., `files`, `rowGroups`, `columnChunks`, `commits` | Row of that table of the format that the file has: every field of `pqax.FIELDS[name]`, with the names of the file, also those the file lacks |
+| `tableMeasures` | Table, with the measures of `measure_tables` |
+| `columnMeasures` | Column, with the measures of `measure_columns` |
+| `collectionMeasures` | Footprint, with the measures of `measure_collection` |
+| `footprints` | Footprint: the file, the format version, and the members of `collection` and of the obfuscation |
+
+Every row starts with `footprintId` and `collectedAt`. `export.COLUMNS` lists the columns of each table, and `export.SCHEMAS` their kinds.
+
+- **footprintId** is the SHA-256 of the bytes of the PQAX file, in lowercase hex; for a VPAX, of the PQAX file that it embeds, which has the same bytes as the file on its own. The id comes from the content and from nothing else: no collector has to assign one, the same footprint has the same id wherever it is copied or embedded, and a different collection always has another id, since its manifest holds its times. That is what lets the export refuse a footprint twice.
+- **collectedAt** is `completedAt` of the collection, else `startedAt`, as `collectedAt` of `pqax tables --json`. `footprints` also has `collectionDate`, its date in UTC.
+- **Names.** A table of the format and its fields keep the names of the file. A measure takes its name in section 10 of the object model, with a lower-case first letter, as rule 5 of section 3 of the contracts says for the keys of a table: `live`, `wasteShare`, `smallFileShare`, `vOrderShare`, `lastCommitAt`, `partitionsKept`. Section 10 does not name the share of each stack component, and NonLiveShare is already a measure, so those shares are `liveDataShare`, `nonLiveDataShare`, and so on: the component over Data. The file size figures are `fileSizesCount`, `fileSizesSum`, `fileSizesMinimum`, `fileSizesFirstQuartile`, `fileSizesMedian`, `fileSizesThirdQuartile`, and `fileSizesMaximum`. `tableMeasures` also has `sourceName` and some fields of its table, shown beside the stack: `detailDepth`, `nonLiveFileCount`, `nonLiveOldestRemovedAt`, `nonLiveNewestRemovedAt`, `unreferencedFileCount`. `columnMeasures` has `tableLabel`.
+- **Types.** The type of a column comes from the format, not from the values, so that the files of every day have the same schema. Integers are int64, the measures float64, the booleans bool, the timestamps UTC timestamps in microseconds, and `collectionDate` a date. A list, a map, or a nested object, such as `namespace`, `properties`, or `fileSizes`, is its compact JSON text. A timestamp that does not parse is null.
+- **Left out.** The tables and the fields that the format does not define, such as those of a producer, `acme_note`, are not exported; the result lists the tables in `ignored`, and the command prints them. A table with no rows is not written.
+
+The folder:
+
+| Format | Each table | A second export |
+|---|---|---|
+| CSV | `<folder>/<table>.csv`: UTF-8, a header, commas, `\r\n`; null is an empty field, an empty string `""`, a boolean `true` or `false`, a timestamp `2026-10-05T08:15:30.000Z` | Appends the rows, with no second header. A file whose header differs, from another version, is refused before anything is written. |
+| Parquet | `<folder>/<table>/<footprintId>.parquet` | Adds one file per table |
+| Delta | `<folder>/<table>/`, a Delta table written with deltalake | Appends one commit per table, merging a new column of a later version |
+
+A footprint whose id the `footprints` table of the folder already has is refused with `AlreadyExportedError`, code `export.duplicate`, and exit code 1, and nothing is written; `if_exists="skip"`, or `--if-exists skip`, writes nothing and returns, with exit code 0. `footprints` is written last, so a footprint in it was exported whole. An export that fails half way, on a full disk for example, can leave rows of the footprint in the CSV files or the Delta tables written before; the Parquet files of a footprint are replaced by the next export of it.
+
+In a Fabric notebook, `--to /lakehouse/default/Tables --format delta` writes the tables straight into the lakehouse attached to the notebook.
 
 ## API
 
@@ -159,6 +216,7 @@ python -m pqax tables footprint.pqax     # one row per table: rows, files, live 
 | `Issue` | `code`, `message`, `part`, `table`, `field` |
 | `to_dataframe(table, library=None)` | A pandas or polars data frame |
 | `measures` | The derived measures of the tables, the columns, and the collection. See above. |
+| `export` | `export(path_or_file, to, format="csv", part=None, if_exists="error")`, `COLUMNS`, `SCHEMAS`, `FORMATS`, `footprint_id(data)`, `AlreadyExportedError`. See above. |
 | `Builder`, `BuilderOptions` | The writer |
 | `format_timestamp(datetime)`, `parse_timestamp(text)` | Timestamps in the form of the format, `2026-10-05T08:15:30.000Z` |
 | `TABLES`, `SUMMARY_TABLES`, `DETAIL_TABLES`, `FIELDS`, `REQUIRED`, `REFERENCES` | The names of the format |

@@ -360,6 +360,20 @@ python -m pqax tables <file> [--part NAME] [--sort waste|total|rows|files|name] 
 
 The module offers the measures that the C# library offers, as section 4.3 lists them: every measure of section 10 except the two over a set of columns. It has one function for each group: `measure_tables` for the tables, `measure_columns` for the columns, and `measure_collection` for the collection, and `measure` reads a document and calls the three. The dict of a table has `id`, `name`, `label`, `rowCount`, `fileCount`, `fileSize`; `stack` with the seven components, the sums, and `shares`, the share of each component; `smallFiles` and `tinyFiles`; `files` with the file size figures and `vOrder`, null or `{"share", "bytesShare"}`; `measures`; `maintenance`; and `partitions` with `count`, `kept`, `oldestModifiedAt`, and `newestModifiedAt`. The dict of a column has `id`, `table`, `name`, `label`, and the six measures of section 10.6, and that of the collection has `totals` and `depths`, as `collection` of the view model. A time is the text of the file. The JSON of `python -m pqax tables --json` keeps the keys it had in version 0.2.0, as in C#.
 
+The export of section 10 of the [object model](object-model.md) and of the tables of a footprint, for a BI tool or a lakehouse, is in the module `pqax.export`. CSV needs the standard library only; Parquet needs pyarrow, the extra `pqax[parquet]`, and Delta needs deltalake and pyarrow, the extra `pqax[delta]`, and a missing library raises `ImportError` naming the extra.
+
+```python
+pqax.export.export(path_or_file, to, *, format="csv", part=None, if_exists="error", small_file_size=...,
+                   tiny_file_size=...) -> dict   # {"footprintId", "collectedAt", "format", "folder", "skipped",
+                                                 #  "tables": {name: rows}, "ignored": [...]}
+pqax.export.COLUMNS, SCHEMAS, FORMATS, IF_EXISTS, MEASURE_TABLES, FOOTPRINTS
+pqax.export.footprint_id(data) -> str            # the SHA-256 of the bytes of a PQAX file, lowercase hex
+pqax.export.AlreadyExportedError                 # a PqaxError, code export.duplicate
+python -m pqax export <file> --to FOLDER [--format csv|parquet|delta] [--part NAME] [--if-exists error|skip]
+```
+
+It writes one table for each table of the format that the file has, with every field of the format and the names of the file, and `tableMeasures`, `columnMeasures`, `collectionMeasures`, and `footprints`. Every row starts with `footprintId` and `collectedAt`. A measure has its name of section 10 with a lower-case first letter, the casing of rule 5 of section 3 for the keys of a table. The exports of several days append to the same tables, and a footprint that the folder already has is refused. The [Python README](../src/python/README.md#export-the-tables-day-after-day) lists the columns.
+
 ### 4.6 Collector
 
 Namespace `Pqax.Collector`. The storage access, the Delta log, the tail read of a footer, and the allow-list of footer keys were first tried in a probe that preceded the collector, on a real Fabric lakehouse and warehouse; the collector supersedes it.
