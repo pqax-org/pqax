@@ -21,6 +21,8 @@ Three tools: unattended sign-in for `pqax collect`, templates that collect a foo
 | `Pqax.Collector` | No change of the code. The README shows how to pass any `TokenCredential`, and the permissions of a service principal. | Writes 0.2 |
 | `Pqax.Collector.ParquetNet` | No change | Reads and writes no PQAX file |
 
+Every package carries the PQAX icon, the mark of [brand/](brand/README.md).
+
 ### npm
 
 No change.

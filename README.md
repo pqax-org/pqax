@@ -1,3 +1,8 @@
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="brand/logo-dark.svg">
+  <img src="brand/logo-light.svg" alt="PQAX" width="320">
+</picture>
+
 # PQAX
 
 PQAX, pronounced "pickax", is a file format for the footprint of Parquet tables: how much space the data takes and how it is arranged in files, row groups, and column chunks, without the data itself. A `.pqax` file lets someone analyze the compression and the design choices of a lakehouse without access to it, as a VPAX file does for a VertiPaq model. The file is a zip of JSON tables, and reading it needs no library beyond a zip reader and a JSON parser.

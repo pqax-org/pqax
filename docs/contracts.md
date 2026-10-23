@@ -37,6 +37,7 @@ README.md
 CHANGELOG.md                      what each release holds
 RELEASING.md                      how a release is published
 LICENSE                           MIT
+brand/                            the logo: the mark, the wordmark, the lock-ups, and their PNG exports
 package.json                      the npm workspaces of the two TypeScript packages
 Pqax.slnx                         every .NET project
 docs/
@@ -71,8 +72,8 @@ research/prototype                the prototype that tested the serialization
 research/detail-encoding          the experiment that compared encodings of a large table
 .github/workflows/ci.yml          builds and runs every suite
 .github/workflows/publish.yml     publishes a release to NuGet, npm, and PyPI
-.github/workflows/pages.yml       deploys site/ with the built packages to GitHub Pages, the site of pqax.org
-site/                             the one-page site of pqax.org, and the storage views at tools/
+.github/workflows/pages.yml       deploys site/ to GitHub Pages, the site of pqax.org
+site/                             the one-page site of pqax.org, with its favicons; tools/ redirects to pqax.tools
 ```
 
 Nothing under `src/`, `tests/`, and `conformance/` depends on a path outside those three folders. `research/` holds the experiments that the documents cite.

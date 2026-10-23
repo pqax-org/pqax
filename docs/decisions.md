@@ -85,3 +85,16 @@ The measures that a reader derives from the fields, defined in section 10 of the
 | 2026-10-22 | Commits per day divide `CommitsRead` only, since `OldestCommitAt` is the oldest of the commits read. `CommitCount` counts commits older than that and would overstate the rate. | Proposed |
 | 2026-10-22 | The share of the files without a column divides `FileCountWithoutColumn` by `FooterCount`, since both cover the files whose footer was read. | Proposed |
 | 2026-10-22 | Whether a VACUUM or an OPTIMIZE ran is null for a table that has no operation, since its list of operations is empty when the commits carry no operation name; it is false only when the table has operations and none of them matches. | Proposed |
+
+## The brand
+
+The logo of PQAX, in [brand/](../brand/README.md). The drafts were made in five rounds on 21 and 22 October 2026 in the private repository of the application, and the choices were taken by the maintainer and his team.
+
+| Date | Decision | Status |
+|---|---|---|
+| 2026-10-21 | The mark is Chunks: a Parquet file of three row groups of column chunks, with the footer below them and the folded corner of a file. Herringbone, Pick, Footprint, Monogram, Treemap, and Slice were dropped. | Decided, 21 October 2026 |
+| 2026-10-21 | The lock-up puts the mark beside the wordmark: a square of 1.2 times the cap height, centered on the cap height, 0.5 cap height from the P, measured on the ink. | Decided, 21 October 2026 |
+| 2026-10-21 | The colors of the mark are `#3C7AFE` for the chunks and `#EA580C` for the footer, the same in light and dark mode, so that one transparent bitmap serves both. The other palettes were dropped. | Decided, 21 October 2026 |
+| 2026-10-23 | The wordmark is PQAX in Red Hat Display Bold, version 5.0.0 under the SIL Open Font License 1.1, with the kerning of the font plus 6% of the cap height between the letters, as paths, so that no font file travels with the logo. | Decided, 23 October 2026 |
+| 2026-10-23 | The wordmark is slate 800 `#1E293B` on a light background and slate 200 `#E2E8F0` on a dark one. pqax.org and pqax.tools take the same two colors for their text, with the rest of their palette from the slate scale. | Decided, 23 October 2026 |
+| 2026-10-23 | The files live in `brand/` of this repository: the SVG sources and the PNG exports. The sites use the mark as favicon and the lock-up in the header; the NuGet packages carry the mark as their icon; the README shows the lock-up of the reader's mode. | Decided, 23 October 2026 |

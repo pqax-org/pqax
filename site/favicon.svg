@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <title>PQAX mark: Chunks Blue, one version for light and dark mode</title>
+  <!-- A Parquet file: three row groups of column chunks, on a 4 unit grid -->
+  <!-- One file for light and dark mode, as a transparent bitmap needs: #3C7AFE is 3.9:1 on white and
+       5.4:1 on black, #EA580C 3.6:1 and 5.9:1. Only the wordmark beside it changes with the mode -->
+  <g fill="#3C7AFE">
+    <!-- Row group 1; the folded corner of the file cuts its last chunk -->
+    <rect x="4" y="4" width="24" height="12"/>
+    <rect x="32" y="4" width="8" height="12"/>
+    <path d="M44 4H48L60 16H44Z"/>
+    <!-- Row group 2 -->
+    <rect x="4" y="20" width="20" height="12"/>
+    <rect x="28" y="20" width="12" height="12"/>
+    <rect x="44" y="20" width="16" height="12"/>
+    <!-- Row group 3 -->
+    <rect x="4" y="36" width="28" height="12"/>
+    <rect x="36" y="36" width="8" height="12"/>
+    <rect x="48" y="36" width="12" height="12"/>
+  </g>
+  <!-- Footer: the metadata that PQAX is built from; the chunks themselves are not read -->
+  <rect fill="#EA580C" x="4" y="52" width="56" height="8"/>
+</svg>

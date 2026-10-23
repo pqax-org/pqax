@@ -7,16 +7,19 @@
 <meta name="description" content="PQAX is a file format for the storage footprint of Parquet and Delta tables: files, row groups, column chunks, and their sizes, without the data. Documents, conformance kit, and packages for .NET, JavaScript, and Python.">
 <meta name="color-scheme" content="light dark">
 <link rel="canonical" href="https://pqax.org/">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="icon" href="favicon.ico" sizes="16x16 32x32 48x48">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
 <style>
-:root { --bg: #ffffff; --fg: #1f2328; --muted: #59636e; --line: #d0d7de; --accent: #0a5aa6; --code-bg: #f6f8fa; }
+:root { --bg: #ffffff; --fg: #1e293b; --muted: #64748b; --line: #cbd5e1; --accent: #2563eb; --code-bg: #f1f5f9; }
 @media (prefers-color-scheme: dark) {
-  :root { --bg: #0d1117; --fg: #e6edf3; --muted: #9198a1; --line: #3d444d; --accent: #79b8ff; --code-bg: #161b22; }
+  :root { --bg: #0f172a; --fg: #e2e8f0; --muted: #94a3b8; --line: #334155; --accent: #5b9cff; --code-bg: #1e293b; }
 }
 * { box-sizing: border-box; }
 body { margin: 0; background: var(--bg); color: var(--fg); font: 17px/1.55 -apple-system, "Segoe UI", system-ui, Roboto, "Helvetica Neue", Arial, sans-serif; }
 main { max-width: 46rem; margin: 0 auto; padding: 2.5rem 1rem 4rem; }
 header { margin-bottom: 2rem; }
-.wordmark { font-size: 3rem; font-weight: 800; letter-spacing: .12em; margin: 0; line-height: 1; }
+.logo { display: block; height: 3rem; width: auto; }
 .tagline { font-size: 1.25rem; margin: .6rem 0 0; color: var(--muted); }
 h2 { font-size: 1.2rem; margin: 2.2rem 0 .6rem; }
 p { margin: .6rem 0; }
@@ -31,7 +34,7 @@ pre { background: var(--code-bg); padding: .9rem 1rem; border-radius: 6px; overf
 pre code { background: none; padding: 0; font-size: 1em; }
 footer { margin-top: 3rem; padding-top: 1rem; border-top: 1px solid var(--line); color: var(--muted); font-size: .9rem; }
 @media (max-width: 40rem) {
-  .wordmark { font-size: 2.4rem; }
+  .logo { height: 2.4rem; }
   th, td { padding: .4rem .4rem; }
 }
 </style>
@@ -39,7 +42,29 @@ footer { margin-top: 3rem; padding-top: 1rem; border-top: 1px solid var(--line);
 <body>
 <main>
 <header>
-<p class="wordmark">PQAX</p>
+<svg class="logo" role="img" viewBox="0 0 190.72 38.4">
+  <title>PQAX</title>
+  <g transform="translate(-2.743 -2.743) scale(0.68571)">
+    <g fill="#3C7AFE">
+      <rect x="4" y="4" width="24" height="12"/>
+      <rect x="32" y="4" width="8" height="12"/>
+      <path d="M44 4H48L60 16H44Z"/>
+      <rect x="4" y="20" width="20" height="12"/>
+      <rect x="28" y="20" width="12" height="12"/>
+      <rect x="44" y="20" width="16" height="12"/>
+      <rect x="4" y="36" width="28" height="12"/>
+      <rect x="36" y="36" width="8" height="12"/>
+      <rect x="48" y="36" width="12" height="12"/>
+    </g>
+    <rect fill="#EA580C" x="4" y="52" width="56" height="8"/>
+  </g>
+  <g fill="currentColor" transform="translate(54.4 2.698) scale(0.32)">
+    <path d="M0 101.57V1.57H50.14Q60 1.57 67.57 5.57Q75.14 9.57 79.43 16.71Q83.71 23.86 83.71 33Q83.71 42 79.36 49Q75 56 67.43 60Q59.86 64 50.14 64H20.71V101.57ZM20.71 46.71H47.86Q54.57 46.71 58.64 43Q62.71 39.29 62.71 33.14Q62.71 26.86 58.64 23.14Q54.57 19.43 47.86 19.43H20.71Z"/>
+    <path d="M181.86 106.43 175.14 98.14Q170 100.57 164.29 101.86Q158.57 103.14 152.29 103.14Q141.29 103.14 131.64 99.21Q122 95.29 114.79 88.21Q107.57 81.14 103.5 71.79Q99.43 62.43 99.43 51.57Q99.43 40.71 103.5 31.36Q107.57 22 114.79 14.93Q122 7.86 131.64 3.93Q141.29 0 152.29 0Q163.43 0 173.07 3.93Q182.71 7.86 189.93 14.93Q197.14 22 201.14 31.36Q205.14 40.71 205.14 51.57Q205.14 62.29 201.14 71.71Q197.14 81.14 190 88L200 100.43ZM152.29 84.14Q157.71 84.14 162.43 82.14L151.57 68.71L169.71 62.71L177.14 71.86Q180.29 67.86 182.14 62.64Q184 57.43 184 51.57Q184 42.29 179.79 34.93Q175.57 27.57 168.43 23.29Q161.29 19 152.29 19Q143.43 19 136.21 23.29Q129 27.57 124.86 34.93Q120.71 42.29 120.71 51.57Q120.71 60.86 124.86 68.21Q129 75.57 136.21 79.86Q143.43 84.14 152.29 84.14Z"/>
+    <path d="M210.29 101.57 251.43 1.57H275.29L316 101.57H293.57L283.43 75.43H242.14L231.86 101.57ZM248.57 58.71H277.14L262.86 21.86Z"/>
+    <path d="M325.14 101.57 363.29 49.86 327.14 1.57H351.86L375.57 34.43L399.14 1.57H423L387.43 49.86L426 101.57H401.29L375.14 65.29L349 101.57Z"/>
+  </g>
+</svg>
 <p class="tagline">The footprint of Parquet and Delta tables. Pronounced "pickax".</p>
 </header>
 

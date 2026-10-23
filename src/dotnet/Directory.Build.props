@@ -21,7 +21,13 @@
     <RepositoryType>git</RepositoryType>
     <PackageProjectUrl>https://pqax.org</PackageProjectUrl>
     <PackageReleaseNotes>https://github.com/pqax-org/pqax/blob/main/CHANGELOG.md</PackageReleaseNotes>
+    <PackageIcon>pqax-icon.png</PackageIcon>
   </PropertyGroup>
+
+  <!-- The mark of the PQAX logo, a copy of brand/png/mark-128.png, as the icon of every package. -->
+  <ItemGroup>
+    <None Include="$(MSBuildThisFileDirectory)pqax-icon.png" Pack="true" PackagePath="" Visible="false" />
+  </ItemGroup>
 
   <!-- Source Link comes with the .NET SDK for GitHub: the nuspec records the repository and the commit, and the PDBs
        point to the sources of that commit. The PDBs go to a .snupkg beside each .nupkg. CI passes
