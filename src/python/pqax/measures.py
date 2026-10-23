@@ -9,10 +9,12 @@ the commits.
         for table in result["tables"]:
             print(table["label"], table["stack"]["waste"], table["stack"]["wasteShare"])
 
-They follow the view model of the storage views, src/typescript/views/src/model.ts, function by function and with its
-names, so that the numbers are the same. A value that cannot be computed is None, never 0. A stack component whose
-input is missing is None; the waste, the overhead, the data, and the total count it as 0, so they are never None.
-The results are dicts with the keys of the JSON of pqax tables --json, and an integral float is returned as an int.
+The measures are those of section 10 of the object model. They follow the view model of the storage views,
+src/typescript/views/src/model.ts, function by function and with its names, so that the numbers are the same. A value
+that cannot be computed is None, never 0. A stack component whose input is missing is None; the waste, the overhead,
+and the total count it as 0, and are None only when every component they add is missing; the data, and so the shares,
+are None when the live data is. The results are dicts with the keys of the JSON of pqax tables --json, and an integral
+float is returned as an int.
 """
 from __future__ import annotations
 
@@ -118,6 +120,15 @@ def _time(value: Any) -> Optional[int]:
     return (delta.days * 86_400 + delta.seconds) * 1000 + delta.microseconds // 1000
 
 
+def _sum_known(values: Sequence[Optional[float]]) -> Optional[float]:
+    """The sum of the values that are not None, in their order, None when all are."""
+    total: Optional[float] = None
+    for value in values:
+        if value is not None:
+            total = (total if total is not None else 0) + value
+    return total
+
+
 def _later(a: Optional[str], b: Optional[str]) -> Optional[str]:
     if a is None:
         return b
@@ -180,8 +191,8 @@ def small_share_at_least(dist: Mapping[str, Any], threshold: float) -> Optional[
 
 def commits_per_day(commits: Optional[float], oldest_commit_at: Optional[str],
                     newest_commit_at: Optional[str]) -> Optional[float]:
-    """Commits per day: the commits over the days from the oldest to the newest commit, at least one day. The times
-    are timestamps of the file. None when a value is missing or a time does not parse."""
+    """Commits per day: the commits read over the days from the oldest to the newest of them, at least one day. The
+    times are timestamps of the file. None when a value is missing or a time does not parse."""
     oldest, newest = _time(oldest_commit_at), _time(newest_commit_at)
     if commits is None or oldest is None or newest is None:
         return None
@@ -198,9 +209,11 @@ def days_between(start: Optional[str], end: Optional[str]) -> Optional[int]:
 def stack_of(file_size: Optional[float], deleted: Optional[float], footer_size: Optional[float],
              stale_column_size: Optional[float], non_live_file_size: Optional[float], metadata_size: Optional[float],
              unreferenced_file_size: Optional[float] = None, deleted_source: Optional[str] = None) -> Dict[str, Any]:
-    """A storage stack from its inputs, as the dict of the key stack of a table. A None input is an absent component.
-    When the unreferenced files are known, the non-live component is the smaller of the two sizes, and the
-    unreferenced component is the rest."""
+    """A storage stack from its inputs, as section 10.2 of the object model defines it, as the dict of the key stack
+    of a table. A None input is an absent component. When the unreferenced files are known, the non-live component is
+    the smaller of the two sizes, and the unreferenced component is the rest. The sums count an absent component as 0
+    and are None when every component they add is absent; the data, and so the shares, are None when the live data
+    is."""
     live = (None if file_size is None
             else max(0, file_size - (deleted or 0) - (footer_size or 0) - (stale_column_size or 0)))
     listed = unreferenced_file_size is not None
@@ -209,18 +222,14 @@ def stack_of(file_size: Optional[float], deleted: Optional[float], footer_size: 
     unreferenced = unreferenced_file_size - (non_live or 0) if listed else None
     values = {"live": live, "nonLive": non_live, "unreferenced": unreferenced, "deleted": deleted,
               "stale": stale_column_size, "metadata": metadata_size, "footers": footer_size}
-    waste = 0
-    for key in WASTE_COMPONENTS:
-        waste += values[key] or 0
-    overhead = 0
-    for key in OVERHEAD_COMPONENTS:
-        overhead += values[key] or 0
-    data = (live or 0) + waste
+    waste = _sum_known([values[key] for key in WASTE_COMPONENTS])
+    overhead = _sum_known([values[key] for key in OVERHEAD_COMPONENTS])
+    data = None if live is None else live + (waste if waste is not None else 0)
     stack: Dict[str, Any] = dict(values)
     stack.update({
         "deletedSource": deleted_source if deleted is not None else None, "listed": listed,
-        "data": data, "total": data + overhead, "waste": waste, "overhead": overhead,
-        "wasteShare": waste / data if data > 0 else None, "overheadShare": overhead / data if data > 0 else None,
+        "data": data, "total": _sum_known([live, waste, overhead]), "waste": waste, "overhead": overhead,
+        "wasteShare": ratio(waste, data), "overheadShare": ratio(overhead, data),
     })
     return _plain(stack)
 
@@ -285,8 +294,9 @@ def measure_tables(summary: Mapping[str, Any], files: Optional[Mapping[str, Any]
     operations = summary.get("operations") if isinstance(summary.get("operations"), dict) else {}
     by_table = _files_by_table(files)
     collection = collection if isinstance(collection, dict) else {}
-    completed, started = collection.get("completedAt"), collection.get("startedAt")
-    collected_at = completed if isinstance(completed, str) else started if isinstance(started, str) else None
+    # The end of the collection: the first of completedAt and startedAt that parses.
+    collected_at = next((value for value in (collection.get("completedAt"), collection.get("startedAt"))
+                         if _time(value) is not None), None)
 
     operations_by_table: Dict[int, List[Optional[str]]] = {}
     for i in range(_length(operations)):
@@ -351,10 +361,9 @@ def measure_tables(summary: Mapping[str, Any], files: Optional[Mapping[str, Any]
             last_operation_at = _later(last_operation_at, last_at)
         candidates = (_str(field("snapshotTimestamp"), row), last_operation_at, _str(field("lastModifiedAt"), row))
         last_commit_at = next((value for value in candidates if _time(value) is not None), None)
-        commits_read = _size(field("commitsRead"), row)
-        commits = commits_read if commits_read is not None else _size(field("commitCount"), row)
         maintenance = {"lastCommitAt": last_commit_at,
-                       "commitsPerDay": commits_per_day(commits, _str(field("oldestCommitAt"), row), last_commit_at),
+                       "commitsPerDay": commits_per_day(_size(field("commitsRead"), row),
+                                                        _str(field("oldestCommitAt"), row), last_commit_at),
                        "daysSinceLastCommit": days_between(last_commit_at, collected_at)}
 
         # The ratios.

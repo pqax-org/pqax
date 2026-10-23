@@ -79,7 +79,7 @@ public static class TablesCommand
     /// <summary>
     /// The tables in a new list, sorted: by waste, stack total, rows, or files, the largest first, or by label. Ties go by
     /// the stack total, the largest first, then by the label in ordinal order, then by the order of the file. A table
-    /// without rows or files goes last for those orders.
+    /// without rows or files goes last for those orders, and a table whose waste or total is null after those that have it.
     /// </summary>
     /// <param name="tables">The tables.</param>
     /// <param name="order">One of <see cref="Orders"/>.</param>
@@ -88,11 +88,12 @@ public static class TablesCommand
     {
         ArgumentNullException.ThrowIfNull(tables);
         static int Descending(long? a, long? b) => a.HasValue && b.HasValue ? b.Value.CompareTo(a.Value) : a.HasValue ? -1 : b.HasValue ? 1 : 0;
+        static int DescendingBytes(double? a, double? b) => a.HasValue && b.HasValue ? b.Value.CompareTo(a.Value) : a.HasValue ? -1 : b.HasValue ? 1 : 0;
         int Compare(TableStorage a, TableStorage b)
         {
             int primary = order switch
             {
-                "waste" => b.Stack.Waste.CompareTo(a.Stack.Waste),
+                "waste" => DescendingBytes(a.Stack.Waste, b.Stack.Waste),
                 "rows" => Descending(a.RowCount, b.RowCount),
                 "files" => Descending(a.FileCount, b.FileCount),
                 _ => 0,
@@ -102,7 +103,7 @@ public static class TablesCommand
                 return primary;
             }
 
-            int total = order == "name" ? 0 : b.Stack.Total.CompareTo(a.Stack.Total);
+            int total = order == "name" ? 0 : DescendingBytes(a.Stack.Total, b.Stack.Total);
             if (total != 0)
             {
                 return total;

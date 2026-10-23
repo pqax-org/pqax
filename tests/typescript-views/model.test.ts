@@ -71,30 +71,40 @@ function expectInvariants(model: StorageModel): void {
   expect(totals.files).toBe(sumKnown(model.tables.map((t) => t.fileCount)));
   expect(totals.fileSize).toBe(sumKnown(model.tables.map((t) => t.fileSize)));
   expect(totals.rowCount).toBe(sumKnown(model.tables.map((t) => t.rowCount)));
-  expectClose(totals.footprint, model.tables.reduce((sum, t) => sum + t.stack.total, 0));
-  expectClose(totals.waste, model.tables.reduce((sum, t) => sum + t.stack.waste, 0));
-  expectClose(totals.overhead, model.tables.reduce((sum, t) => sum + t.stack.overhead, 0));
-  expectClose(totals.waste, totals.footprint - totals.overhead - model.tables.reduce((sum, t) => sum + component(t, "live").bytes, 0), 1e-6);
+  // A sum over the tables adds those that have the value, and is null when none has it.
+  const sumOf = (pick: (t: TableModel) => number | null) => sumKnown(model.tables.map(pick));
+  const expectSum = (actual: number | null, expected: number | null) => (expected === null ? expect(actual).toBeNull() : expectClose(actual, expected));
+  expectSum(totals.footprint, sumOf((t) => t.stack.total));
+  expectSum(totals.waste, sumOf((t) => t.stack.waste));
+  expectSum(totals.overhead, sumOf((t) => t.stack.overhead));
 
   for (const table of model.tables) {
     const { stack } = table;
     expect(stack.components.map((c) => c.key)).toEqual([...STACK_COMPONENTS]);
-    const sumOf = (keys: readonly string[]) => keys.reduce((sum, k) => sum + component(table, k).bytes, 0);
-    expectClose(stack.total, stack.components.reduce((sum, c) => sum + c.bytes, 0));
+    // A sum of components counts an absent one as 0, and is null when every one it adds is absent.
+    const present = (keys: readonly string[]) => sumKnown(keys.map((k) => (component(table, k).absent ? null : component(table, k).bytes)));
+    expectSum(stack.total, present(STACK_COMPONENTS));
     const live = component(table, "live");
     // The waste is the four components between the live data and the overhead; the overhead, metadata and footers.
-    expectClose(stack.waste, sumOf(WASTE_COMPONENTS), 1e-9);
-    expectClose(stack.overhead, sumOf(OVERHEAD_COMPONENTS), 1e-9);
-    expectClose(stack.data, live.bytes + stack.waste, 1e-9);
-    expectClose(stack.total, stack.data + stack.overhead, 1e-9);
-    if (stack.data > 0) {
-      // The shares are of the data: those of the live data and the waste sum to 1, the overhead goes beyond.
+    expectSum(stack.waste, present(WASTE_COMPONENTS));
+    expectSum(stack.overhead, present(OVERHEAD_COMPONENTS));
+    expectSum(stack.data, live.absent ? null : live.bytes + (stack.waste ?? 0));
+    if (stack.data !== null) {
+      expectSum(stack.total, stack.data + (stack.overhead ?? 0));
+    }
+    if (stack.data !== null && stack.data > 0) {
+      // The shares are of the data: those of the live data and the waste sum to 1, the overhead goes beyond. The share
+      // of an absent component is null.
       for (const c of stack.components) {
-        expectClose(c.share, c.bytes / stack.data);
+        if (c.absent) {
+          expect(c.share).toBeNull();
+        } else {
+          expectClose(c.share, c.bytes / stack.data);
+        }
       }
-      expectClose(["live", ...WASTE_COMPONENTS].reduce((sum, k) => sum + component(table, k).share!, 0), 1);
-      expectClose(stack.wasteShare, stack.waste / stack.data);
-      expectClose(stack.overheadShare, stack.overhead / stack.data);
+      expectClose(["live", ...WASTE_COMPONENTS].reduce((sum, k) => sum + (component(table, k).share ?? 0), 0), 1);
+      expectSum(stack.wasteShare, stack.waste === null ? null : stack.waste / stack.data);
+      expectSum(stack.overheadShare, stack.overhead === null ? null : stack.overhead / stack.data);
     } else {
       expect(stack.components.every((c) => c.share === null)).toBe(true);
       expect(stack.wasteShare).toBeNull();
@@ -439,7 +449,8 @@ describe("the figures of sample.pqax against hand computations", () => {
       ["stale", 0, false], ["metadata", 12469, false], ["footers", 3847, false],
     ]);
     expect(sales!.stack.listed).toBe(false);
-    expect(component(sales!, "unreferenced").share).toBe(0);
+    // Section 10.2: the share of an absent component is null, not 0.
+    expect(component(sales!, "unreferenced").share).toBeNull();
     expect(sales!.stack.total).toBeCloseTo(183935, 9);
     expect(sales!.stack.waste).toBeCloseTo(12345 + deleted, 9);
     expect(orders!.stack.total).toBe(41256);
@@ -685,7 +696,7 @@ describe("the tolerance of the model", () => {
       expect(model.sources).toEqual([]);
       expect(model.hasFiles).toBe(false);
       expect(model.collection).toMatchObject({ formatVersion: null, collector: null, level: null, embeddedPart: null });
-      expect(model.collection.totals).toEqual({ sources: 0, tables: 0, columns: 0, files: null, fileSize: null, rowCount: null, footprint: 0, waste: 0, overhead: 0 });
+      expect(model.collection.totals).toEqual({ sources: 0, tables: 0, columns: 0, files: null, fileSize: null, rowCount: null, footprint: null, waste: null, overhead: null });
       const tree = columnTree(model);
       expect(tree.children).toEqual([]);
       expect(tree.size).toBe(0);
@@ -700,8 +711,8 @@ describe("the tolerance of the model", () => {
     expectInvariants(model);
     for (const table of model.tables) {
       expect(table.stack.components.every((c) => c.absent && c.bytes === 0)).toBe(true);
-      expect(table.stack.total).toBe(0);
-      expect(table.stack.data).toBe(0);
+      // Section 10.2: with every component absent, the sums and the data are null.
+      expect([table.stack.total, table.stack.waste, table.stack.overhead, table.stack.data]).toEqual([null, null, null, null]);
       expect(table.stack.listed).toBe(false);
       expect(table.stack.wasteShare).toBeNull();
       expect(table.stack.overheadShare).toBeNull();
@@ -731,8 +742,9 @@ describe("the tolerance of the model", () => {
     expect(component(sales, "unreferenced")).toMatchObject({ bytes: 737, absent: false });
     expect(sales.stack.listed).toBe(true);
     expect(sales.stack.total).toBeCloseTo(159121 + 737, 9);
-    expect(sales.stack.overhead).toBe(0);
-    expect(sales.stack.overheadShare).toBe(0);
+    // Section 10.2: with both of its components absent, the overhead and its share are null.
+    expect(sales.stack.overhead).toBeNull();
+    expect(sales.stack.overheadShare).toBeNull();
   });
 
   it("builds a model without the tables, the columns, the sources, or the operations", async () => {
@@ -1067,7 +1079,7 @@ describe("the helpers", () => {
     const empty = stackOf({ fileSize: null, deleted: null, footerSize: null, staleColumnSize: null, nonLiveFileSize: null, metadataSize: null, deletedSource: "table" });
     expect(empty.components.every((c) => c.absent && c.bytes === 0 && c.share === null)).toBe(true);
     expect(empty.components.find((c) => c.key === "deleted")!.source).toBeUndefined();
-    expect([empty.data, empty.total, empty.waste, empty.overhead]).toEqual([0, 0, 0, 0]);
+    expect([empty.data, empty.total, empty.waste, empty.overhead]).toEqual([null, null, null, null]);
     expect(empty.wasteShare).toBeNull();
     expect(empty.overheadShare).toBeNull();
 
@@ -1146,7 +1158,7 @@ describe("the helpers", () => {
       for (const missing of [null, undefined]) {
         const { stack, nonLive, unreferenced } = parts(200, missing);
         expect(nonLive).toMatchObject({ bytes: 200, absent: false });
-        expect(unreferenced).toMatchObject({ bytes: 0, absent: true, share: 0 });
+        expect(unreferenced).toMatchObject({ bytes: 0, absent: true, share: null });
         expect(stack.listed).toBe(false);
         expect(stack.total).toBe(1000 + 200 + 60);
       }

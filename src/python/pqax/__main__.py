@@ -152,7 +152,11 @@ def _ordinal(label: str) -> bytes:
 
 def sort_tables(tables: List[Dict[str, Any]], order: str) -> List[Dict[str, Any]]:
     """The tables, sorted: by waste, stack total, rows, or files, the largest first, or by label. Ties go by the stack
-    total, the largest first, then by the label, then by the order of the file. A missing count goes last."""
+    total, the largest first, then by the label, then by the order of the file. A missing count, waste, or total goes
+    last."""
+    def descending(value: Optional[float]) -> Any:
+        return (value is None, -(value or 0))
+
     def key(item: Any) -> Any:
         position, table = item
         stack = table["stack"]
@@ -160,10 +164,10 @@ def sort_tables(tables: List[Dict[str, Any]], order: str) -> List[Dict[str, Any]
         if order == "name":
             return (label, position)
         if order in ("rows", "files"):
-            value = table["rowCount" if order == "rows" else "fileCount"]
-            return (value is None, -(value or 0), -stack["total"], label, position)
-        primary = -stack["waste"] if order == "waste" else 0
-        return (primary, -stack["total"], label, position)
+            primary = descending(table["rowCount" if order == "rows" else "fileCount"])
+        else:
+            primary = descending(stack["waste"]) if order == "waste" else (False, 0)
+        return (primary, descending(stack["total"]), label, position)
     return [table for _, table in sorted(enumerate(tables), key=key)]
 
 

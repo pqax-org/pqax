@@ -31,12 +31,13 @@ public sealed class StackInput
 }
 
 /// <summary>
-/// The storage stack of a table: where its bytes go, in seven components. A component is null when the file lacks the
-/// field it needs, never 0. The sums count an absent component as 0, so they are never null.
+/// The storage stack of a table: where its bytes go, in seven components, as section 10.2 of the object model defines
+/// it. A component is null when the file lacks the field it needs, never 0. The sums count an absent component as 0, and
+/// are null only when every component they add is absent.
 /// </summary>
 public sealed class StorageStack
 {
-    internal StorageStack(double? live, double? nonLive, double? unreferenced, double? deleted, double? stale, double? metadata, double? footers, string? deletedSource, bool listed, double data, double waste, double overhead)
+    internal StorageStack(double? live, double? nonLive, double? unreferenced, double? deleted, double? stale, double? metadata, double? footers, string? deletedSource, bool listed, double? data, double? total, double? waste, double? overhead)
     {
         Live = live;
         NonLive = nonLive;
@@ -50,9 +51,9 @@ public sealed class StorageStack
         Data = data;
         Waste = waste;
         Overhead = overhead;
-        Total = data + overhead;
-        WasteShare = data > 0 ? waste / data : null;
-        OverheadShare = data > 0 ? overhead / data : null;
+        Total = total;
+        WasteShare = StorageMeasures.Ratio(waste, data);
+        OverheadShare = StorageMeasures.Ratio(overhead, data);
     }
 
     /// <summary><c>live</c>: <c>max(0, fileSize - deleted - footerSize - staleColumnSize)</c>, a missing term counting as 0. Null when <c>fileSize</c> is missing.</summary>
@@ -82,22 +83,22 @@ public sealed class StorageStack
     /// <summary>Whether a listing of the storage gave the unreferenced files, so that the non-live component holds only what is still stored.</summary>
     public bool Listed { get; }
 
-    /// <summary>The live data and the waste: the denominator of the shares.</summary>
-    public double Data { get; }
+    /// <summary>The live data and the waste: the denominator of the shares. Null when <see cref="Live"/> is null.</summary>
+    public double? Data { get; }
 
-    /// <summary>The data and the overhead.</summary>
-    public double Total { get; }
+    /// <summary>The seven components, an absent one counting as 0: the data and the overhead. Null when all seven are absent.</summary>
+    public double? Total { get; }
 
-    /// <summary><c>waste</c>: non-live + unreferenced + deleted + stale.</summary>
-    public double Waste { get; }
+    /// <summary><c>waste</c>: non-live + unreferenced + deleted + stale, an absent one counting as 0. Null when all four are absent.</summary>
+    public double? Waste { get; }
 
-    /// <summary><c>overhead</c>: metadata + footers, outside the waste.</summary>
-    public double Overhead { get; }
+    /// <summary><c>overhead</c>: metadata + footers, outside the waste, an absent one counting as 0. Null when both are absent.</summary>
+    public double? Overhead { get; }
 
-    /// <summary><see cref="Waste"/> over <see cref="Data"/>, null when the data is 0.</summary>
+    /// <summary><see cref="Waste"/> over <see cref="Data"/>, null when one is null or the data is 0.</summary>
     public double? WasteShare { get; }
 
-    /// <summary><see cref="Overhead"/> over <see cref="Data"/>, null when the data is 0.</summary>
+    /// <summary><see cref="Overhead"/> over <see cref="Data"/>, null when one is null or the data is 0.</summary>
     public double? OverheadShare { get; }
 
     /// <summary>A component by its name in <see cref="StorageMeasures.StackComponents"/>, such as <c>nonLive</c>.</summary>

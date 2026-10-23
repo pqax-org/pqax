@@ -209,6 +209,49 @@ public sealed class ValidationIssue { string Code; string Message; string? Part;
 
 Rules of the library: the reader reads the central directory itself, so that an embedded footprint is read in place and a part is read only when asked; the writer may use `ZipArchive`. The reader keeps unknown fields and unknown manifest members, and `FootprintBuilder.From` writes them back. Writing a footprint into a VPAX package needs `System.IO.Packaging` and belongs to the VPAX library, not here. The `System.Text.Json`, `System.Memory`, and `Microsoft.Bcl.*` packages are allowed for netstandard2.0, because they are the base library itself.
 
+The derived measures of section 10 of the [object model](object-model.md) are in the static class `StorageMeasures`, in the namespace `Pqax` of the same library, as decided on 22 October 2026. They are pure functions over the rows that the reader returns, with no new dependency. A measure that cannot be computed is null, never 0: `double?` for bytes, shares, and ratios, `long?` for counts and days, `DateTimeOffset?` for times. The two thresholds of section 10.1 are optional, through `MeasureOptions`, 128 MiB and 8 MiB by default.
+
+```csharp
+public static class StorageMeasures
+{
+    public const long DefaultSmallFileSize = 134217728, DefaultTinyFileSize = 8388608;
+    public static IReadOnlyList<string> StackComponents, WasteComponents, OverheadComponents;   // "live", "nonLive", ...
+    public static FootprintMeasures Compute(PqaxDocument document, MeasureOptions? options = null);   // reads files when the manifest lists rows
+    public static IReadOnlyList<TableStorage> ForTables(Summary summary, IReadOnlyList<FileRow>? files, CollectionInfo? collection,
+                                                        MeasureOptions? options = null);   // one per row of tables, in the order of the file
+    public static StorageStack StackOf(StackInput input);
+    public static double? DeletedEstimate(double? fileSize, double? deletedRowCount, double? rowCount);
+    public static double? SmallShareAtLeast(double? count, double? minimum, double? firstQuartile, double? median,
+                                            double? thirdQuartile, double? maximum, double threshold);
+    public static double? CommitsPerDay(double? commits, DateTimeOffset? oldestCommitAt, DateTimeOffset? newestCommitAt);   // commits: CommitsRead
+    public static long? DaysBetween(DateTimeOffset? from, DateTimeOffset? to);
+    public static double? Ratio(double? a, double? b);
+}
+public sealed class MeasureOptions { long SmallFileSize; long TinyFileSize; }
+public sealed class FootprintMeasures { IReadOnlyList<TableStorage> Tables; bool FilesRead; IReadOnlyList<string> Warnings; }
+public sealed class TableStorage
+{
+    long? Id; int Row; string? Name; string Label; long? RowCount; long? FileCount; long? FileSize;
+    StorageStack Stack; SmallFiles SmallFiles; SmallFiles TinyFiles; TableMeasures Measures; MaintenanceMeasures Maintenance;
+    void WriteTo(Utf8JsonWriter writer);   // one table of the JSON of pqax tables --json
+}
+public sealed class StorageStack
+{
+    double? Live, NonLive, Unreferenced, Deleted, Stale, Metadata, Footers;   // the seven components
+    double? Waste, Overhead, Data, Total, WasteShare, OverheadShare; bool Listed; string? DeletedSource;   // "files" or "table"
+    double? Component(string key);
+}
+public sealed class SmallFiles { long Threshold; long? Count; double? ShareAtLeast; }   // SmallFileCount and SmallFileShare, or the tiny ones
+public sealed class TableMeasures
+{
+    double? CompressionRatio, DeletedRowShare, AverageFileSize, AverageRowGroupRows, FooterCoverage, StaleColumnShare,
+            NonLiveShare, AveragePartitionSize, DictionaryFallbackShare;
+}
+public sealed class MaintenanceMeasures { DateTimeOffset? LastCommitAt; double? CommitsPerDay; long? DaysSinceLastCommit; }
+```
+
+The library offers the measures of a table that `pqax tables` shows: the storage stack of section 10.2 without the shares of the components; SmallFileCount, SmallFileShare, TinyFileCount, and TinyFileShare of section 10.3; LastCommitAt, CommitsPerDay, and DaysSinceLastCommit of section 10.4; and the ratios of section 10.5 except the counts and times of the partitions. It does not offer yet the file size figures, the V-Order shares, VACUUM and OPTIMIZE, the partitions, the measures of a column, or those of the collection.
+
 ### 4.4 TypeScript package `pqax`
 
 ES module, no runtime dependency, runs in browsers and in Node 20 or later. Deflate goes through `DecompressionStream("deflate-raw")`. Node-only helpers live in a second entry point, `pqax/node`, so that the main entry imports nothing from Node.
@@ -235,6 +278,16 @@ export function embeddedSource(input: PqaxInput, partName?: string): Promise<Byt
 
 A field that a part does not have is `undefined` on the table object. A missing value is `null`. A summary table that the file does not have is `undefined`. Types for every table and field are exported, and they match the schema of the kit.
 
+The reader computes no measure. The derived measures of section 10 of the [object model](object-model.md) are in the package `@pqax/views`, from the same folder, as decided on 22 October 2026: `buildModel` computes every measure of a table, a column, and the collection, and `columnTree` the two measures over a set of columns. They are pure functions over what the reader returns. A measure that cannot be computed is `null`. The two thresholds of section 10.1 are the options `smallFileSize` and `tinyFileSize` of `buildModel`, 128 MiB and 8 MiB by default. Section 10.8 of the object model gives the name of each measure in the model, and the [README of the package](../src/typescript/views/README.md) says what the model adds for the views.
+
+```ts
+export function readFootprint(doc: PqaxDocument, options?: { files?: boolean; partitions?: boolean }): Promise<FootprintData>;
+export function buildModel(data: FootprintData, options?: { smallFileSize?: number; tinyFileSize?: number }): StorageModel;
+export function columnTree(model: StorageModel): TreeNode;
+export function sortTables(tables: readonly TableModel[], order?: "waste" | "total" | "label"): TableModel[];
+export function stackOf(input: StackInput): StackModel;   // and deletedEstimate, quartiles, smallShareAtLeast, commitsPerDay, daysBetween, ratio
+```
+
 ### 4.5 Python package `pqax`
 
 Standard library only. Python 3.10 or later.
@@ -256,6 +309,24 @@ python -m pqax info <file>
 ```
 
 A writer, `pqax.Builder`, with the shape of the C# builder, is a should: the kit generator can use it later.
+
+The derived measures of section 10 of the [object model](object-model.md) are in the module `pqax.measures`, as decided on 22 October 2026: pure functions over the tables that the reader returns, standard library only. A measure that cannot be computed is `None`. A result is a dict with the names of the JSON of `pqax tables --json`, which are those of the storage views, and a whole number in a float is returned as an `int`. The two thresholds are optional keyword arguments, 128 MiB and 8 MiB by default.
+
+```python
+pqax.measures.measure(doc, *, small_file_size=..., tiny_file_size=...) -> dict   # {"filesRead", "warnings", "tables": [...]}
+pqax.measures.measure_tables(summary, files=None, collection=None, *, small_file_size=..., tiny_file_size=...) -> list[dict]
+pqax.measures.stack_of(file_size, deleted, footer_size, stale_column_size, non_live_file_size, metadata_size,
+                       unreferenced_file_size=None, deleted_source=None) -> dict
+pqax.measures.deleted_estimate(file_size, deleted_row_count, row_count)
+pqax.measures.small_share_at_least(distribution, threshold)
+pqax.measures.commits_per_day(commits, oldest_commit_at, newest_commit_at)   # commits: commitsRead
+pqax.measures.days_between(start, end)
+pqax.measures.ratio(a, b)
+pqax.measures.DEFAULT_SMALL_FILE_SIZE, DEFAULT_TINY_FILE_SIZE, STACK_COMPONENTS, WASTE_COMPONENTS, OVERHEAD_COMPONENTS
+python -m pqax tables <file> [--part NAME] [--sort waste|total|rows|files|name] [--top N] [--wide] [--json]
+```
+
+The dict of a table has `id`, `name`, `label`, `rowCount`, `fileCount`, `fileSize`, `stack`, `smallFiles`, `tinyFiles`, `measures`, and `maintenance`: the measures that the C# library offers, as section 4.3 lists them.
 
 ### 4.6 Collector
 

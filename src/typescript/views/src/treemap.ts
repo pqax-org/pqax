@@ -178,7 +178,8 @@ function linesOf(node: TreeNode, focus: TreeNode, sourceLabels: ReadonlyMap<stri
     ? "Nulls n/a"
     : `Nulls ${formatShare(node.nullShare, locale)} (${formatCount(node.nullCount, locale)} of ${formatCount(node.valueCount, locale)})`);
   if (node.compressionRatio !== null) {
-    lines.push(`Ratio ${formatNumber(node.compressionRatio, locale)}`);
+    // On a leaf the CompressionRatio of the column; above it, ColumnCompressionRatio over the columns below the node.
+    lines.push(`${node.kind === "column" ? "Compression ratio" : "Column compression ratio"} ${formatNumber(node.compressionRatio, locale)}`);
   }
   const column = node.column;
   if (node.kind === "column" && column !== undefined) {

@@ -12,7 +12,7 @@ Draft 0.4 aligns identifiers and a few names with the serialization, so that a f
 
 Draft 0.5 takes into account a test of storage views on a real lakehouse. It showed that the non-live files of a table are only an upper bound of the space it wastes: a VACUUM may have deleted some of them already, and the storage can hold files that no commit references. `Table` now has the unreferenced files that a listing of the storage finds, and the removal times of the non-live files. `Partition` has `LastModifiedAt`. Format version 0.2 carries the new fields.
 
-Draft 0.6 defines the derived measures in a new section 10: the storage stack of a table with its waste and overhead, the small files, the V-Order share, the commits per day, and the ratios and shares of the tables, the columns, and the collection. They follow the storage views and the decisions of 21 October 2026. The format does not change. Views become section 11, and the open questions section 12.
+Draft 0.6 defines the derived measures in a new section 10: the storage stack of a table with its waste and overhead, the small files, the V-Order share, the commits per day, and the ratios and shares of the tables, the columns, and the collection. They follow the storage views and the decisions of 21 October 2026. The format does not change. Views become section 11, and the open questions section 12. Section 4.3 states how the quartiles of a `Distribution` are taken, which the small-file shares of section 10.3 depend on, and the maintainer decided the measures and their rules on 22 October 2026.
 
 ## 1. Purpose
 
@@ -116,6 +116,8 @@ A sum hides the shape of the data, and the shape is what tells a table with a fe
 | Sum | integer | Their sum |
 | Minimum, Maximum | integer | The smallest and the largest value |
 | FirstQuartile, Median, ThirdQuartile | integer | The three quartiles |
+
+The quartiles are values of the set, taken by position in the sorted values, with no interpolation: for n values sorted from the smallest, counted from 0, FirstQuartile is the value at position `floor(n/4)`, Median the value at `floor(n/2)`, and ThirdQuartile the value at `floor(3n/4)`. For one value, all three are that value. A collector computes them so, and the measures of section 10.3 rely on it. **Decided** on 22 October 2026.
 
 ### 4.4 Rules for a reader
 
@@ -639,7 +641,7 @@ Section 10 defines the measures that a reader derives from these fields, and 10.
 
 ## 10. Derived measures
 
-A derived measure is computed by a reader from the fields of section 6. The file does not store it. This section defines the measures once, so that every implementation computes them the same way and gives them the same names. They follow the storage views of `@pqax/views` 0.2.0 and the decisions of 21 October 2026 recorded in [decisions.md](decisions.md).
+A derived measure is computed by a reader from the fields of section 6. The file does not store it. This section defines the measures once, so that every implementation computes them the same way and gives them the same names. They follow the storage views of `@pqax/views` 0.2.0 and the decisions of 21 October 2026 recorded in [decisions.md](decisions.md). The section, its rules, and the measures are **Decided** on 22 October 2026.
 
 ### 10.1 Rules
 
@@ -694,7 +696,7 @@ The stack leaves out the delete files of an Iceberg table, DeleteFileSize, and t
 
 ### 10.3 Files of a table
 
-The measures read a `Distribution` with its quartiles taken by position in the sorted values: for n values, FirstQuartile is the value at position `floor(n/4)` from 0, Median at `floor(n/2)`, and ThirdQuartile at `floor(3n/4)`. The collector computes them so. Section 4.3 does not state it yet, and the small-file shares below depend on it.
+The measures read a `Distribution` with its quartiles taken by position in the sorted values: for n values, FirstQuartile is the value at position `floor(n/4)` from 0, Median at `floor(n/2)`, and ThirdQuartile at `floor(3n/4)`. The collector computes them so, as section 4.3 states, and the small-file shares below depend on it.
 
 The size figures of the files of a table come from the files when the footprint keeps them, and otherwise from FileSizes:
 

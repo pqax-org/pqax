@@ -25,7 +25,7 @@ public sealed class SmallFiles
     public double? ShareAtLeast { get; }
 }
 
-/// <summary>The ratios of a table that section 9 of the object model names. A ratio is null when a field is missing or its denominator is not positive.</summary>
+/// <summary>The ratios of a table of section 10.5 of the object model. A ratio is null when a field is missing or its denominator is not positive.</summary>
 public sealed class TableMeasures
 {
     internal TableMeasures(double? compressionRatio, double? deletedRowShare, double? averageFileSize, double? averageRowGroupRows, double? footerCoverage, double? staleColumnShare, double? nonLiveShare, double? averagePartitionSize, double? dictionaryFallbackShare)
@@ -82,7 +82,7 @@ public sealed class MaintenanceMeasures
     /// <summary>The newest commit read: <c>snapshotTimestamp</c>, else the latest <c>lastAt</c> of the operations of the table, else <c>lastModifiedAt</c>.</summary>
     public DateTimeOffset? LastCommitAt { get; }
 
-    /// <summary>Commits per day, from <see cref="StorageMeasures.CommitsPerDay"/> with <c>commitsRead</c>, else <c>commitCount</c>.</summary>
+    /// <summary>Commits per day, from <see cref="StorageMeasures.CommitsPerDay"/> with <c>commitsRead</c>.</summary>
     public double? CommitsPerDay { get; }
 
     /// <summary>Whole days from <see cref="LastCommitAt"/> to the end of the collection, else its start, at least 0.</summary>
@@ -172,10 +172,10 @@ public sealed class TableStorage
 
         String(writer, "deletedSource", Stack.DeletedSource);
         writer.WriteBoolean("listed", Stack.Listed);
-        writer.WriteNumber("data", Stack.Data);
-        writer.WriteNumber("total", Stack.Total);
-        writer.WriteNumber("waste", Stack.Waste);
-        writer.WriteNumber("overhead", Stack.Overhead);
+        Number(writer, "data", Stack.Data);
+        Number(writer, "total", Stack.Total);
+        Number(writer, "waste", Stack.Waste);
+        Number(writer, "overhead", Stack.Overhead);
         Number(writer, "wasteShare", Stack.WasteShare);
         Number(writer, "overheadShare", Stack.OverheadShare);
         writer.WriteEndObject();

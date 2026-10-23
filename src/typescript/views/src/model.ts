@@ -113,12 +113,12 @@ export interface CollectionTotals {
   readonly fileSize: number | null;
   /** The sum of `tables.rowCount`. */
   readonly rowCount: number | null;
-  /** The sum of the stacks: data files, the files the tables no longer use, and metadata. */
-  readonly footprint: number;
-  /** The sum of the waste of the stacks. */
-  readonly waste: number;
-  /** The sum of the overhead of the stacks: metadata and footers. */
-  readonly overhead: number;
+  /** The sum of the totals of the stacks, over the tables whose total is not null: Footprint of section 10.7. */
+  readonly footprint: number | null;
+  /** The sum of the waste of the stacks, over the tables whose waste is not null. */
+  readonly waste: number | null;
+  /** The sum of the overhead of the stacks, metadata and footers, over the tables whose overhead is not null. */
+  readonly overhead: number | null;
 }
 
 /** A source: a lakehouse, warehouse, catalog, or folder. */
@@ -151,9 +151,9 @@ export type StackComponentKey = (typeof STACK_COMPONENTS)[number];
 export interface StackComponent {
   /** Which component. */
   readonly key: StackComponentKey;
-  /** Its bytes. 0 when absent. */
+  /** Its bytes. 0 when absent, so that the views can draw it. */
   readonly bytes: number;
-  /** Its share of the data of the stack, the live data and the waste, null when that is 0. */
+  /** Its share of the data of the stack, the live data and the waste. Null when the component is absent, or the data is null or 0. */
   readonly share: number | null;
   /** Whether the file lacks the field it needs, so that the bytes are unknown and drawn as 0. */
   readonly absent: boolean;
@@ -165,17 +165,20 @@ export interface StackComponent {
 export interface StackModel {
   /** The seven components, in the order of {@link STACK_COMPONENTS}. */
   readonly components: readonly StackComponent[];
-  /** The live data and the waste. The shares are of this sum. */
-  readonly data: number;
-  /** Everything: the data and the overhead. When the live bytes are not clipped at 0, it is `fileSize + metadataSize` plus the files that the table no longer uses. */
-  readonly total: number;
-  /** The space that holds no live data: non-live files, unreferenced files, deleted rows, stale columns. */
-  readonly waste: number;
-  /** The metadata and the footers, outside the waste. */
-  readonly overhead: number;
-  /** `waste / data`, null when the data is 0. */
+  /** The live data and the waste. The shares are of this sum. Null when the live data is. */
+  readonly data: number | null;
+  /**
+   * Everything: the seven components, an absent one counting as 0. Null when all seven are absent. When the live bytes
+   * are not clipped at 0, it is `fileSize + metadataSize` plus the files that the table no longer uses.
+   */
+  readonly total: number | null;
+  /** The space that holds no live data: non-live files, unreferenced files, deleted rows, stale columns. Null when all four are absent. */
+  readonly waste: number | null;
+  /** The metadata and the footers, outside the waste. Null when both are absent. */
+  readonly overhead: number | null;
+  /** `waste / data`, null when one is null or the data is 0. */
   readonly wasteShare: number | null;
-  /** `overhead / data`, null when the data is 0. */
+  /** `overhead / data`, null when one is null or the data is 0. */
   readonly overheadShare: number | null;
   /**
    * Whether a listing of the storage gave the unreferenced files. Then the non-live component holds only what can still
@@ -247,15 +250,15 @@ export interface MaintenanceModel {
   readonly oldestCommitAt: string | null;
   /** The newest commit read: `snapshotTimestamp`, else the latest `lastAt` of the operations, else `lastModifiedAt`. */
   readonly lastCommitAt: string | null;
-  /** Commits per day between `oldestCommitAt` and {@link MaintenanceModel.lastCommitAt}, with a span of one day at least. */
+  /** `commitsRead` per day between `oldestCommitAt` and {@link MaintenanceModel.lastCommitAt}, with a span of one day at least. */
   readonly commitsPerDay: number | null;
-  /** Whole days from {@link MaintenanceModel.lastCommitAt} to the end of the collection, at least 0. */
+  /** Whole days from {@link MaintenanceModel.lastCommitAt} to the end of the collection, else its start, at least 0. */
   readonly daysSinceLastCommit: number | null;
-  /** Whether a `VACUUM` operation appears. Null when the file has no `operations` table. */
+  /** Whether a `VACUUM` operation appears. Null when the table has no operation. */
   readonly hasVacuum: boolean | null;
   /** The time of the most recent `VACUUM`. */
   readonly lastVacuumAt: string | null;
-  /** Whether an `OPTIMIZE` operation appears. Null when the file has no `operations` table. */
+  /** Whether an `OPTIMIZE` operation appears. Null when the table has no operation. */
   readonly hasOptimize: boolean | null;
   /** The time of the most recent `OPTIMIZE`. */
   readonly lastOptimizeAt: string | null;
@@ -263,9 +266,9 @@ export interface MaintenanceModel {
   readonly operations: readonly string[];
 }
 
-/** The derived measures of a table that section 9 of the object model names. Null when a field is missing. */
+/** The ratios and averages of a table of section 10.5 of the object model. Null when a field is missing. */
 export interface TableMeasures {
-  /** `uncompressedSize / compressedSize`. */
+  /** CompressionRatio: `uncompressedSize / compressedSize` of the table. */
   readonly compressionRatio: number | null;
   /** `deletedRowCount / rowCount`. */
   readonly deletedRowShare: number | null;
@@ -379,7 +382,7 @@ export interface ColumnModel {
   readonly dictionaryFallbackShare: number | null;
   /** `unencodedByteArrayDataBytes / (valueCount - nullCount)`: the average length of a string. */
   readonly averageValueLength: number | null;
-  /** `fileCountWithoutColumn / fileCount` of the table. */
+  /** `fileCountWithoutColumn / footerCount` of the table. */
   readonly filesWithoutColumnShare: number | null;
 }
 
@@ -572,9 +575,9 @@ export function smallShareAtLeast(dist: { count: number | null; minimum: number 
 }
 
 /**
- * Commits per day: the commits read, else `commitCount`, over the days from `oldestCommitAt` to the newest commit read,
- * at least one day. Null when a value is missing.
- * @param commits The commits that the span holds.
+ * Commits per day: the commits read over the days from `oldestCommitAt` to the newest commit read, at least one day.
+ * Null when a value is missing.
+ * @param commits The commits that the span holds: `commitsRead`.
  * @param oldestCommitAt The oldest of them.
  * @param newestCommitAt The newest of them, such as `snapshotTimestamp`.
  */
@@ -595,9 +598,11 @@ export function daysBetween(from: string | null, to: string | null): number | nu
 }
 
 /**
- * A stack from its inputs, as the README defines it. A null input is an absent component. When the unreferenced files
- * are known, the non-live component is the part of them that the log still tracks, at most: the smaller of the two
- * sizes. The unreferenced component is the rest, the files that no non-live file accounts for.
+ * A stack from its inputs, as section 10.2 of the object model defines it. A null input is an absent component. When
+ * the unreferenced files are known, the non-live component is the part of them that the log still tracks, at most: the
+ * smaller of the two sizes. The unreferenced component is the rest, the files that no non-live file accounts for. The
+ * sums count an absent component as 0 and are null when every component they add is absent; the data, and so every
+ * share, is null when the live data is.
  */
 export function stackOf(input: {
   fileSize: number | null;
@@ -618,18 +623,17 @@ export function stackOf(input: {
   const values: Record<StackComponentKey, number | null> = {
     live, nonLive, unreferenced, deleted, stale: staleColumnSize, metadata: metadataSize, footers: footerSize,
   };
-  const sum = (keys: readonly StackComponentKey[]) => keys.reduce((total, key) => total + (values[key] ?? 0), 0);
-  const waste = sum(WASTE_COMPONENTS);
-  const overhead = sum(OVERHEAD_COMPONENTS);
-  const data = (live ?? 0) + waste;
+  const waste = sumKnown(WASTE_COMPONENTS.map((key) => values[key]));
+  const overhead = sumKnown(OVERHEAD_COMPONENTS.map((key) => values[key]));
+  const data = live === null ? null : live + (waste ?? 0);
   const components = STACK_COMPONENTS.map((key): StackComponent => {
-    const bytes = values[key] ?? 0;
-    const component: StackComponent = { key, bytes, share: data > 0 ? bytes / data : null, absent: values[key] === null };
-    return key === "deleted" && input.deletedSource !== undefined && values[key] !== null ? { ...component, source: input.deletedSource } : component;
+    const value = values[key];
+    const component: StackComponent = { key, bytes: value ?? 0, share: ratio(value, data), absent: value === null };
+    return key === "deleted" && input.deletedSource !== undefined && value !== null ? { ...component, source: input.deletedSource } : component;
   });
   return {
-    components, data, total: data + overhead, waste, overhead,
-    wasteShare: data > 0 ? waste / data : null, overheadShare: data > 0 ? overhead / data : null, listed,
+    components, data, total: sumKnown([live, waste, overhead]), waste, overhead,
+    wasteShare: ratio(waste, data), overheadShare: ratio(overhead, data), listed,
   };
 }
 
@@ -747,8 +751,9 @@ export function buildModel(data: FootprintData, options: ModelOptions = {}): Sto
   const operations = summary.operations;
   const byTable = filesByTable(data.files);
   const partitionsByTable = partitionsOf(data.partitions);
-  const collectedAt = typeof collectionInfo?.completedAt === "string" ? collectionInfo.completedAt
-    : typeof collectionInfo?.startedAt === "string" ? collectionInfo.startedAt : null;
+  // The end of the collection: the first of completedAt and startedAt that parses.
+  const collectedAt = [collectionInfo?.completedAt, collectionInfo?.startedAt]
+    .find((value): value is string => typeof value === "string" && time(value) !== null) ?? null;
 
   // Operations by table id.
   const opsByTable = new Map<number, { name: string; lastAt: string | null }[]>();
@@ -777,7 +782,7 @@ export function buildModel(data: FootprintData, options: ModelOptions = {}): Sto
   const tableRows = lengthOf(tables);
   const tableKeyById = new Map<number, string>();
   const tableModels: TableModel[] = [];
-  const fileCountById = new Map<number, number | null>();
+  const footerCountById = new Map<number, number | null>();
   const sourceIds = new Set<number>();
   for (let i = 0; i < lengthOf(sourcesTable); i++) {
     const id = num(sourcesTable.id, i);
@@ -807,7 +812,7 @@ export function buildModel(data: FootprintData, options: ModelOptions = {}): Sto
     const unreferencedFileSize = size(tables.unreferencedFileSize, row);
     const metadataSize = size(tables.metadataSize, row);
     if (validId !== null) {
-      fileCountById.set(validId, fileCount);
+      footerCountById.set(validId, size(tables.footerCount, row));
     }
     const fromFiles = validId !== null ? byTable.get(validId) : undefined;
 
@@ -839,7 +844,8 @@ export function buildModel(data: FootprintData, options: ModelOptions = {}): Sto
         minimum: member(dist, "minimum"), firstQuartile: member(dist, "firstQuartile"), median: member(dist, "median"),
         thirdQuartile: member(dist, "thirdQuartile"), maximum: member(dist, "maximum"),
       };
-      const hasShape = figures.minimum !== null || figures.median !== null || figures.maximum !== null;
+      const hasShape = figures.minimum !== null || figures.firstQuartile !== null || figures.median !== null
+        || figures.thirdQuartile !== null || figures.maximum !== null;
       files = {
         source: hasShape ? "table" : null, ...figures, sizes: null, vOrder: null,
         smallFiles: { threshold, count: null, shareAtLeast: smallShareAtLeast(figures, threshold) },
@@ -861,8 +867,9 @@ export function buildModel(data: FootprintData, options: ModelOptions = {}): Sto
     files = { ...files, vOrder };
 
     // Maintenance.
+    // VACUUM and OPTIMIZE are null for a table without operations: its list is empty when the commits carry no name.
     const ops = validId !== null ? opsByTable.get(validId) ?? [] : [];
-    const hasOps = operations !== undefined;
+    const hasOps = ops.length > 0;
     let lastVacuumAt: string | null = null;
     let lastOptimizeAt: string | null = null;
     let lastOperationAt: string | null = null;
@@ -887,7 +894,7 @@ export function buildModel(data: FootprintData, options: ModelOptions = {}): Sto
       .find((value) => time(value) !== null) ?? null;
     const maintenance: MaintenanceModel = {
       commitCount, commitsRead, oldestCommitAt, lastCommitAt,
-      commitsPerDay: commitsPerDay(commitsRead ?? commitCount, oldestCommitAt, lastCommitAt),
+      commitsPerDay: commitsPerDay(commitsRead, oldestCommitAt, lastCommitAt),
       daysSinceLastCommit: daysBetween(lastCommitAt, collectedAt),
       hasVacuum: hasOps ? hasVacuum : null, lastVacuumAt,
       hasOptimize: hasOps ? hasOptimize : null, lastOptimizeAt,
@@ -964,7 +971,7 @@ export function buildModel(data: FootprintData, options: ModelOptions = {}): Sto
       dictionaryShare: ratio(dictionaryChunkCount, size(columnsTable.chunkCount, row)),
       dictionaryFallbackShare: ratio(size(columnsTable.fallbackChunkCount, row), dictionaryChunkCount),
       averageValueLength: ratio(size(columnsTable.unencodedByteArrayDataBytes, row), nonNull),
-      filesWithoutColumnShare: isId(table) ? ratio(size(columnsTable.fileCountWithoutColumn, row), fileCountById.get(table) ?? null) : null,
+      filesWithoutColumnShare: isId(table) ? ratio(size(columnsTable.fileCountWithoutColumn, row), footerCountById.get(table) ?? null) : null,
     });
     const list = columnKeysByTable.get(tableKey) ?? [];
     list.push(key);
@@ -1019,9 +1026,9 @@ export function buildModel(data: FootprintData, options: ModelOptions = {}): Sto
       files: sumKnown(tablesWithColumns.map((t) => t.fileCount)),
       fileSize: sumKnown(tablesWithColumns.map((t) => t.fileSize)),
       rowCount: sumKnown(tablesWithColumns.map((t) => t.rowCount)),
-      footprint: tablesWithColumns.reduce((sum, t) => sum + t.stack.total, 0),
-      waste: tablesWithColumns.reduce((sum, t) => sum + t.stack.waste, 0),
-      overhead: tablesWithColumns.reduce((sum, t) => sum + t.stack.overhead, 0),
+      footprint: sumKnown(tablesWithColumns.map((t) => t.stack.total)),
+      waste: sumKnown(tablesWithColumns.map((t) => t.stack.waste)),
+      overhead: sumKnown(tablesWithColumns.map((t) => t.stack.overhead)),
     },
     depths,
   };
@@ -1039,16 +1046,17 @@ export type TableOrder = "waste" | "total" | "label";
 
 /**
  * The tables in a new array, sorted: by waste, by stack total, or by label. Ties go by total, then by label, then by
- * the order of the file, so that the order is stable.
+ * the order of the file, so that the order is stable. A table whose waste or total is null goes after those that have it.
  */
 export function sortTables(tables: readonly TableModel[], order: TableOrder = "waste"): TableModel[] {
   const byLabel = (a: TableModel, b: TableModel) => (a.label < b.label ? -1 : a.label > b.label ? 1 : 0);
+  const descending = (a: number | null, b: number | null) => (a === null || b === null ? Number(a === null) - Number(b === null) : b - a);
   return [...tables].sort((a, b) => {
     if (order === "label") {
       return byLabel(a, b) || a.row - b.row;
     }
-    const primary = order === "waste" ? b.stack.waste - a.stack.waste : 0;
-    return primary || b.stack.total - a.stack.total || byLabel(a, b) || a.row - b.row;
+    const primary = order === "waste" ? descending(a.stack.waste, b.stack.waste) : 0;
+    return primary || descending(a.stack.total, b.stack.total) || byLabel(a, b) || a.row - b.row;
   });
 }
 
@@ -1069,13 +1077,20 @@ export interface TreeNode {
   readonly absent: boolean;
   /** For a table without column totals, whether its size comes from `tables.compressedSize`. */
   readonly sizeSource: "columns" | "table";
-  /** The null values over the values, summed over the columns that have both counts. */
+  /**
+   * ColumnNullShare of section 10.6: the null values over the values, summed over the columns below the node that have
+   * both counts. On a column leaf, the NullShare of the column.
+   */
   readonly nullShare: number | null;
   /** The sum of `nullCount` over those columns. */
   readonly nullCount: number | null;
   /** The sum of `valueCount` over those columns. */
   readonly valueCount: number | null;
-  /** Uncompressed over compressed, over the columns that have both sizes. */
+  /**
+   * ColumnCompressionRatio of section 10.6: the uncompressed bytes over the compressed bytes, summed over the columns
+   * below the node that have both sizes. On a column leaf, the CompressionRatio of the column. For a table it can differ
+   * from `table.measures.compressionRatio`, the CompressionRatio of the totals of the table.
+   */
   readonly compressionRatio: number | null;
   /** The children, largest first, absent last. */
   readonly children: readonly TreeNode[];

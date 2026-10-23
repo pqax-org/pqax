@@ -10,14 +10,14 @@ Three tools: unattended sign-in for `pqax collect`, templates that collect a foo
 
 | Piece | Version | Content |
 |---|---|---|
-| [Object model](docs/object-model.md) | Draft 0.6 | Section 10 defines the derived measures: the storage stack with its waste and overhead, the small files, the V-Order share, the history, and the ratios of tables, columns, and the collection. The format does not change. |
+| [Object model](docs/object-model.md) | Draft 0.6 | Section 10 defines the derived measures: the storage stack with its waste and overhead, the small files, the V-Order share, the history, and the ratios of tables, columns, and the collection. Section 4.3 states that the quartiles of a distribution are taken by position. The maintainer decided the measures on 22 October 2026. The format does not change. |
 
 ### .NET
 
 | Package | What changes | Format |
 |---|---|---|
-| `Pqax` | `StorageMeasures` computes the derived measures of the tables as the storage views do: the stack with its waste and overhead, the deleted rows, the small files, the ratios, and the pace of the commits. | Reads 0.1 and 0.2, writes 0.2 |
-| `Pqax.Cli` | `pqax collect` signs in with `--client-id` and `--client-secret-env`, `--client-certificate`, `--managed-identity`, `--azure-cli`, `--access-token-env`, or `--env-credential`, besides the device code, still the default, and the browser. A secret is read from an environment variable, never from the command line, and is not printed or written. A refused sign-in or request is one line with its code and the likely cause. `pqax tables` prints one row per table with its rows, files, live bytes, waste, and waste share, or one JSON object with `--json`. | Reads 0.1 and 0.2, writes 0.2 |
+| `Pqax` | `StorageMeasures` computes the derived measures of the tables as section 10 of the object model defines them, and as the storage views do: the stack with its waste and overhead, the deleted rows, the small files, the ratios, and the pace of the commits. The waste, the overhead, the data, and the total of a stack are `double?`: the data and the shares are null when the live data is, and the other three when every component they add is absent. The commits per day divide the commits read only. | Reads 0.1 and 0.2, writes 0.2 |
+| `Pqax.Cli` | `pqax collect` signs in with `--client-id` and `--client-secret-env`, `--client-certificate`, `--managed-identity`, `--azure-cli`, `--access-token-env`, or `--env-credential`, besides the device code, still the default, and the browser. A secret is read from an environment variable, never from the command line, and is not printed or written. A refused sign-in or request is one line with its code and the likely cause. `pqax tables` prints one row per table with its rows, files, live bytes, waste, and waste share, or one JSON object with `--json`; a measure that is null is `n/a` in the table and `null` in the JSON. | Reads 0.1 and 0.2, writes 0.2 |
 | `Pqax.Collector` | No change of the code. The README shows how to pass any `TokenCredential`, and the permissions of a service principal. | Writes 0.2 |
 | `Pqax.Collector.ParquetNet` | No change | Reads and writes no PQAX file |
 
@@ -25,11 +25,11 @@ Every package carries the PQAX icon, the mark of [brand/](brand/README.md).
 
 ### npm
 
-No change.
+`@pqax/views` computes the derived measures as section 10 of the object model defines them, and its README refers to that section instead of defining them. A measure that the fields do not give is null: the data of a stack and every share of it when the live data is, the waste, the overhead, and the total when every component they add is absent, the share of an absent component, and the footprint, waste, and overhead of the collection when no table has them. The commits per day divide the commits read only, the share of the files without a column divides by the footers read, VACUUM and OPTIMIZE are null for a table without operations, and the days since the last commit count to the first time of the collection that parses. The treemap names its ratio of a table, a source, or the whole the column compression ratio. `@pqax/pqax` does not change. Reads 0.1 and 0.2.
 
 ### PyPI
 
-`pqax` has the module `measures`, the same measures as the storage views, and the command `python -m pqax tables`. Reads 0.1 and 0.2, writes 0.2.
+`pqax` has the module `measures`, the same measures as the storage views, computed as section 10 of the object model defines them, and the command `python -m pqax tables`, which prints `n/a` for a measure that is null. Reads 0.1 and 0.2, writes 0.2.
 
 ### Templates
 
