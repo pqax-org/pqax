@@ -226,7 +226,7 @@ def test_the_json_has_the_header_and_the_tables_of_the_expected_measures(name, a
     assert document["formatVersion"] == KIT[name]["formatVersion"]
     assert document["collector"] == f"{collection['collectorApp']} {collection['collectorAppVersion']}"
     assert document["library"] is None
-    assert instant(document["collectedAt"]) == instant("2026-10-05T20:55:12.749Z")
+    assert instant(document["collectedAt"]) == instant(collection["completedAt"])
     assert document["level"] == 2
     assert (document["smallFileSize"], document["tinyFileSize"]) == (134217728, 8388608)
     assert document["sort"] == "waste"

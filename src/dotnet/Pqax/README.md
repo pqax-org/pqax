@@ -186,6 +186,44 @@ Console.WriteLine($"{measures.Collection.Tables} tables, {measures.Collection.Fo
 
 A value that cannot be computed is `null`, never 0: a stack component whose field the file lacks, such as the unreferenced files of a file of format 0.1, is `null`. The waste, the overhead, and the total count such a component as 0, as the views do, and are `null` only when every component they add is absent. The conformance kit holds the measures of the views for every sample, in `conformance/expected/measures`, and the tests compare these with them.
 
+## Compare two footprints
+
+`StorageDiff` compares two footprints of the same lakehouse taken at different times, as [section 13 of the object model](https://github.com/pqax-org/pqax/blob/main/docs/object-model.md#13-comparing-two-footprints) proposes: the tables and the columns added, removed, and kept, and for every kept one the older value, the newer value, and the delta of each total of section 6 and of each measure of section 10. A table is the same table when its `TableId` is, and otherwise, when one of the two has none, when its source, namespace, and name are; a column when its `FieldId` is, and otherwise by name; a partition by its values, a file by its path, and a commit by its `CommitId`.
+
+```csharp
+using PqaxDocument older = PqaxDocument.Open("monday.pqax");
+using PqaxDocument newer = PqaxDocument.Open("friday.pqax");
+FootprintDiff diff = StorageDiff.Compare(older, newer);
+foreach (TableChange change in StorageDiff.Rank(diff, "total", top: 10))
+{
+    if (change.Kept is { } kept)
+    {
+        Console.WriteLine($"{kept.Newer.Label}: {kept.Measure("stack.total")!.Delta:N0} bytes, {kept.Files?.Added} files added, {kept.Columns.Added.Count} columns added");
+    }
+    else
+    {
+        Console.WriteLine($"{change.Label} {change.Kind}{(change.Entry!.Recreated ? ", recreated" : string.Empty)}: {change.Entry.Table.Total:N0} bytes");
+    }
+}
+```
+
+| Member | What it is |
+|---|---|
+| `StorageDiff.Compare(older, newer, options)` | The comparison. It computes the measures of both documents with `StorageMeasures.Compute`, and reads their `files`, `partitions`, and `commits` tables when they have rows. |
+| `StorageDiff.Rank(diff, order, top)` | The changes in one order, as `TableChange`: `total`, `waste`, `rows`, or `files` by the size of the change, the largest first, or `name` |
+| `StorageDiff.Orders` | `total`, `waste`, `rows`, `files`, `name` |
+| `FootprintDiff` | `Older` and `Newer`, the measures of each document; `SmallFileSize`, `TinyFileSize`; `Collection`, the change of the measures of the collection and of the tables at each depth; `Added`, `Removed`, `Kept`; `ChangedCount`; `CollectionValue(name)` |
+| `ValueChange` | `Name`, `Older`, `Newer`, `Delta`, `IsChanged`. A value is a `long`, a `double`, a `bool`, a `string`, a `DateTimeOffset`, a list of strings, or null. The delta of a time is in milliseconds; a boolean, a text, and a list have none, and the delta is null when either value is. |
+| `TableEntry` | A table added or removed: `Table` and `Recreated`, true when a table with the same source, namespace, and name was removed and added with another `TableId` |
+| `TableSide` | `Id`, `Row`, `Label`, `Name`, `Namespace`, `TableId`, `SnapshotId`, `DetailDepth`, `ColumnCount`, `FileCount`, `FileSize`, `RowCount`, and the `Total` and `Waste` of its stack |
+| `KeptTable` | `MatchedBy` (`tableId` or `name`), `Renamed`, `IsChanged`, `Older`, `Newer`, `Totals`, `Measures`, `Columns`, and `Files`, `Partitions`, `Commits`, null when the two footprints do not both keep them; `Total(name)` and `Measure(name)` |
+| `ColumnChanges` | `Added` and `Removed`, as `ColumnSide`, and `Kept`, as `KeptColumn` |
+| `ColumnSide`, `KeptColumn` | `Id`, `Row`, `Label`, `Name`, `FieldId`, `DataType`, `IsNullable`, `CompressedSize`; and `MatchedBy` (`fieldId` or `name`), `Renamed`, `IsChanged`, `Older`, `Newer`, `Totals`, `Measures` |
+| `DetailChanges` | `Added`, `Removed`, `Kept`, and for the files and the partitions `Changed`, `AddedFileSize`, and `RemovedFileSize` |
+| `TableChange` | `Kind` (`added`, `removed`, `kept`), `Entry` or `Kept`, and `Label` |
+
+A kept table is changed when its name, its `SnapshotId`, a total, a column, a file, a partition, or a commit differs; a measure alone does not make it changed, since the days since the last commit move with the time of the collection. The totals keep the names of the fields, with the members of a distribution as `fileSizes.median`, and the measures the paths of the JSON of the measures, such as `stack.waste`. `pqax diff` of [Pqax.Cli](https://github.com/pqax-org/pqax/blob/main/src/dotnet/Pqax.Cli/README.md#diff) writes the comparison as a report or as JSON. The conformance kit has two footprints with known differences and their expected diff, in `conformance/expected/diff`, and the tests compare the comparison with it.
+
 ## Write
 
 ```csharp

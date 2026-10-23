@@ -139,6 +139,32 @@ print(result["collection"]["totals"]["footprint"], result["collection"]["depths"
 
 The keys are the names of the view model. The dict of a table has `id`, `name`, `label`, `rowCount`, `fileCount`, `fileSize`, `stack` with `shares`, `smallFiles`, `tinyFiles`, `files` with `vOrder`, `measures`, `maintenance`, and `partitions`; `python -m pqax tables --json` prints the keys it printed in version 0.2.0. A column has `id`, `table`, `name`, `label`, and its six measures, and the collection `totals` and `depths`. A value that cannot be computed is `None`, never 0; the waste, the overhead, and the total count a missing component as 0, as the views do, and are `None` only when every component they add is missing. An integral float is an `int`, and a time is the text of the file. The conformance kit holds the measures of the views for every sample, in `conformance/expected/measures`, and the tests compare these with them.
 
+## Compare two footprints
+
+`pqax.diff` compares two footprints of the same lakehouse taken at different times, as [section 13 of the object model](https://github.com/pqax-org/pqax/blob/main/docs/object-model.md#13-comparing-two-footprints) proposes: the tables and the columns added, removed, and kept, and for every kept one the older value, the newer value, and the delta of each total of section 6 and of each measure of section 10. A table is the same table when its `tableId` is, and otherwise, when one of the two has none, when its source, namespace, and name are; a column when its `fieldId` is, and otherwise by name; a partition by its values, a file by its path, and a commit by its `commitId`.
+
+```python
+import pqax
+from pqax import diff
+
+with pqax.open("monday.pqax") as older, pqax.open("friday.pqax") as newer:
+    result = diff.compare(older, newer)
+print(result["counts"], result["collection"]["footprint"])
+for kind, entry in diff.rank(result, "total", top=10):
+    if kind == "kept":
+        print(entry["newer"]["label"], entry["status"], entry["measures"]["stack.total"]["delta"], entry["files"])
+    else:
+        print(entry["label"], kind, entry["recreated"], entry["total"])
+```
+
+| Name | What it is |
+|---|---|
+| `compare(older, newer, small_file_size=..., tiny_file_size=...)` | `{"older", "newer", "smallFileSize", "tinyFileSize", "counts", "collection", "added", "removed", "kept"}`: the JSON of `python -m pqax diff --json` without the file headers, with the tables in the order of their file |
+| `rank(result, order="total", top=None)` | The changes as `(kind, entry)` pairs, kind `added`, `removed`, or `kept`: by the size of the change for `total`, `waste`, `rows`, and `files`, the largest first, or by `name` |
+| `ORDERS` | `("total", "waste", "rows", "files", "name")` |
+
+A compared value is `{"older": ..., "newer": ..., "delta": ...}`. The delta of a time is in milliseconds, a time is written in the form of the format, and a boolean, a text, and a list have no delta; the delta is `None` when either value is. A kept table has `status`, `matchedBy` (`tableId` or `name`), `renamed`, `older` and `newer`, `totals` keyed by the names of the fields, with the members of a distribution as `fileSizes.median`, `measures` keyed by the paths of the measures, such as `stack.waste`, `columns` with `added`, `removed`, and `kept`, and `files`, `partitions`, and `commits`, `None` when the two footprints do not both keep them. A measure alone does not make a table changed, since the days since the last commit move with the time of the collection. The conformance kit has two footprints with known differences and their expected diff, in `conformance/expected/diff`, and the tests compare the comparison with it.
+
 ## Command line
 
 ```bash
@@ -147,9 +173,10 @@ python -m pqax info footprint.pqax       # format, version, collection, parts wi
 python -m pqax info model.vpax           # a VPAX file: the PQAX file that it embeds as Footprint.pqax
 python -m pqax tables footprint.pqax     # one row per table: rows, files, live bytes, waste, and waste share
 python -m pqax export footprint.pqax --to exports   # the tables and their measures as CSV, Parquet, or Delta
+python -m pqax diff monday.pqax friday.pqax   # the tables and columns added, removed, and kept, the largest change first
 ```
 
-`check` prints one line for each issue, its code first, then a summary line. The commands take `--part NAME` for another embedded part. `tables` takes `--sort waste|total|rows|files|name`, `--top N`, `--wide` for the small files and the overhead, and `--json` for one JSON object; it writes what `pqax tables` of [Pqax.Cli](https://github.com/pqax-org/pqax/blob/main/src/dotnet/Pqax.Cli/README.md#tables) writes. The installed package also has a `pqax` command.
+`check` prints one line for each issue, its code first, then a summary line. The commands take `--part NAME` for another embedded part. `tables` takes `--sort waste|total|rows|files|name`, `--top N`, `--wide` for the small files and the overhead, and `--json` for one JSON object; it writes what `pqax tables` of [Pqax.Cli](https://github.com/pqax-org/pqax/blob/main/src/dotnet/Pqax.Cli/README.md#tables) writes. `diff` takes `--sort total|waste|rows|files|name`, `--top N`, and `--json`, and `--part NAME` for both files; it writes what `pqax diff` of [Pqax.Cli](https://github.com/pqax-org/pqax/blob/main/src/dotnet/Pqax.Cli/README.md#diff) writes, the same text and the same JSON. The installed package also has a `pqax` command.
 
 ## Export the tables, day after day
 
@@ -218,6 +245,7 @@ In a Fabric notebook, `--to /lakehouse/default/Tables --format delta` writes the
 | `measures` | The derived measures of the tables, the columns, and the collection. See above. |
 | `export` | `export(path_or_file, to, format="csv", part=None, if_exists="error")`, `COLUMNS`, `SCHEMAS`, `FORMATS`, `footprint_id(data)`, `AlreadyExportedError`. See above. |
 | `Builder`, `BuilderOptions` | The writer |
+| `diff` | The comparison of two footprints. See above. |
 | `format_timestamp(datetime)`, `parse_timestamp(text)` | Timestamps in the form of the format, `2026-10-05T08:15:30.000Z` |
 | `TABLES`, `SUMMARY_TABLES`, `DETAIL_TABLES`, `FIELDS`, `REQUIRED`, `REFERENCES` | The names of the format |
 

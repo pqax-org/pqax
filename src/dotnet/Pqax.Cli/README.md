@@ -11,6 +11,7 @@ It is packed as a .NET tool, `Pqax.Cli`, with the command `pqax`. It needs .NET 
 | `pqax check <file>` | Validates the file and prints one line for each issue, starting with the code of its rule, then a line with the result |
 | `pqax info <file>` | Prints the format and its version, the collection, the parts with the rows of each table, the rows of each table, and the totals of the summary |
 | `pqax tables <file>` | Prints one row per table with its rows, files, live bytes, waste, and waste share, as the storage views compute them. See below. |
+| `pqax diff <older> <newer>` | Compares two footprints of the same lakehouse: the tables and the columns added, removed, and kept, the largest change first. See below. |
 | `pqax collect ...` | Collects the footprint of the tables of OneLake items, or of a folder with the OneLake layout, and writes a PQAX file. See below. |
 | `pqax --version` | Prints the version |
 | `pqax --help` | Prints the usage |
@@ -19,10 +20,10 @@ A file with the extension `.vpax` is read as a VPAX file that holds the footprin
 
 ## Exit codes
 
-| Code | `check` | `info` and `tables` |
+| Code | `check` | `info`, `tables`, and `diff` |
 |---|---|---|
 | 0 | The file is valid | The file was read |
-| 1 | The file breaks at least one rule | The reader refuses the file: it is not a PQAX file of a version that it reads |
+| 1 | The file breaks at least one rule | The reader refuses the file, or one of the two files of `diff`: it is not a PQAX file of a version that it reads |
 | 2 | The command line is wrong, or the file cannot be read | The same |
 
 ## Output
@@ -93,6 +94,48 @@ dbo.orders   4,100      2  37.7 KB       0 B           0 B      0 B    0 B    0 
 The columns are those of the storage stack of the views: the live data, the non-live files that the log still tracks, the unreferenced files that a listing found, the bytes of the deleted rows, estimated from their share of the rows, and the stale columns; the waste is their sum, and the waste share is the waste over the live data and the waste. A file of format 0.1 has no unreferenced files, and a value that the file does not have is written `n/a`, never 0. Bytes are in 1024-based units, as the views write them; counts have thousands separators, whatever the culture of the machine. With `--wide`, a share of small files from the quartiles of `fileSizes`, when the footprint does not keep the files, is a lower bound and is written `>=75.0%`.
 
 The JSON of each table has the names of the views: `stack` with `live`, `nonLive`, `unreferenced`, `deleted`, `stale`, `metadata`, `footers`, `waste`, `overhead`, `data`, `total`, `wasteShare`, `overheadShare`; `smallFiles` and `tinyFiles`; `measures` with the ratios; and `maintenance` with the last commit, the commits per day, and the days since the last commit. `python -m pqax tables` writes the same.
+
+## Diff
+
+```
+pqax diff <older> <newer> [--part <name>] [--sort total|waste|rows|files|name] [--top <n>] [--json]
+```
+
+Compares two footprints of the same lakehouse taken at different times, with `StorageDiff` of the `Pqax` library, by the rules that [section 13 of the object model](https://github.com/pqax-org/pqax/blob/main/docs/object-model.md#13-comparing-two-footprints) proposes: a table is the same table when its `TableId` is, and otherwise, when one of the two has none, when its source, namespace, and name are; a column when its `FieldId` is, and otherwise by name. A `.vpax` file is read as for `info`.
+
+```
+Older: diff-before.pqax, 7 tables, collected 2026-10-01T06:00:00.000Z
+Newer: diff-after.pqax, 7 tables, collected 2026-10-08T06:00:00.000Z
+Tables: 2 added, 2 removed, 5 kept, 4 changed; by total
+Footprint: 634 KB to 383 KB, -252 KB; waste: 136 KB to 58.6 KB, -77.1 KB
+
+Change     Table                    Total before  Total after  Total change  Waste change  Files change  Rows change  Files added  Files removed
+removed    legacy                         177 KB            -       -177 KB           0 B            -2      -15,000            -              -
+replaced   products                       108 KB            -       -108 KB      -29.3 KB            -3       -6,000            -              -
+changed    orders                         138 KB      72.8 KB      -64.9 KB      -66.4 KB            -3            0            1              4
+changed    sales                          122 KB       166 KB      +44.4 KB      +18.6 KB            +1       +3,000            2              1
+added      events                              -      27.3 KB      +27.3 KB           0 B            +2       +5,000            -              -
+recreated  products                            -      21.5 KB      +21.5 KB           0 B            +1       +2,000            -              -
+changed    raw.staging                   9.96 KB      15.2 KB      +5.27 KB           0 B            +1         +540            1              0
+unchanged  audit                         17.6 KB      17.6 KB           0 B           0 B             0            0          n/a            n/a
+renamed    clients (was customers)       62.5 KB      62.5 KB           0 B           0 B             0            0          n/a            n/a
+
+Table        Column       Change   Detail
+orders       price        changed  type int to bigint; size +1,000 B
+sales        discount     added    double
+sales        discount     removed  double
+sales        amount       renamed  was amt; size +6.84 KB
+...
+```
+
+| Option | Default | Meaning |
+|---|---|---|
+| `--sort total\|waste\|rows\|files\|name` | `total` | The order: by the size of the change, the largest first, or by name. The change of a kept table is its delta; that of a table added or removed, its value. A null change goes last. Ties go by the name, then added before removed before kept, then the order of the file. |
+| `--top <n>` | all | The first n changes of the order |
+| `--json` | off | Writes one JSON object instead: the header of each file, the thresholds, the order, the counts, the change of the measures of the collection, and the lists `added`, `removed`, and `kept`, with the older value, the newer value, and the delta of every total and measure of each kept table and column, and the files, partitions, and commits added and removed |
+| `--part <name>` | `Footprint.pqax` | The part of a VPAX file that holds the footprint, for both files |
+
+`Change` is `added`, `removed`, `changed`, `unchanged`, or `renamed`; a table dropped and created again with a new `TableId` is `replaced` and `recreated`. `Files added` and `Files removed` count the files by their path, when both footprints keep the files of the table; `n/a` otherwise. The second table lists the columns added, removed, renamed, or changed in type, nullability, or size. Bytes and counts are written as `pqax tables` writes them, with a sign for a change. `python -m pqax diff` writes the same text and the same JSON, apart from the line ends.
 
 ## Collect
 

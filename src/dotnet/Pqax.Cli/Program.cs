@@ -64,6 +64,16 @@ public static class Program
                     error.WriteLine($"pqax tables: cannot read the file: {e.Message}");
                     return ExitError;
                 }
+            case "diff":
+                try
+                {
+                    return DiffCommand.Run(args, output, error);
+                }
+                catch (Exception e) when (e is IOException || e is UnauthorizedAccessException || e is ArgumentException || e is NotSupportedException)
+                {
+                    error.WriteLine($"pqax diff: cannot read the file: {e.Message}");
+                    return ExitError;
+                }
             default:
                 error.WriteLine($"pqax: unknown command '{command}'.");
                 Usage(error);
@@ -102,6 +112,8 @@ public static class Program
         writer.WriteLine("  pqax info <file> [--part <name>]    Show the format, the collection, the parts, and the rows of each table.");
         writer.WriteLine("  pqax tables <file> [--sort waste|total|rows|files|name] [--top <n>] [--wide] [--json]");
         writer.WriteLine("                                      One row per table with its storage, waste, and waste share. See pqax tables --help.");
+        writer.WriteLine("  pqax diff <older> <newer> [--sort total|waste|rows|files|name] [--top <n>] [--json]");
+        writer.WriteLine("                                      The tables and columns added, removed, and kept between two footprints. See pqax diff --help.");
         writer.WriteLine("  pqax collect --local <folder> --output <file>     Collect a footprint from a folder in the OneLake layout.");
         writer.WriteLine("  pqax collect --workspace <id> --item <name> --output <file>   Collect from OneLake after a sign-in. See pqax collect --help.");
         writer.WriteLine("  pqax --version                      Show the version.");

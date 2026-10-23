@@ -10,6 +10,9 @@ Output, which replaces everything in these folders:
     samples/invalid/expected.json       the codes that a validator must report for each invalid file
     expected/<sample>.json              what a reader must get from each valid file
 
+It also writes samples/diff-before.pqax and samples/diff-after.pqax, the two footprints of the comparison test, and
+their expected results, with make_diff.py and the writer of the Python package. make_diff.py writes their expected diff.
+
 The script uses the Python standard library and one module outside conformance/: build_pqax.py, the builder of
 the prototype in research/prototype. That is an exception to the rule that the kit depends on nothing
 outside conformance/, src/, and tests/. The builder will be replaced by the writer of the Python package.
@@ -559,6 +562,10 @@ def main():
         expected_codes[name] = {"codes": codes, "change": change}
         print(f"invalid/{name:40} {len(data):>9,} bytes   {', '.join(codes)}")
     write_text(os.path.join(invalid_folder, "expected.json"), pretty(dict(sorted(expected_codes.items()))))
+
+    # The two footprints of the comparison test, written with pqax.Builder. make_diff.py writes their expected diff.
+    import make_diff
+    make_diff.write_samples()
 
 
 if __name__ == "__main__":

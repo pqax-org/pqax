@@ -288,14 +288,16 @@ public class TablesTests
         Assert.Equal((string?)sample["embeddedPart"], (string?)json["embeddedPart"]);
         Assert.Equal((string)sample["format"]!, (string)json["format"]!);
         Assert.Equal((string)sample["formatVersion"]!, (string)json["formatVersion"]!);
+        DateTimeOffset? completedAt;
         using (PqaxDocument doc = sample["embeddedPart"] is null ? PqaxDocument.Open(path) : PqaxDocument.OpenEmbedded(path))
         {
             Assert.Equal("pqax-conformance-kit", doc.Manifest.Collection.CollectorApp);
             Assert.Equal("pqax-conformance-kit " + doc.Manifest.Collection.CollectorAppVersion, (string?)json["collector"]);
+            completedAt = doc.Manifest.Collection.CompletedAt;
         }
 
         Assert.Null(json["library"]);
-        Assert.Equal(DateTimeOffset.Parse("2026-10-05T20:55:12.749Z", Invariant), DateTimeOffset.Parse((string)json["collectedAt"]!, Invariant));
+        Assert.Equal(completedAt, DateTimeOffset.Parse((string)json["collectedAt"]!, Invariant));
         Assert.Equal(2, (int)json["level"]!);
         Assert.Equal(134217728L, (long)json["smallFileSize"]!);
         Assert.Equal(8388608L, (long)json["tinyFileSize"]!);
