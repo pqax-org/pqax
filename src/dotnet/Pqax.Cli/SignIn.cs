@@ -123,12 +123,23 @@ public static class SignIn
     /// </summary>
     /// <param name="exception">The failure.</param>
     /// <returns>The line, without the name of the command and without a line break.</returns>
-    public static string Describe(Exception exception)
+    public static string Describe(Exception exception) => Describe(exception, storageAccount: false);
+
+    /// <summary>
+    /// One line for a failed sign-in or a request that the storage refused, with its code and its likely cause. For a
+    /// storage account, a status 401 or 403 names the token and the data role of Azure Storage instead of Fabric.
+    /// </summary>
+    /// <param name="exception">The failure.</param>
+    /// <param name="storageAccount">Whether the storage is a container of a storage account, from <c>--adls</c>, rather than OneLake.</param>
+    /// <returns>The line, without the name of the command and without a line break.</returns>
+    public static string Describe(Exception exception, bool storageAccount)
     {
         ArgumentNullException.ThrowIfNull(exception);
         string line = exception switch
         {
             SignInException e => e.Message,
+            StorageException { StatusCode: 401 } e when storageAccount => $"{Stem(e.Message)}: the storage account refused the token. An access token must be for https://storage.azure.com, from the tenant of the account, and not expired.",
+            StorageException { StatusCode: 403 } e when storageAccount => $"{Stem(e.Message)}: the identity cannot read the container. It needs the role Storage Blob Data Reader on the container or the account, or ACLs that give it read and execute on the folders; Reader, Contributor, or Owner of the account alone do not read data. A network rule of the account also answers 403.",
             CredentialUnavailableException e => $"the identity is not available here: {Text(e)} For --managed-identity, the command must run where Azure gives the identity; for --azure-cli, run az login first.",
             AuthenticationFailedException e => Aad(e),
             StorageException { StatusCode: 401 } e => $"{Stem(e.Message)}: OneLake refused the token. For a service principal or a managed identity, the Fabric tenant setting \"Service principals can use Fabric APIs\" must be enabled for it, or for a security group it is in. An access token must be for https://storage.azure.com and not expired.",

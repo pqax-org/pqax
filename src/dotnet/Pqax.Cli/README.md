@@ -12,7 +12,7 @@ It is packed as a .NET tool, `Pqax.Cli`, with the command `pqax`. It needs .NET 
 | `pqax info <file>` | Prints the format and its version, the collection, the parts with the rows of each table, the rows of each table, and the totals of the summary |
 | `pqax tables <file>` | Prints one row per table with its rows, files, live bytes, waste, and waste share, as the storage views compute them. See below. |
 | `pqax diff <older> <newer>` | Compares two footprints of the same lakehouse: the tables and the columns added, removed, and kept, the largest change first. See below. |
-| `pqax collect ...` | Collects the footprint of the tables of OneLake items, or of a folder with the OneLake layout, and writes a PQAX file. See below. |
+| `pqax collect ...` | Collects the footprint of the tables of OneLake items, of a folder with the OneLake layout, or of a folder of an Azure Data Lake Storage Gen2 container, and writes a PQAX file. See below. |
 | `pqax --version` | Prints the version |
 | `pqax --help` | Prints the usage |
 
@@ -142,9 +142,20 @@ sales        amount       renamed  was amt; size +6.84 KB
 ```
 pqax collect --local <folder> --output <file.pqax> [--item <name.Kind>]... [options]
 pqax collect --workspace <name or id> --item <name.Kind> [--item ...] --output <file.pqax> [identity] [options]
+pqax collect --adls https://<account>.dfs.core.windows.net/<container>[/<folder>] --output <file.pqax> [identity] [options]
 ```
 
 `--local` reads a folder with the layout of a OneLake workspace, `<item>.<Kind>/Tables/[<schema>/]<table>`, such as `conformance/fixtures/lakehouse`. Without `--item`, it collects every lakehouse, warehouse, mirrored database, and SQL database of the folder. `--workspace` reads OneLake after a sign-in with one of the identities below; the token stays in memory. The command runs the [collector](https://github.com/pqax-org/pqax/blob/main/src/dotnet/Pqax.Collector/README.md) with the checkpoint reader of [Pqax.Collector.ParquetNet](https://github.com/pqax-org/pqax/blob/main/src/dotnet/Pqax.Collector.ParquetNet/README.md), writes the file, and validates it.
+
+`--adls` reads a container of a storage account with hierarchical namespace, Azure Data Lake Storage Gen2, after a sign-in with the same identities. The URL is the DFS endpoint of the account, the container, and optionally a folder: `https://<account>.dfs.core.windows.net/<container>/<folder>`. The form of the ABFS driver, `abfss://<container>@<account>.dfs.core.windows.net/<folder>`, is accepted too. The command finds the tables under the folder as the [collector](https://github.com/pqax-org/pqax/blob/main/src/dotnet/Pqax.Collector/README.md#folders-of-a-storage-account) says: a folder with `_delta_log` is a Delta table, and a folder of Parquet files with no subfolder is a Parquet table, down to 4 levels below the folder. Point the URL at a deeper folder to reach deeper tables.
+
+| `--adls` refuses | Why |
+|---|---|
+| `--local`, `--workspace`, or `--item` with it | One storage at a time; the tables are found, not named |
+| A URL with a query, such as a SAS token | A secret on the command line stays in the shell history. The message does not quote the URL. |
+| The blob endpoint, `<account>.blob.core.windows.net` | The command reads the DFS API |
+| A OneLake host | OneLake is read with `--workspace` |
+| A URL with no container, or a container name that is not 3 to 63 lowercase letters, digits, and dashes | The naming rule of Azure Storage |
 
 | Option | Default | Meaning |
 |---|---|---|
@@ -153,7 +164,7 @@ pqax collect --workspace <name or id> --item <name.Kind> [--item ...] --output <
 | `--max-footers <n>` | 0 | The footers read for each table, 0 for all |
 | `--max-commits <n>` | 30 | The commit files read for the history of each table. The commits that the state needs are read anyway, so a table reads the greater of the limit and those. |
 | `--parallelism <n>` | 16 | The storage requests at the same time |
-| `--verbose` | off | Prints the identity, then every OneLake request with its status code, to the error output. The URLs name the items and the tables. |
+| `--verbose` | off | Prints the identity, then every request to OneLake or to the storage account with its status code, to the error output. The URLs name the items, the folders, and the tables. |
 
 It prints one line for each table that is done, with counts and never a name, then a last line:
 
@@ -165,7 +176,7 @@ The exit code is 0 when the file is written and valid, 1 when the written file i
 
 ### Identities
 
-One identity at a time. Without an identity option, the command signs in a person with a device code, which it prints: a browser window can open where nobody sees it, so the device code is the default. The other identities run without a person, from a scheduled job, a pipeline, or a notebook.
+The identities are the same for `--workspace` and `--adls`: they all request a token for `https://storage.azure.com`, which OneLake and Azure Storage both take. One identity at a time. Without an identity option, the command signs in a person with a device code, which it prints: a browser window can open where nobody sees it, so the device code is the default. The other identities run without a person, from a scheduled job, a pipeline, or a notebook.
 
 | Identity | Options | Where it fits |
 |---|---|---|
@@ -212,11 +223,26 @@ The command turns a refused sign-in or a refused request into one line with the 
 | `AADSTS700027` | The certificate is not one that the application has registered |
 | `401` from OneLake | The tenant setting does not include the principal, or an access token is for another audience or has expired |
 | `403` from OneLake | The principal has no workspace role that reads OneLake |
+| `401` from a storage account | An access token is for another audience, from another tenant, or has expired |
+| `403` from a storage account | The identity has no data role on the container, or a network rule of the account refuses the machine |
 | The identity is not available | No managed identity on the machine, or the Azure CLI is not installed or not signed in |
+
+### Permissions on a storage account
+
+Any identity, a person included, reads a container of a storage account with a data role of Azure RBAC:
+
+| Setting | Where | Status |
+|---|---|---|
+| The role Storage Blob Data Reader, on the container or on the storage account | Storage account, Access control (IAM), or the container, Access control (IAM) | Needed. It covers listing and reading, and nothing else. A role can take a few minutes to apply. |
+| Reader, Contributor, or Owner of the account | The same | Not enough: these roles manage the account and do not read data |
+| ACLs with read and execute on the folders and the files, instead of a role | Storage Explorer or `az storage fs access` | Works by the rules of ADLS Gen2, not verified with the command |
+| The firewall of the account, when it allows selected networks only | Storage account, Networking | Must allow the machine that runs the command; otherwise every request answers 403 |
+
+A shared key or a SAS token is not accepted: the command signs in with Microsoft Entra ID only.
 
 ## Use from code
 
-`Pqax.Cli.Program.Run(args, output, error)` runs a command with the given writers and returns the exit code, so that a test or a host can run it in process. `CollectCommand.Run(args, output, error, host)` also takes a `CollectHost`: the environment variables, a credential to use instead of the one of the identity options, and the HTTP client and endpoint of OneLake. `TokenCache` is the token delegate of the collect command: it keeps a token of a `TokenCredential` until five minutes before it expires.
+`Pqax.Cli.Program.Run(args, output, error)` runs a command with the given writers and returns the exit code, so that a test or a host can run it in process. `CollectCommand.Run(args, output, error, host)` also takes a `CollectHost`: the environment variables, a credential to use instead of the one of the identity options, and the HTTP client and endpoint of OneLake. `--adls` takes its endpoint from its URL and its HTTP client from the host. `TokenCache` is the token delegate of the collect command: it keeps a token of a `TokenCredential` until five minutes before it expires.
 
 ## Pack
 

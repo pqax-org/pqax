@@ -12,6 +12,9 @@ public sealed class CollectOptions
 
     private static readonly Regex VariableName = new("^[A-Za-z_][A-Za-z0-9_]*$", RegexOptions.CultureInvariant);
 
+    /// <summary>The name of a filesystem (container) of a storage account: 3 to 63 lowercase letters, digits, and single dashes.</summary>
+    private static readonly Regex FileSystemName = new("^[a-z0-9](?!.*--)[a-z0-9-]{1,61}[a-z0-9]$", RegexOptions.CultureInvariant);
+
     private readonly List<string> items = [];
 
     private CollectOptions()
@@ -25,6 +28,18 @@ public sealed class CollectOptions
     /// <summary>The name or the id of the workspace, from <c>--workspace</c>.</summary>
     public string? Workspace { get; private set; }
 
+    /// <summary>The URL of a folder of an Azure Data Lake Storage Gen2 container, from <c>--adls</c>.</summary>
+    public string? Adls { get; private set; }
+
+    /// <summary>The DFS endpoint of the storage account of <c>--adls</c>, such as <c>https://account.dfs.core.windows.net</c>.</summary>
+    public Uri? AdlsEndpoint { get; private set; }
+
+    /// <summary>The filesystem (container) of <c>--adls</c>.</summary>
+    public string? AdlsFileSystem { get; private set; }
+
+    /// <summary>The folder of <c>--adls</c> in its container, decoded, without a leading or trailing slash. Empty for the container itself.</summary>
+    public string AdlsFolder { get; private set; } = string.Empty;
+
     /// <summary>The items, from <c>--item</c>, in the order given.</summary>
     public IReadOnlyList<string> Items => items;
 
@@ -34,7 +49,7 @@ public sealed class CollectOptions
     /// <summary>Whether to print the identity and every OneLake request to the error output, from <c>--verbose</c>.</summary>
     public bool Verbose { get; private set; }
 
-    /// <summary>The identity that signs in to OneLake.</summary>
+    /// <summary>The identity that signs in to OneLake or to the storage account.</summary>
     public SignInOptions SignIn { get; private set; }
 
     /// <summary>The detail kept for each table, from <c>--depth</c>.</summary>
@@ -98,6 +113,9 @@ public sealed class CollectOptions
                     break;
                 case "--workspace":
                     options.Workspace = value = Next();
+                    break;
+                case "--adls":
+                    options.Adls = value = Next();
                     break;
                 case "--item":
                     value = Next();
@@ -265,10 +283,25 @@ public sealed class CollectOptions
             }
         }
 
-        if ((options.Local == null) == (options.Workspace == null))
+        if ((options.Local != null ? 1 : 0) + (options.Workspace != null ? 1 : 0) + (options.Adls != null ? 1 : 0) != 1)
         {
-            problem = "give either --local or --workspace.";
+            problem = "give one of --local, --workspace, or --adls.";
             return null;
+        }
+
+        if (options.Adls != null)
+        {
+            if (options.Items.Count > 0)
+            {
+                problem = "--item does not apply to --adls: the tables are found under the folder of the URL.";
+                return null;
+            }
+
+            problem = options.ParseAdls();
+            if (problem != null)
+            {
+                return null;
+            }
         }
 
         if (options.Workspace != null && options.Items.Count == 0)
@@ -283,9 +316,9 @@ public sealed class CollectOptions
             return null;
         }
 
-        if ((identity != null || tenant != null || clientId != null || passwordVariable != null) && options.Workspace == null)
+        if ((identity != null || tenant != null || clientId != null || passwordVariable != null) && options.Workspace == null && options.Adls == null)
         {
-            problem = "--tenant, --client-id, and the identity options apply to --workspace only.";
+            problem = "--tenant, --client-id, and the identity options apply to --workspace and --adls only.";
             return null;
         }
 
@@ -297,6 +330,73 @@ public sealed class CollectOptions
 
         options.SignIn = new SignInOptions(mode, tenant, clientId, secretVariable, certificate, passwordVariable, tokenVariable);
         return options;
+    }
+
+    /// <summary>
+    /// Splits the URL of <c>--adls</c> into the endpoint, the filesystem, and the folder. It takes
+    /// <c>https://&lt;account&gt;.dfs.core.windows.net/&lt;filesystem&gt;[/&lt;folder&gt;]</c> and
+    /// <c>abfss://&lt;filesystem&gt;@&lt;account&gt;.dfs.core.windows.net[/&lt;folder&gt;]</c>. A problem never quotes the URL,
+    /// which could carry a SAS token.
+    /// </summary>
+    private string? ParseAdls()
+    {
+        const string Form = "--adls takes https://<account>.dfs.core.windows.net/<container>[/<folder>]";
+        if (Adls!.IndexOf('?') >= 0 || Adls.IndexOf('#') >= 0)
+        {
+            return "--adls takes a URL without a query: a SAS token is not accepted, since it would stay in the shell history. Sign in with one of the identities.";
+        }
+
+        if (!Uri.TryCreate(Adls, UriKind.Absolute, out Uri? url) || url.Host.Length == 0 || !string.IsNullOrEmpty(url.UserInfo) && url.Scheme != "abfss")
+        {
+            return Form + ".";
+        }
+
+        string host = url.Host.ToLowerInvariant();
+        if (host.EndsWith(".blob.core.windows.net", StringComparison.Ordinal))
+        {
+            return "--adls takes the DFS endpoint of the account, <account>.dfs.core.windows.net, not the blob endpoint.";
+        }
+
+        if (host.EndsWith("fabric.microsoft.com", StringComparison.Ordinal))
+        {
+            return "--adls is for a storage account; for OneLake, use --workspace and --item.";
+        }
+
+        List<string> segments = url.AbsolutePath.Split('/', StringSplitOptions.RemoveEmptyEntries).Select(Uri.UnescapeDataString).ToList();
+        string? fileSystem;
+        if (url.Scheme == "https")
+        {
+            fileSystem = segments.Count > 0 ? segments[0] : null;
+            segments = segments.Skip(1).ToList();
+        }
+        else if (url.Scheme == "abfss")
+        {
+            fileSystem = url.UserInfo.Length > 0 ? Uri.UnescapeDataString(url.UserInfo) : null;
+        }
+        else
+        {
+            return Form + ".";
+        }
+
+        if (fileSystem == null)
+        {
+            return Form + ": the container is missing.";
+        }
+
+        if (!FileSystemName.IsMatch(fileSystem))
+        {
+            return "the container of --adls is not a valid name: 3 to 63 lowercase letters, digits, and dashes.";
+        }
+
+        if (segments.Any(s => s == "." || s == ".."))
+        {
+            return Form + ": the folder cannot hold . or .. segments.";
+        }
+
+        AdlsEndpoint = new Uri("https://" + url.Authority);
+        AdlsFileSystem = fileSystem;
+        AdlsFolder = string.Join("/", segments);
+        return null;
     }
 
     /// <summary>What is wrong with the combination of the identity options, or null.</summary>

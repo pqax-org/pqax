@@ -116,6 +116,7 @@ public static class Program
         writer.WriteLine("                                      The tables and columns added, removed, and kept between two footprints. See pqax diff --help.");
         writer.WriteLine("  pqax collect --local <folder> --output <file>     Collect a footprint from a folder in the OneLake layout.");
         writer.WriteLine("  pqax collect --workspace <id> --item <name> --output <file>   Collect from OneLake after a sign-in. See pqax collect --help.");
+        writer.WriteLine("  pqax collect --adls <url> --output <file>         Collect from a container of Azure Data Lake Storage Gen2 after a sign-in.");
         writer.WriteLine("  pqax --version                      Show the version.");
         writer.WriteLine();
         writer.WriteLine("A file with the extension .vpax, or any file with --part, is read as a VPAX file that holds the");
