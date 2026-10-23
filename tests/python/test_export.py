@@ -35,7 +35,7 @@ KIT = expected_by_name()
 NAMES = sorted(KIT)  # the 9 .pqax samples and the 2 .vpax
 MEASURES = EXPECTED / "measures"
 FORMATS = ["csv", "parquet", "delta"]
-COLLECTED_AT = "2026-10-05T20:55:12.749Z"  # collection.completedAt of the samples built from the fixture; see collected_at
+COLLECTED_AT = "2026-10-05T20:55:12.749Z"  # collection.completedAt of the samples built from the fixture; see sample_collected_at
 NEXT_COLLECTED_AT = "2026-10-06T20:55:12.749Z"
 SAMPLE = SAMPLES / "sample.pqax"
 SAMPLE_ID = hashlib.sha256(SAMPLE.read_bytes()).hexdigest()
@@ -189,7 +189,7 @@ def open_sample(name):
     return pqax.open_embedded(path, part) if part else pqax.open(path)
 
 
-def collected_at(name):
+def sample_collected_at(name):
     """collection.completedAt of a sample, else startedAt, as the export writes it: the samples built from the
     fixture share COLLECTED_AT, the two samples of the diff have their own days."""
     import io as _io
@@ -543,7 +543,7 @@ def test_the_result_and_the_folder_of_every_sample(fmt, name, px, tmp_path):
     footprint = hashlib.sha256(footprint_bytes(path)).hexdigest()
     assert set(result) == {"footprintId", "collectedAt", "format", "folder", "skipped", "tables", "ignored"}
     assert result["footprintId"] == footprint
-    assert result["collectedAt"] == collected_at(name)
+    assert result["collectedAt"] == sample_collected_at(name)
     assert result["format"] == fmt
     assert isinstance(result["folder"], str) and os.path.samefile(result["folder"], to)
     assert result["skipped"] is False
@@ -594,7 +594,7 @@ def test_the_measures_and_the_footprint_match_the_expected_measures_of_the_kit(f
     footprint = dict(zip(columns, rows[0]))
     assert footprint["file"] == KIT[name]["file"]
     assert footprint["embeddedPart"] == KIT[name]["embeddedPart"]
-    assert footprint["collectionDate"] == date.fromisoformat(collected_at(name)[:10])
+    assert footprint["collectionDate"] == date.fromisoformat(sample_collected_at(name)[:10])
 
 
 def test_the_extension_tables_are_ignored_and_the_extension_fields_are_not_columns(px, tmp_path):
