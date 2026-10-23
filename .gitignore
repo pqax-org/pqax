@@ -22,3 +22,7 @@ research/**/data/
 
 # Build outputs of agents and local packaging (dotnet --artifacts-path)
 .artifacts/
+
+# Footprints dropped at the root of a clone, such as the output of a manual check, hold real names: never committed.
+/*.pqax
+/*.vpax
