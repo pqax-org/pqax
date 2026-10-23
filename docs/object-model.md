@@ -884,9 +884,9 @@ An `Id` identifies an object in its own footprint only, as section 5 says, so no
 | Column of a kept table | Both have a FieldId and the two are equal | When at least one of the two has no FieldId: the same Name. Two columns whose FieldIds differ are never the same column. |
 | Partition of a kept table | The same Values, one by one, a null value equal to a null value | None. A partition without Values is not compared, and nor are the partitions of its table. |
 | File of a kept table | The same Path | None. A file without a Path is not compared, and nor are the files of its table. |
-| Commit of a kept table | The same CommitId | |
+| Commit of a kept table | The same CommitId | None. A commit without a CommitId is not compared, and nor are the commits of its table. |
 
-A name, a path, and a value compare as they are written, case included, as the paths of the unreferenced files do in section 6.4. A Namespace compares element by element.
+A table without a source has a source with no Kind and no Name, the same as that of another table without one. A name, a path, and a value compare as they are written, case included, as the paths of the unreferenced files do in section 6.4. A Namespace compares element by element.
 
 Each object is the same as one object of the other footprint at most. Tables pair in three passes: first the tables with the same TableId and the same source, Namespace, and Name; then those with the same TableId; then, by the fallback, those with the same source, Namespace, and Name. Columns pair the same way with FieldId and Name. Each pass takes the objects of the older footprint in the order of the file, and pairs each with the first object of the newer footprint, in the order of the file, that matches and is not paired yet. Files, partitions, and commits pair in the same way, in one pass.
 
@@ -913,8 +913,9 @@ Why each rule:
 | A column renamed, without FieldId | Removed and added |
 | A column dropped and added again under the same name | Removed and added when the two have FieldIds, which then differ; kept otherwise |
 | A column whose DataType or IsNullable changed | Kept and changed |
-| A table kept at a depth below `Files` in one of the footprints | Its files are not compared. Its totals and measures are, from what each footprint holds. |
+| A table kept at a depth below `Files` in one of the footprints, or without a DetailDepth | Its files are not compared. Its totals and measures are, from what each footprint holds. |
 | A footprint that keeps no Partitions, or no Commits | The partitions, or the commits, are not compared |
+| A table without partitions, in two footprints that keep them | Its partitions are compared: none added, removed, or kept |
 | A value absent in either footprint | Its delta is null, as rule 2 of section 10.1 says for a measure |
 
 ### 13.3 What is compared

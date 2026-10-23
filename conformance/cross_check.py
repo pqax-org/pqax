@@ -24,6 +24,10 @@ views, value for value with no tolerance: every measure of section 10 of the obj
 and the collection, except the two over a set of columns that only the views offer. A time compares as a moment. The file that pqax collect writes must give the measures of expected/measures/sample.json too,
 except daysSinceLastCommit, which counts the days to the time of the collection.
 
+Diff: python -m pqax diff and pqax diff in C# compare samples/diff-before.pqax with samples/diff-after.pqax. The JSON of
+each must equal expected/diff/diff-before.diff-after.json value for value, with no tolerance, and the text and the JSON
+of the two command lines must be the same text, apart from the line ends.
+
 Exit code 0 when every check that ran passed, 1 when one failed, 2 when nothing could run. Standard library only.
 """
 from __future__ import annotations
@@ -51,6 +55,8 @@ DOTNET_LIBRARY = ROOT / "src" / "dotnet" / "Pqax" / "Pqax.csproj"
 DOTNET_CLI = ROOT / "src" / "dotnet" / "Pqax.Cli" / "Pqax.Cli.csproj"
 TYPESCRIPT_PACKAGE = ROOT / "src" / "typescript" / "pqax"
 FIXTURE = KIT / "fixtures" / "lakehouse"
+DIFF_PAIR = (SAMPLES / "diff-before.pqax", SAMPLES / "diff-after.pqax")
+DIFF_EXPECTED = EXPECTED / "diff" / "diff-before.diff-after.json"
 
 # What a writer writes: the name of the file, the sample it rewrites, its expected file, and the most rows of a part.
 JOBS = (("sample", "sample.pqax", "sample", None),
@@ -258,6 +264,13 @@ class Python:
             except Exception as error:  # noqa: BLE001 - a reader error is a result
                 results[path] = {"error": f"{type(error).__name__}: {error}"}
         return results
+
+    def diff(self, arguments: List[str]) -> str:
+        """The output of python -m pqax diff, which must end with exit code 0."""
+        completed = run([sys.executable, "-m", "pqax", "diff", *arguments], cwd=ROOT, env=self.env)
+        if completed.returncode != 0:
+            raise RuntimeError(f"exit code {completed.returncode}: {last_lines(completed.stdout + completed.stderr)}")
+        return text(completed.stdout)
 
     def measures(self, paths: List[Path]) -> Dict[Path, Dict[str, Any]]:
         results = {}
@@ -651,6 +664,15 @@ class DotNet:
                                f"{last_lines(completed.stdout + completed.stderr)}")
         return [(target, f"{self.name}/collected.pqax", "sample")]
 
+    def diff(self, arguments: List[str]) -> str:
+        """The output of pqax diff in C#, which must end with exit code 0."""
+        if not self.cli:
+            raise Skip(self.cli_note or "the command line was not built")
+        completed = run([self.dotnet, str(self.cli), "diff", *arguments], cwd=ROOT)
+        if completed.returncode != 0:
+            raise RuntimeError(f"exit code {completed.returncode}: {last_lines(completed.stdout + completed.stderr)}")
+        return text(completed.stdout)
+
     def call(self, arguments: List[str]) -> subprocess.CompletedProcess:
         assert self.dotnet and self.runner
         return run([self.dotnet, "run", str(self.runner), "--", *arguments], cwd=self.runner.parent)
@@ -830,6 +852,43 @@ class Node:
         return dict(zip(paths, make_measures.node_measures(self.measures_command, paths)))
 
 
+# ---- the diff ----
+
+def check_diff(implementations: List[Any]) -> List[str]:
+    """The diff of the two samples of the comparison test by each command line, against the expected diff and against
+    each other. Returns the failures and prints one line for each command line."""
+    expected = json.loads(DIFF_EXPECTED.read_text(encoding="utf-8"))
+    pair = [str(path) for path in DIFF_PAIR]
+    variants = (("text", []), ("json", ["--json"]), ("sorted", ["--sort", "name", "--top", "4"]),
+                ("sorted json", ["--sort", "rows", "--top", "4", "--json"]))
+    failures: List[str] = []
+    outputs: Dict[str, Dict[str, str]] = {}
+    for implementation in implementations:
+        if not hasattr(implementation, "diff"):
+            continue
+        try:
+            outputs[implementation.name] = {name: implementation.diff([*pair, *arguments]).replace("\r\n", "\n")
+                                            for name, arguments in variants}
+        except Skip as reason:
+            print(f"  diff    {implementation.name:<7} skipped: {reason}")
+            continue
+        except Exception as error:  # noqa: BLE001 - a command that fails is a result
+            failures.append(f"diff: the {implementation.name} command line: {type(error).__name__}: {error}")
+            print(f"  diff    {implementation.name:<7} FAIL")
+            continue
+        problems = differences(json.loads(outputs[implementation.name]["json"]), expected, "diff")
+        failures += [f"diff: the {implementation.name} command line: {problem}" for problem in problems]
+        print(f"  diff    {implementation.name:<7} {'ok' if not problems else 'FAIL'}: the JSON against "
+              f"expected/diff/{DIFF_EXPECTED.name}")
+    names = sorted(outputs)
+    for first, second in zip(names, names[1:]):
+        different = [name for name, _ in variants if outputs[first][name] != outputs[second][name]]
+        failures += [f"diff: the {name} output of {first} and {second} differ" for name in different]
+        print(f"  diff    {first} and {second}: " + ("the same text and JSON" if not different
+                                                     else f"FAIL, different {', '.join(different)}"))
+    return failures
+
+
 # ---- the check ----
 
 def main(argv: Optional[List[str]] = None) -> int:
@@ -962,13 +1021,16 @@ def check(work: Path, skip: set, build: bool, expected: Dict[str, Dict[str, Any]
             failures += [f"{label}: the {name} measures: {problem}" for problem in problems]
         print(f"{label:<{width}}  " + "".join(cells))
     print()
+    failures += check_diff(implementations)
+    print()
     if failures:
         print(f"{len(failures)} failure(s):")
         for failure in failures:
             print(f"  {failure}")
         return 1
     print(f"Every check passed: {len(files)} files, each checked by the validators and the readers of "
-          f"{', '.join(names)}, and the measures of {len(measured_paths)} of them against expected/measures.")
+          f"{', '.join(names)}, and the measures of {len(measured_paths)} of them against expected/measures; and the "
+          f"diff of the comparison test against expected/diff.")
     return 0
 
 

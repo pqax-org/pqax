@@ -11,6 +11,7 @@ Three tools: unattended sign-in for `pqax collect`, templates that collect a foo
 | Piece | Version | Content |
 |---|---|---|
 | [Object model](docs/object-model.md) | Draft 0.6 | Section 10 defines the derived measures: the storage stack with its waste and overhead, the small files, the V-Order share, the history, and the ratios of tables, columns, and the collection. Section 4.3 states that the quartiles of a distribution are taken by position. The maintainer decided the measures on 22 October 2026. The format does not change. |
+| [Object model](docs/object-model.md) | Draft 0.7 | Section 13 proposes how two footprints of the same lakehouse are compared, and answers open question 7: a table is the same table when its TableId is, and by its source, namespace, and name when one of the two has none; a column by its FieldId, then its name; a partition by its values, a file by its path, and a commit by its CommitId. The rules wait for the maintainer, in [decisions.md](docs/decisions.md). The format does not change. |
 
 ### .NET
 
@@ -40,6 +41,8 @@ A new folder, `templates/`, with files to copy elsewhere. `github-actions/pqax-f
 ### Conformance kit
 
 `expected/measures/` holds the derived measures of every valid sample, as the storage views compute them, and `make_measures.py` rebuilds them. `cross_check.py` computes the measures with the three implementations and compares them with these files. The files hold every measure of section 10 that the three implementations share, for the tables, the columns, and the collection, and the comparison has no tolerance.
+
+Two new valid samples, `diff-before.pqax` and `diff-after.pqax`, are two footprints of one synthetic lakehouse a week apart, written with `pqax.Builder` by `make_diff.py`, with tables and columns added, removed, renamed, and recreated, files added and removed, an OPTIMIZE and a VACUUM. `expected/diff/diff-before.diff-after.json` is their expected diff, built from the changes the script declares and from the measures of the views, and `cross_check.py` compares the diff of the C# and Python command lines with it, with no tolerance, and their outputs with each other.
 
 ## 0.2.0 - 2026-10-21
 
