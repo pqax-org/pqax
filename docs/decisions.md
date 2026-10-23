@@ -64,7 +64,7 @@ Proposed on 21 October 2026, with the work on format 0.2, and decided by the mai
 
 ## Derived measures
 
-The measures that a reader derives from the fields, defined in section 10 of the [object model](object-model.md). The first five decisions were taken by the maintainer on 21 October 2026 for the storage views, and the [views README](../src/typescript/views/README.md) records them under "Decisions" and "Non-live and unreferenced files". The others were proposed on 22 October 2026 with section 10 and decided by the maintainer the same day, the eighth with an amendment. The last two were proposed on 22 October 2026, when the three implementations were aligned with section 10, and wait for the maintainer.
+The measures that a reader derives from the fields, defined in section 10 of the [object model](object-model.md). The first five decisions were taken by the maintainer on 21 October 2026 for the storage views, and the [views README](../src/typescript/views/README.md) records them under "Decisions" and "Non-live and unreferenced files". The others were proposed on 22 October 2026 with section 10 and decided by the maintainer the same day, the eighth with an amendment. The last two were proposed on 22 October 2026, when the three implementations were aligned with section 10, and were decided by the maintainer on 22 and 24 October 2026.
 
 | Date | Decision | Status |
 |---|---|---|
