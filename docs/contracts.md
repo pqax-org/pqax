@@ -280,6 +280,35 @@ public sealed class CollectionMeasures
 
 The library offers every measure of section 10, as decision 7 of the [decisions](decisions.md) asks. For a table: the storage stack of 10.2 with the share of each component; the file size figures, SmallFileCount, SmallFileShare, TinyFileCount, TinyFileShare, VOrderShare, and VOrderBytesShare of 10.3; LastCommitAt, CommitsPerDay, DaysSinceLastCommit, HasVacuum, LastVacuumAt, HasOptimize, and LastOptimizeAt of 10.4; and the ratios and the partitions of 10.5. For a column, the six measures of 10.6, and for the collection, those of 10.7. The two measures over a set of columns of 10.6, ColumnNullShare and ColumnCompressionRatio, are left to the views. The names are those of section 10 in the casing of C#, grouped as the view model of 10.8 groups them: `Stack`, `Files`, `Maintenance`, `Measures`, and `Partitions` of a table, `ColumnStorage` for a column, and `CollectionMeasures` with the totals and `Depths`. VOrderShare and VOrderBytesShare are on `FileMeasures`, where the view model has the object `vOrder`. `pqax tables` shows some of the measures, and its JSON, which `TableStorage.WriteTo` writes, keeps the keys it had in version 0.2.0.
 
+The comparison of two footprints of the same lakehouse, section 13 of the [object model](object-model.md), is in the static class `StorageDiff` of the same namespace, with the rules that section proposes: a table is the same table when its TableId is, and by its source, namespace, and name when one of the two has none; a column by its FieldId, then its name; a partition by its values, a file by its path, and a commit by its CommitId. Each kept table and column has the older value, the newer value, and the delta of each total of section 6 and of each measure of section 10, the delta null when either value is. `pqax diff OLDER NEWER [--part NAME] [--sort total|waste|rows|files|name] [--top N] [--json]` of `Pqax.Cli` writes it as a report or as one JSON object, the same text and the same JSON as `python -m pqax diff`.
+
+```csharp
+public static class StorageDiff
+{
+    public static IReadOnlyList<string> Orders { get; }   // "total", "waste", "rows", "files", "name"
+    public static FootprintDiff Compare(PqaxDocument older, PqaxDocument newer, MeasureOptions? options = null);
+    public static IReadOnlyList<TableChange> Rank(FootprintDiff diff, string order = "total", int? top = null);
+}
+public sealed class FootprintDiff
+{
+    FootprintMeasures Older, Newer; long SmallFileSize, TinyFileSize; IReadOnlyList<ValueChange> Collection;
+    IReadOnlyList<TableEntry> Added, Removed;   // in the order of the newer file, and of the older file
+    IReadOnlyList<KeptTable> Kept;              // in the order of the newer file
+    int ChangedCount; ValueChange? CollectionValue(string name);
+}
+public sealed class ValueChange { string Name; object? Older, Newer; double? Delta; bool IsChanged; }   // the delta of a time in milliseconds
+public sealed class TableEntry { TableSide Table; bool Recreated; }
+public sealed class TableSide { long? Id; int Row; string Label; string? Name; IReadOnlyList<string>? Namespace; string? TableId, SnapshotId, DetailDepth;
+                                long ColumnCount; long? FileCount, FileSize, RowCount; double? Total, Waste; }
+public sealed class KeptTable { string MatchedBy; bool Renamed, IsChanged; TableSide Older, Newer; IReadOnlyList<ValueChange> Totals, Measures;
+                                ColumnChanges Columns; DetailChanges? Files, Partitions, Commits; ValueChange? Total(string name); ValueChange? Measure(string name); }
+public sealed class ColumnChanges { IReadOnlyList<ColumnSide> Added, Removed; IReadOnlyList<KeptColumn> Kept; }
+public sealed class ColumnSide { long? Id; int Row; string Label; string? Name; long? FieldId; string? DataType; bool? IsNullable; long? CompressedSize; }
+public sealed class KeptColumn { string MatchedBy; bool Renamed, IsChanged; ColumnSide Older, Newer; IReadOnlyList<ValueChange> Totals, Measures; }
+public sealed class DetailChanges { long Added, Removed, Kept; long? Changed, AddedFileSize, RemovedFileSize; }   // the last three null for the commits
+public sealed class TableChange { string Kind; TableEntry? Entry; KeptTable? Kept; string Label; }
+```
+
 ### 4.4 TypeScript package `pqax`
 
 ES module, no runtime dependency, runs in browsers and in Node 20 or later. Deflate goes through `DecompressionStream("deflate-raw")`. Node-only helpers live in a second entry point, `pqax/node`, so that the main entry imports nothing from Node.
