@@ -31,6 +31,8 @@ Every package carries the PQAX icon, the mark of [brand/](brand/README.md).
 
 `pqax` has the module `measures`, the same measures as the storage views, computed as section 10 of the object model defines them, and the command `python -m pqax tables`, which prints `n/a` for a measure that is null. The module offers every measure of section 10 that C# offers: `measure_tables` for the tables, with the shares of the stack, `files`, VACUUM and OPTIMIZE, and `partitions`, `measure_columns` for the columns, and `measure_collection` for the collection, and `measure` returns the three. The JSON of `pqax tables --json`, in C# and in Python, keeps its keys. Reads 0.1 and 0.2, writes 0.2.
 
+`pqax` has the module `diff`, which compares two footprints of the same lakehouse as `StorageDiff` does in C#, and the command `python -m pqax diff OLDER NEWER`, with the text and the JSON of `pqax diff`.
+
 ### Templates
 
 A new folder, `templates/`, with files to copy elsewhere. `github-actions/pqax-footprint.yml` collects a workspace every day as a service principal, signed in with OpenID Connect or a client secret, checks the footprint, and keeps it as an artifact and optionally in the repository. `fabric/pqax-footprint.ipynb` collects from a Fabric notebook with the token of the notebook. Neither has run against a real workspace yet: their READMEs say what is verified.

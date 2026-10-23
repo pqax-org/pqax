@@ -1,4 +1,5 @@
-"""The command line: python -m pqax check <file>, python -m pqax info <file>, python -m pqax tables <file>.
+"""The command line: python -m pqax check <file>, python -m pqax info <file>, python -m pqax tables <file>, and
+python -m pqax diff <older> <newer>.
 
 check exits with 0 when the file is valid, 1 when it is not, and 2 on a usage error or a file that cannot be read.
 tables writes one row per table with the derived measures of the storage views, or one JSON object with --json.
@@ -15,7 +16,7 @@ import sys
 import zipfile
 from typing import Any, Dict, List, Optional
 
-from . import __version__, measures
+from . import __version__, _diff_command, diff, measures
 from ._container import find_entry, open_archive
 from ._errors import ContainerError, PqaxError
 from ._schema import EMBEDDED_PART, FORMAT_VERSION, MANIFEST_PART, SUMMARY_PART
@@ -275,6 +276,17 @@ def main(argv: Optional[List[str]] = None) -> int:
         command.add_argument("file", help="a .pqax file, or a .vpax file that embeds one")
         command.add_argument("--part", help=f"the embedded part of a package (default: {EMBEDDED_PART} when the file "
                                             f"has no manifest.json)")
+    compare = commands.add_parser("diff", help="compare two footprints of the same lakehouse: the tables and columns "
+                                               "added, removed, and kept, and the change of every total and measure")
+    compare.add_argument("older", help="the older footprint: a .pqax file, or a .vpax file that embeds one")
+    compare.add_argument("newer", help="the newer footprint")
+    compare.add_argument("--part", help=f"the embedded part of a package, for both files (default: {EMBEDDED_PART} "
+                                        f"when a file has no manifest.json)")
+    compare.add_argument("--sort", choices=diff.ORDERS, default="total",
+                         help="the order: the largest change first, or by name (default: total)")
+    compare.add_argument("--top", type=_positive, metavar="N", help="the first N changes of the order")
+    compare.add_argument("--json", action="store_true",
+                         help="write one JSON object with both headers and the tables added, removed, and kept")
     arguments = parser.parse_args(argv)
     try:
         if arguments.command == "check":
@@ -282,6 +294,9 @@ def main(argv: Optional[List[str]] = None) -> int:
         if arguments.command == "tables":
             return _tables(arguments.file, arguments.part, arguments.sort, arguments.top, arguments.json,
                            arguments.wide)
+        if arguments.command == "diff":
+            return _diff_command.run(arguments.older, arguments.newer, arguments.part, arguments.sort, arguments.top,
+                                     arguments.json)
         return _info(arguments.file, arguments.part)
     except OSError as error:
         print(f"pqax: {error}", file=sys.stderr)

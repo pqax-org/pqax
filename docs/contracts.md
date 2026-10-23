@@ -360,6 +360,16 @@ python -m pqax tables <file> [--part NAME] [--sort waste|total|rows|files|name] 
 
 The module offers the measures that the C# library offers, as section 4.3 lists them: every measure of section 10 except the two over a set of columns. It has one function for each group: `measure_tables` for the tables, `measure_columns` for the columns, and `measure_collection` for the collection, and `measure` reads a document and calls the three. The dict of a table has `id`, `name`, `label`, `rowCount`, `fileCount`, `fileSize`; `stack` with the seven components, the sums, and `shares`, the share of each component; `smallFiles` and `tinyFiles`; `files` with the file size figures and `vOrder`, null or `{"share", "bytesShare"}`; `measures`; `maintenance`; and `partitions` with `count`, `kept`, `oldestModifiedAt`, and `newestModifiedAt`. The dict of a column has `id`, `table`, `name`, `label`, and the six measures of section 10.6, and that of the collection has `totals` and `depths`, as `collection` of the view model. A time is the text of the file. The JSON of `python -m pqax tables --json` keeps the keys it had in version 0.2.0, as in C#.
 
+The comparison of two footprints, section 13 of the [object model](object-model.md), is in the module `pqax.diff`, with the rules of section 4.3 for `StorageDiff`. A result is a dict with the names of the JSON of `python -m pqax diff --json`, and a compared value is `{"older", "newer", "delta"}`. The command writes the same text and the same JSON as `pqax diff` in C#, apart from the line ends.
+
+```python
+pqax.diff.compare(older, newer, *, small_file_size=..., tiny_file_size=...) -> dict
+        # {"older", "newer", "smallFileSize", "tinyFileSize", "counts", "collection", "added", "removed", "kept"}
+pqax.diff.rank(result, order="total", top=None) -> list of (kind, entry)   # kind "added", "removed", or "kept"
+pqax.diff.ORDERS                                                         # ("total", "waste", "rows", "files", "name")
+python -m pqax diff <older> <newer> [--part NAME] [--sort total|waste|rows|files|name] [--top N] [--json]
+```
+
 ### 4.6 Collector
 
 Namespace `Pqax.Collector`. The storage access, the Delta log, the tail read of a footer, and the allow-list of footer keys were first tried in a probe that preceded the collector, on a real Fabric lakehouse and warehouse; the collector supersedes it.
