@@ -89,6 +89,22 @@ The measures that a reader derives from the fields, defined in section 10 of the
 | 2026-10-22 | When the tables are ordered by Waste, then by Total, as section 10.2 of the object model says, a table whose Waste or Total is null comes after the tables that have it, which section 10.2 does not say. The storage views, `pqax tables` in C#, and `pqax tables` in Python order the tables so. | Proposed |
 | 2026-10-22 | A time that a measure reads and that does not parse as a timestamp counts as absent, as a negative size does under rule 2 of section 10.1, which names only sizes and counts. So DaysSinceLastCommit counts to `StartedAt` when `CompletedAt` does not parse, and LastCommitAt skips a `SnapshotTimestamp` that does not parse. | Proposed |
 
+## Comparing footprints
+
+How two footprints of the same lakehouse taken at different times are compared, defined in section 13 of the [object model](object-model.md), which answers its open question 7. Proposed on 24 October 2026 with `pqax diff` in C# and Python, and waiting for the maintainer.
+
+| Date | Decision | Status |
+|---|---|---|
+| 2026-10-24 | A table of the older footprint is the same table as one of the newer when both have a TableId and the two are equal. Two tables whose TableIds differ are never the same table, even with the same name: a table dropped and created again is removed and added, and both are marked as recreated. | Proposed |
+| 2026-10-24 | When at least one of two tables has no TableId, they are the same table when they have the same source, Namespace, and Name: a folder of Parquet files has no TableId, nor has a table whose log was not read. A source is the same when its Kind and Name are, since its `Id` is local to its footprint and Location and Identifiers are not always present. Matching by name before TableId is rejected, since it would pair a table with the one that replaced it. | Proposed |
+| 2026-10-24 | A column of a kept table is the same column when both have a FieldId and the two are equal, and otherwise, when at least one has none, when the Name is the same. A rename with column mapping keeps the column; a column dropped and added again gets a new FieldId and is removed and added. | Proposed |
+| 2026-10-24 | A partition is identified by its Values, a file by its Path, and a commit by its CommitId, within a kept table. Partitions without Values, and files without a Path, are not compared. Names, paths, and values compare case-sensitively. | Proposed |
+| 2026-10-24 | Pairing is one to one, in three passes for tables and columns: the same identifier and the same name, then the same identifier, then the fallback by name; each pass takes the older objects in the order of the file and pairs each with the first unpaired newer one. | Proposed |
+| 2026-10-24 | The files of a kept table are compared when both footprints keep them, at the `Files` depth or deeper; the partitions and the commits when both footprints keep that list. The totals and the measures are compared whatever the depth, with a null delta where either footprint lacks the value. | Proposed |
+| 2026-10-24 | Each compared value has its older value, its newer value, and the delta, the newer minus the older; a timestamp has its delta in milliseconds; a boolean, a text, or a list has none. | Proposed |
+| 2026-10-24 | A kept table is changed when its name, its SnapshotId, a total, a column, a file, a partition, or a commit differs. A measure alone does not make it changed, since DaysSinceLastCommit moves with the time of the collection. | Proposed |
+| 2026-10-24 | `pqax diff` orders the tables by the absolute change of the Total of the stack, a table added or removed by its Total, a null change last; `--sort` takes waste, total, rows, files, or name as `pqax tables` does, and `--top N` keeps the N largest changes. The text and the JSON are the same, byte for byte apart from the line ends, in C# and Python. | Proposed |
+
 ## The brand
 
 The logo of PQAX, in [brand/](../brand/README.md). The drafts were made in five rounds on 21 and 22 October 2026 in the private repository of the application, and the choices were taken by the maintainer and his team.

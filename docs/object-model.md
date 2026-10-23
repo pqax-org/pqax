@@ -1,6 +1,6 @@
 # PQAX object model
 
-Draft 0.6, 22 October 2026.
+Draft 0.7, 24 October 2026.
 
 This document defines the logical content of a PQAX file: the objects, their fields, and how they relate. It does not define how the objects are written to a file. The [serialization](serialization.md) does that, and section 11 keeps the option of several representations open.
 
@@ -13,6 +13,8 @@ Draft 0.4 aligns identifiers and a few names with the serialization, so that a f
 Draft 0.5 takes into account a test of storage views on a real lakehouse. It showed that the non-live files of a table are only an upper bound of the space it wastes: a VACUUM may have deleted some of them already, and the storage can hold files that no commit references. `Table` now has the unreferenced files that a listing of the storage finds, and the removal times of the non-live files. `Partition` has `LastModifiedAt`. Format version 0.2 carries the new fields.
 
 Draft 0.6 defines the derived measures in a new section 10: the storage stack of a table with its waste and overhead, the small files, the V-Order share, the commits per day, and the ratios and shares of the tables, the columns, and the collection. They follow the storage views and the decisions of 21 October 2026. The format does not change. Views become section 11, and the open questions section 12. Section 4.3 states how the quartiles of a `Distribution` are taken, which the small-file shares of section 10.3 depend on, and the maintainer decided the measures and their rules on 22 October 2026.
+
+Draft 0.7 proposes, in a new section 13, how two footprints of the same lakehouse taken at different times are compared: when a table, a column, a partition, a file, and a commit of one are the same as one of the other, and what a comparison reports. It answers open question 7. The format does not change.
 
 ## 1. Purpose
 
@@ -863,6 +865,71 @@ The [backlog](backlog.md) tracks questions 1, 3, and 5 before version 1.0, and q
 4. **Reading a sample of footers.** ~~Whether a collector may read only some footers of a very large table. The totals are then partial, as rule 3 of section 4.2 already allows.~~ Answered in version 0.1: the collector reads every footer by default, and with `MaxFootersPerTable` a sample spread evenly over the files sorted by modification time, and the totals of level 2 then cover the footers read, as `FooterCount` says.
 5. **Commit limit.** How many recent commits to read and keep by default. In the test, reading 30 commits for each table took most of the requests.
 6. **Dictionary page size.** On 9,613 column chunks written by Fabric, the size derived from the two offsets was always within the size of the chunk. It still has to be compared with the page header, and tested on files from other writers.
-7. **Comparing footprints.** Whether TableId, File.Path, and FieldId are enough to compare two footprints of the same lakehouse taken at different times.
+7. **Comparing footprints.** Whether TableId, File.Path, and FieldId are enough to compare two footprints of the same lakehouse taken at different times. Proposed answer in section 13: they are, with the name as the fallback where an identifier is absent, the partition values, and the commit version.
 8. **Shortcuts.** Whether a table that is a shortcut records where its data really is.
 9. **Distinct counts in the footer.** For files written by the Fabric warehouse, the count was exact on all 79 columns compared with a VPAX. A semantic model counts blank as one more value. The same comparison is still missing for files written by the lakehouse.
+
+## 13. Comparing two footprints
+
+A comparison takes two footprints of the same lakehouse, the older and the newer, and says which tables and columns were added, removed, or kept, and how much each kept one changed. This section answers open question 7. Its rules and its cases are **Proposed** on 24 October 2026, and wait for the maintainer.
+
+### 13.1 Identity
+
+An `Id` identifies an object in its own footprint only, as section 5 says, so no rule compares the `Id` of two footprints. These rules decide when an object of the older footprint and one of the newer are the same object:
+
+| Object | The same object when | Fallback |
+|---|---|---|
+| Table | Both have a TableId and the two are equal | When at least one of the two has no TableId: the same source, the same Namespace, and the same Name. Two tables whose TableIds differ are never the same table. |
+| Source, for the fallback of a table | The same Kind and the same Name | |
+| Column of a kept table | Both have a FieldId and the two are equal | When at least one of the two has no FieldId: the same Name. Two columns whose FieldIds differ are never the same column. |
+| Partition of a kept table | The same Values, one by one, a null value equal to a null value | None. A partition without Values is not compared, and nor are the partitions of its table. |
+| File of a kept table | The same Path | None. A file without a Path is not compared, and nor are the files of its table. |
+| Commit of a kept table | The same CommitId | |
+
+A name, a path, and a value compare as they are written, case included, as the paths of the unreferenced files do in section 6.4. A Namespace compares element by element.
+
+Each object is the same as one object of the other footprint at most. Tables pair in three passes: first the tables with the same TableId and the same source, Namespace, and Name; then those with the same TableId; then, by the fallback, those with the same source, Namespace, and Name. Columns pair the same way with FieldId and Name. Each pass takes the objects of the older footprint in the order of the file, and pairs each with the first object of the newer footprint, in the order of the file, that matches and is not paired yet. Files, partitions, and commits pair in the same way, in one pass.
+
+Why each rule:
+
+- **TableId.** Delta keeps `metaData.id`, and Iceberg `table-uuid`, as long as the table lives: a rename does not change it, and a table dropped and created again gets a new one. It is the only field of a table that says it is the same table.
+- **The fallback by name, for a table.** A folder of Parquet files with no table format has no TableId, and neither has a table whose log the collector could not read. The name in its source is then the only identity left. The fallback is rejected when both tables have a TableId and the two differ: a table created again under the same name holds none of the files of the old one, and pairing the two would show a delta that no change of the table made. Matching by name first was considered and rejected for that reason.
+- **The source.** A source has no identifier that survives across footprints: its `Id` is local, and Location and Identifiers are absent when the collector reads a local folder. Kind and Name are what every collector writes.
+- **FieldId.** The column mapping of Delta and the field ids of Iceberg survive a rename, and a column dropped and added again gets a new one.
+- **The fallback by name, for a column.** Without column mapping, a Delta column has no field id, and its name is how the files store it, so a rename is impossible and the name identifies the column.
+- **Partition values.** A partition has no identifier of its own. Its values are what makes it a partition, so they identify it. They are data values, excluded by default as section 6.6 says, so most footprints do not have them, and their partitions are then compared by PartitionCount and PartitionSizes only.
+- **File path.** The table format identifies a data file by its path relative to the table, and a writer never writes a new file under the path of an old one. A deletion vector that changes keeps the path of its file, so the file is kept and changed.
+- **CommitId.** It is the version of a Delta commit and the snapshot id of an Iceberg snapshot.
+
+### 13.2 Cases
+
+| Case | Result |
+|---|---|
+| A table renamed, with the same TableId | Kept and renamed |
+| A table dropped and created again: a new TableId, the same name | The older table is removed and the newer one added, and both are marked as recreated |
+| A table without a TableId on either side, renamed | Removed and added: nothing else identifies it |
+| A table with a TableId on one side only, the same name | Kept, by the fallback |
+| A column renamed, with the same FieldId | Kept and renamed |
+| A column renamed, without FieldId | Removed and added |
+| A column dropped and added again under the same name | Removed and added when the two have FieldIds, which then differ; kept otherwise |
+| A column whose DataType or IsNullable changed | Kept and changed |
+| A table kept at a depth below `Files` in one of the footprints | Its files are not compared. Its totals and measures are, from what each footprint holds. |
+| A footprint that keeps no Partitions, or no Commits | The partitions, or the commits, are not compared |
+| A value absent in either footprint | Its delta is null, as rule 2 of section 10.1 says for a measure |
+
+### 13.3 What is compared
+
+| Object | Values |
+|---|---|
+| Collection | The measures of section 10.7, and the tables of each DetailDepth, a depth that one footprint lacks counting 0 tables |
+| Kept table | Each total of section 6.4, with the members of its distributions, and each measure of section 10 for a table |
+| Kept column | Each total of section 6.5, and each measure of section 10.6 for a column |
+| Files of a kept table | The files added, removed, kept, and changed, and the FileSize of those added and of those removed |
+| Partitions of a kept table | The same, over the partitions |
+| Commits of a kept table | The commits added, removed, and kept |
+
+Each value is given with its older value, its newer value, and the delta, the newer minus the older. The delta of a timestamp is in milliseconds. A boolean, a text, and a list have no delta. The delta is null when either value is absent.
+
+A kept file is changed when its FileSize, RowCount, DeletedRowCount, or DeletionVectorSize differs, and a kept partition when its FileCount, FileSize, RowCount, or DeletedRowCount differs. A kept table is changed when its Name or Namespace, its SnapshotId, a total, a column, a file, a partition, or a commit differs; a kept column when its Name, DataType, IsNullable, or a total differs. The measures do not make an object changed, since DaysSinceLastCommit changes with the time of the collection alone, and the other measures follow from the totals.
+
+A report of the changes orders the tables by the size of their change, the largest first: the change of the Total of the stack of section 10.2 by default, the Total itself for a table added or removed. A table whose change is null comes after those that have one.
