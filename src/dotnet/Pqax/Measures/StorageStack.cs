@@ -116,4 +116,10 @@ public sealed class StorageStack
         "footers" => Footers,
         _ => throw new ArgumentException($"'{key}' is not a component of a stack.", nameof(key)),
     };
+
+    /// <summary>The share of a component: the component over <see cref="Data"/>.</summary>
+    /// <param name="key">The name of the component, as in <see cref="StorageMeasures.StackComponents"/>.</param>
+    /// <returns>The share, null when the component is absent, or the data is null or 0.</returns>
+    /// <exception cref="ArgumentException">The name is not one of a component.</exception>
+    public double? Share(string key) => StorageMeasures.Ratio(Component(key), Data);
 }
