@@ -25,7 +25,7 @@ How each job signs in:
 
 ## The first publish of `@pqax/views`
 
-npm sets a trusted publisher only on a package that exists, so the first version of `@pqax/views`, 0.2.0, goes out with a token, as the first version of `@pqax/pqax` did:
+Done: 0.2.0 went out with a token on 21 October 2026, the trusted publisher was set and the token step removed before 0.2.1, and 0.2.1 published the views through the publisher on 24 October 2026. The steps stay for the record, for the next package that joins. npm sets a trusted publisher only on a package that exists, so the first version of such a package goes out with a token, as the first version of `@pqax/pqax` did:
 
 1. On npmjs.com, create a granular access token that can publish packages of the scope `@pqax`, with a short expiry.
 2. In the repository settings, add it as the secret `NPM_TOKEN_VIEWS` of the environment `npm`.

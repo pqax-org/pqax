@@ -6,7 +6,7 @@
 
 | Cell | What it does |
 |---|---|
-| Install | `%pip install "pqax[collect,delta]==0.2.1"`: the package, pyarrow for the Delta checkpoints, and deltalake for the export. It comes first, since `%pip` can restart the Python of the notebook. 0.2.1 is the version of the next release, the first with the collector: change it to a later one when there is one. |
+| Install | `%pip install "pqax[collect,delta]==0.2.1"`: the package, pyarrow for the Delta checkpoints, and deltalake for the export. It comes first, since `%pip` can restart the Python of the notebook. 0.2.1, released on 24 October 2026, is the first version with the collector: change it to a later one when there is one. |
 | Parameters | `SOURCE`, `WORKSPACE`, `ITEMS`, `MOUNT`, `OUTPUT_FOLDER`, `EXPORT_TO`, `EXTRA_OPTIONS`. It is the parameter cell of the notebook, so a pipeline can set them. |
 | Collect | With `SOURCE = "lakehouse"`, the default: `pqax collect --mount /lakehouse/default --item <lakehouse>.Lakehouse`, with the name of the default lakehouse from `notebookutils.runtime.context`. With `SOURCE = "workspace"`: `pqax collect --workspace ... --item ... --access-token-env PQAX_ACCESS_TOKEN`, over the DFS endpoint of OneLake, with the token of `notebookutils.credentials.getToken("storage")` in the environment of that process only; `WORKSPACE` empty is the workspace of the notebook. The footprint is written in the temporary folder, named after the lakehouse or the workspace and the date. |
 | Check and keep | `pqax check`, `pqax info`, and `pqax tables --top 20`, then copies the file to `OUTPUT_FOLDER`, by default `/lakehouse/default/Files/footprints` |
@@ -32,7 +32,7 @@ A notebook has its own schedule: in the notebook, Run, Schedule, with a daily re
 |---|---|
 | The notebook is valid JSON of nbformat 4.5, with cell ids, and each code cell but `%pip` parses as Python | Done |
 | Every code cell run in order outside Fabric, on Windows with Python 3.14, the package of this branch, pyarrow 26, and deltalake 1.6.6, with a stub of `notebookutils` and the parameters set as a pipeline sets them: `SOURCE = "lakehouse"` with a copy of the lakehouse of the synthetic fixture as `MOUNT`, and `SOURCE = "workspace"` against a local fake of the DFS endpoint over the fixture, through `--endpoint` in `EXTRA_OPTIONS`. Both wrote a valid footprint, checked, described, and exported it as 18 Delta tables. On the same fake endpoint, `pqax.collect` and the C# collector gave the same footprint field by field, the requests and the bytes included. | Done |
-| `%pip install "pqax[collect,delta]==0.2.1"` in a Fabric notebook: the version is not on PyPI before the release | Not verified |
+| `%pip install "pqax[collect,delta]==0.2.1"` in a Fabric notebook: 0.2.1 is on PyPI since 24 October 2026, and the notebook has not run in Fabric yet | Not verified |
 | That `/lakehouse/default` lists the tables of the default lakehouse with their `_delta_log` folders, and that `notebookutils.runtime.context` has `defaultLakehouseName` and `currentWorkspaceName` | Not verified |
 | That `notebookutils.credentials.getToken("storage")` gives a token that OneLake accepts for the DFS endpoint, and how long it lasts | Not verified |
 | That deltalake writes Delta tables into `/lakehouse/default/Tables` that the lakehouse shows as tables, and that Direct Lake reads | Not verified |
