@@ -1,6 +1,6 @@
 # Scheduled collection with GitHub Actions
 
-[`pqax-footprint.yml`](pqax-footprint.yml) collects the footprint of a Fabric workspace every day at 04:23 UTC, and on demand. It runs `pqax collect` as a service principal, checks the file, and keeps it as a workflow artifact and, optionally, in the folder `footprints/` of the repository. It reads OneLake and writes nothing there.
+[`pqax-footprint.yml`](pqax-footprint.yml) collects the footprint of a Fabric workspace every day at 04:23 UTC, and on demand. It runs `pqax collect` as a service principal, checks the file, and keeps it as a workflow artifact and, optionally, in the folder `footprints/` of the repository. When `PQAX_EXPORT` names a format, it also exports the tables of the footprint and their measures with `python -m pqax export`, keeps the export as an artifact, and with `PQAX_COMMIT` appends it to the folder `exports/` of the repository. It reads OneLake and writes nothing there.
 
 | Step | What it does |
 |---|---|
@@ -12,7 +12,9 @@
 | Collect | `pqax collect --workspace ... --item ...` with `--azure-cli`, or with `--client-secret-env` when `PQAX_SIGN_IN` is `secret` |
 | Check and describe | `pqax check`, `pqax info`, and `pqax tables --top 20`, as a smoke test: the job fails when the file is not valid |
 | `actions/upload-artifact@v7` | Keeps the file as an artifact named after it, for `PQAX_RETENTION_DAYS` days |
-| Commit, a second job | When `PQAX_COMMIT` is `true`: adds the file to `footprints/`, removes the footprints whose date is older than `PQAX_KEEP_DAYS` days, commits, and pushes |
+| `actions/setup-python@v7` and Export the tables | When `PQAX_EXPORT` is set: installs the Python package of the same version, `pqax==$PQAX_VERSION` for `csv`, `pqax[parquet]` or `pqax[delta]` for the others, and runs `python -m pqax export` of the footprint into `out/export` |
+| Keep the export as an artifact | The export of the day, as the artifact `<name>-export`, such as `sales-analytics-2026-10-22-export`, for `PQAX_RETENTION_DAYS` days |
+| Commit, a second job | When `PQAX_COMMIT` is `true`: adds the file to `footprints/`; with `PQAX_EXPORT`, appends its export to `exports/` with `python -m pqax export --if-exists skip`, so that the tables there grow day after day; removes the footprints whose date is older than `PQAX_KEEP_DAYS` days, commits, and pushes |
 
 The collect job has the permissions `contents: read` and `id-token: write`; only the commit job has `contents: write`.
 
@@ -63,6 +65,7 @@ Set `PQAX_SIGN_IN` to `secret`, create a client secret for the application, and 
 | `PQAX_RETENTION_DAYS` | No | 30 | The days that GitHub keeps the artifact, within the limit of the repository |
 | `PQAX_COMMIT` | No | `false` | `true` to commit the footprint to `footprints/` |
 | `PQAX_KEEP_DAYS` | No | 90 | With `PQAX_COMMIT`, the footprints whose date in the name is older than this many days are removed from `footprints/` |
+| `PQAX_EXPORT` | No | none | `csv`, `parquet`, or `delta` to export the tables of each footprint in that format; empty for no export. The rows of `exports/` are not pruned. CSV appends rows to one file per table, which a repository keeps best; Parquet adds one file per table and footprint; Delta adds one commit per table and footprint. |
 
 | Secret | Required | Content |
 |---|---|---|
@@ -85,4 +88,6 @@ Set `PQAX_SIGN_IN` to `secret`, create a client secret for the application, and 
 | The YAML parses, and every action exists at the version it names: `actions/setup-dotnet@v6`, `azure/login@v3`, `actions/upload-artifact@v7`, `actions/checkout@v7`, `actions/download-artifact@v8`, checked on 22 October 2026 | Done |
 | The inputs given to each action exist in its `action.yml` | Done |
 | The shell of every step run locally with bash: install from a local package source, collect with `--local` on the synthetic fixture instead of `--workspace`, check, info, tables, and the prune and commit in a scratch repository | Done |
+| The export steps, on 24 October 2026: the check of `PQAX_EXPORT` with each value and a wrong one, the names of the footprint and of the export, Export the tables and Append the export for `csv`, `parquet`, and `delta`, two days in a row, with `pip install` from a wheel of this branch instead of PyPI, and the commit of `footprints/` and `exports/` in a scratch repository: the second day appended its rows, its Parquet files, or its Delta commits to the tables of the first. The final push to a local bare repository failed on the length of the Windows paths of the scratch folder, which a runner of Ubuntu does not have; that step did not change. `actions/setup-python@v7` is the version that the CI of this repository uses. | Done |
+| `pip install "pqax[...]==$PQAX_VERSION"` from PyPI: the first version with the collector and the export, the next release, is not published yet | Not yet |
 | A run on GitHub, the OpenID Connect sign-in, the client secret, and a real workspace | Not yet: it needs a repository, an application, and a workspace of the maintainer |
