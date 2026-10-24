@@ -2,7 +2,7 @@
 
 [`pqax-footprint.ipynb`](pqax-footprint.ipynb) collects the footprint of the default lakehouse of a Fabric notebook, or of items of a workspace, with the collector of the Python package, `python -m pqax collect`, as the identity that runs the notebook. It keeps the file in the `Files` area of the default lakehouse, and exports its tables and their measures as Delta tables into the `Tables` of the lakehouse, where the [Power BI template](../powerbi/README.md) reads them in Direct Lake.
 
-**The notebook ran in a Fabric workspace on 24 October 2026**, from the editor, up to the export: with 0.2.1 the export failed on the Delta commit over the mount, which 0.2.2 fixes. The last section says what is verified. A run started by a schedule, a pipeline, or the job API does not run the install cell: see "Run it every day".
+**The notebook ran in full in a Fabric workspace on 24 October 2026**, from the editor, with 0.2.2: the collection of the default lakehouse over the mount, the footprint in `Files/footprints`, and the export of nineteen Delta tables into `Tables`, 213,543 rows in the largest. With 0.2.1 the export had failed on the Delta commit over the mount. The last section says what is verified. A run started by a schedule, a pipeline, or the job API does not run the install cell: see "Run it every day".
 
 | Cell | What it does |
 |---|---|
@@ -35,6 +35,7 @@ A run started by a schedule, a pipeline, or the job API does not run `%pip`: two
 | `%pip install "pqax[collect,delta]"` in a Fabric notebook, from the editor | Verified on 24 October 2026 with 0.2.1 |
 | That `/lakehouse/default` lists the tables of the default lakehouse with their `_delta_log` folders, and that `notebookutils.runtime.context` has `defaultLakehouseName` and `currentWorkspaceName` | Verified on 24 October 2026: the collection over the mount gave the footprint of the lakehouse |
 | That `notebookutils.credentials.getToken("storage")` gives a token that OneLake accepts for the DFS endpoint, and how long it lasts | Not verified |
-| That deltalake writes Delta tables into `/lakehouse/default/Tables` that the lakehouse shows as tables, and that Direct Lake reads | Failed on 24 October 2026 with 0.2.1: the mount has no rename, which deltalake uses to commit the log. 0.2.2 commits by a copy and a delete there. To verify again |
+| That deltalake writes Delta tables into `/lakehouse/default/Tables` that the lakehouse shows as tables | Verified on 24 October 2026 with 0.2.2: nineteen tables, appended by the export. With 0.2.1 it had failed, since the mount has no rename, which deltalake uses to commit the log; 0.2.2 commits by a copy and a delete there |
+| That Direct Lake reads those tables, with the Power BI template over them | Not verified |
 | That `/lakehouse/default/Files` is writable from the notebook | Verified on 24 October 2026: the footprint was copied into `Files/footprints` |
 | A scheduled run, and a run from a pipeline with base parameters | Not verified |
