@@ -26,7 +26,7 @@ From the root of the repository:
 ```bash
 pip install -e src/python              # the package and the pqax command
 pip install -e "src/python[pandas]"    # with pandas, for to_dataframe
-pip install -e "src/python[dev]"       # with pytest and jsonschema, for the tests
+pip install -e "src/python[dev]"       # with pytest and jsonschema, for the tests; on Windows tzdata too, which pyarrow needs to read the UTC timestamps of an export back
 ```
 
 Python versions: 3.10 or later. The tests run on 3.10 and 3.14, each without extras and with both pandas and polars. The package has no dependency: the `pandas` and `polars` extras only install the library that `to_dataframe` uses, the `parquet` and `delta` extras the libraries that `export` uses, and the `collect` and `azure` extras those that `collect` uses. The tests run with pyarrow, deltalake, and azure-identity where they run with pandas and polars.
