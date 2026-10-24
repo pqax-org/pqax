@@ -2,7 +2,7 @@
 
 Storage views of a PQAX footprint, in a browser. A view model turns the tables of a footprint into plain data, and three views draw it in plain DOM and SVG: a storage stack per table, a treemap of the columns, and a strip of the file sizes. The package has one runtime dependency, the reader [`@pqax/pqax`](../pqax/README.md), and no framework.
 
-Version 0.2.1, on npm as `@pqax/views` since 0.2.0. It shares the version number of the other packages, as section 7.1 of the [contracts](../../../docs/contracts.md) says, and depends on `@pqax/pqax` of the same release. It reads files of format 0.1 and 0.2, and writes none. The page at [pqax.org/tools](https://pqax.org/tools/) uses it.
+Version 0.2.2, on npm as `@pqax/views` since 0.2.0. It shares the version number of the other packages, as section 7.1 of the [contracts](../../../docs/contracts.md) says, and depends on `@pqax/pqax` of the same release. It reads files of format 0.1 and 0.2, and writes none. The page at [pqax.org/tools](https://pqax.org/tools/) uses it.
 
 ## Install
 

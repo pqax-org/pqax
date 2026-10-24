@@ -7,7 +7,7 @@
 
 PQAX, pronounced "pickax", is a file format for the footprint of Parquet tables: how much space the data takes and how it is arranged in files, row groups, and column chunks, without the data itself. A `.pqax` file lets someone analyze the compression and the design choices of a lakehouse without access to it, as a VPAX file does for a VertiPaq model. The file is a zip of JSON tables, and reading it needs no library beyond a zip reader and a JSON parser.
 
-This repository holds the format, its conformance kit, and the reference implementations. The format is at version 0.2 and the implementations at 0.2.1; the packages are on NuGet, npm, and PyPI since 0.1.
+This repository holds the format, its conformance kit, and the reference implementations. The format is at version 0.2 and the implementations at 0.2.2; the packages are on NuGet, npm, and PyPI since 0.1.
 
 ## Packages
 

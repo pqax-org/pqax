@@ -2,7 +2,7 @@
 
 The packages of a release share its version number, as section 7.1 of the [contracts](docs/contracts.md) says.
 
-## Unreleased
+## 0.2.2 - 2026-10-24
 
 ### PyPI
 

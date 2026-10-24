@@ -55,7 +55,7 @@ Set `PQAX_SIGN_IN` to `secret`, create a client secret for the application, and 
 
 | Variable | Required | Default | Content |
 |---|---|---|---|
-| `PQAX_VERSION` | Yes | | The version of `Pqax.Cli` to install, such as `0.2.1`. A pinned version, so that a new release changes nothing until the variable changes. |
+| `PQAX_VERSION` | Yes | | The version of `Pqax.Cli` to install, such as `0.2.2`. A pinned version, so that a new release changes nothing until the variable changes. |
 | `PQAX_WORKSPACE` | Yes | | The name or the id of the workspace |
 | `PQAX_ITEMS` | Yes | | The items, separated by commas, as OneLake names them: `Sales.Lakehouse, Finance.Warehouse`. Name the workspace and the items both by name or both by id. |
 | `AZURE_CLIENT_ID` | Yes | | The client id of the application |

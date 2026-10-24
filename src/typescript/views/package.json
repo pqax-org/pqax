@@ -1,6 +1,6 @@
 {
   "name": "@pqax/views",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "license": "MIT",
   "homepage": "https://pqax.org",
   "repository": {
@@ -38,7 +38,7 @@
     "prepublishOnly": "npm run build && npm test"
   },
   "dependencies": {
-    "@pqax/pqax": "^0.2.1"
+    "@pqax/pqax": "^0.2.2"
   },
   "devDependencies": {
     "@vitest/browser-playwright": "^5.0.3",

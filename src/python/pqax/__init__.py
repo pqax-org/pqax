@@ -21,7 +21,7 @@ to Parquet and Delta needs pyarrow and deltalake, and the collector reads Delta 
 """
 from __future__ import annotations
 
-__version__ = "0.2.1"
+__version__ = "0.2.2"
 
 from ._errors import (
     ContainerError, FormatError, JsonError, ManifestMissingError, PartMissingError, PqaxError, UnknownVersionError,
