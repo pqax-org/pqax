@@ -440,6 +440,8 @@ The collector parses Parquet footers itself, from the Thrift compact protocol an
 
 At every collection level, the collector lists the folder of each table, at any depth, to count the unreferenced files of format 0.2: one request for each folder, or the pages of one recursive listing where the storage has one. A listing that fails becomes an issue, `AccessDenied` for a 403 and `DataFilesNotListed` otherwise, and the two unreferenced fields of the table are then absent.
 
+The collector reads OneLake and Azure Data Lake Storage Gen2. A container of a storage account with hierarchical namespace serves the DFS API of OneLake, with the container where OneLake has the workspace, so `OneLakeStorage` reads it with the endpoint of the account, `https://<account>.dfs.core.windows.net`, and a token of the same scope. `TableDiscovery.DiscoverFolderAsync` finds the tables under a folder of it, to a bounded depth: a folder with `_delta_log` is a Delta table, and a folder of Parquet files with no subfolder is a table of the format `Parquet`, whose columns come from the footer of its most recent file, as section 6.5 of the [object model](object-model.md) says. Their source has the kind `Storage folder`, one of the kinds that section 6.3 lists.
+
 ## 5. Tests
 
 The tests are written from the kit and from section 4, not from the code.

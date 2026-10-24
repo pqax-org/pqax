@@ -35,6 +35,11 @@ internal sealed class TableCollector
 
     public async Task<CollectedTable> CollectAsync(TableLocation location, int source, CancellationToken cancellation)
     {
+        if (location.Format == TableFormats.Parquet)
+        {
+            return await CollectParquetAsync(location, source, cancellation).ConfigureAwait(false);
+        }
+
         var issues = new IssueList();
         var table = new CollectedTable(location, source) { Depth = DetailDepth.Summary };
         DeltaLog? log = null;
@@ -76,6 +81,134 @@ internal sealed class TableCollector
 
         table.Issues.AddRange(issues.ToList());
         return table;
+    }
+
+    /// <summary>
+    /// Collects a folder of Parquet files with no table format: its files from one listing of the folder, its columns from
+    /// the footer of the most recent file, and at level 2 every footer. Nothing is known of a history, a version, or
+    /// metadata files, and every Parquet file of the folder is a file of the table.
+    /// </summary>
+    private async Task<CollectedTable> CollectParquetAsync(TableLocation location, int source, CancellationToken cancellation)
+    {
+        var issues = new IssueList();
+        var table = new CollectedTable(location, source) { Depth = DetailDepth.Summary };
+        IReadOnlyList<StorageEntry>? entries = null;
+        try
+        {
+            entries = await storage.ListAsync(location.Path, cancellation).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (StorageException e)
+        {
+            issues.Add(e.IsAccessDenied ? IssueCodes.AccessDenied : IssueCodes.TableNotRead, "The table folder could not be listed: " + e.Message);
+        }
+        catch (Exception e)
+        {
+            issues.Add(IssueCodes.TableNotRead, "The table folder could not be listed: " + e.GetType().Name + ": " + e.Message);
+        }
+
+        if (entries != null)
+        {
+            try
+            {
+                await BuildParquetAsync(table, entries, issues, cancellation).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch (Exception e)
+            {
+                issues.Add(IssueCodes.TableNotRead, "The table could not be collected: " + e.GetType().Name + ": " + e.Message);
+                table = new CollectedTable(location, source) { Depth = DetailDepth.Summary };
+            }
+        }
+
+        table.Issues.AddRange(issues.ToList());
+        return table;
+    }
+
+    private async Task BuildParquetAsync(CollectedTable table, IReadOnlyList<StorageEntry> entries, IssueList issues, CancellationToken cancellation)
+    {
+        var files = new List<LiveFile>();
+        foreach (StorageEntry entry in entries.Where(TableDiscovery.IsParquetFile).OrderBy(e => e.Name, StringComparer.Ordinal))
+        {
+            files.Add(new LiveFile(Uri.EscapeDataString(entry.Name), entry.Name)
+            {
+                Size = entry.Size,
+                ModificationTime = entry.LastModified?.ToUnixTimeMilliseconds(),
+            });
+        }
+
+        // Every Parquet file of the folder is a file of the table, so none is unreferenced.
+        table.UnreferencedFileCount = 0;
+        table.UnreferencedFileSize = 0;
+        table.FooterCount = 0;
+        table.CollectedLevel = 1;
+
+        // The columns come from the most recent file, as the object model says: the latest modification time, then the last name.
+        int newest = -1;
+        for (int i = 0; i < files.Count; i++)
+        {
+            if (newest < 0 || (files[i].ModificationTime ?? long.MinValue) >= (files[newest].ModificationTime ?? long.MinValue))
+            {
+                newest = i;
+            }
+        }
+
+        var collected = new CollectedFile[files.Count];
+        BuildFiles(table, files, collected);
+        var planner = new FooterTailPlanner(options.FooterTailBytes, options.FooterTailFloorBytes, options.FooterTailMargin);
+        ParquetFooter? schemaFooter = null;
+        if (newest >= 0)
+        {
+            schemaFooter = await ReadFooterAsync(table.Location, files[newest], collected[newest], planner, issues, cancellation).ConfigureAwait(false);
+            if (schemaFooter != null)
+            {
+                foreach (ParquetField field in ParquetTypes.TopLevelFields(schemaFooter))
+                {
+                    table.Columns.Add(new CollectedColumn(field.Name, field.DataType, field.Name) { IsNullable = field.IsNullable });
+                }
+            }
+        }
+
+        var aggregate = new FooterAggregate(table, options.Depth);
+        if (options.Level >= 2)
+        {
+            await ReadFootersAsync(table, files, collected, aggregate, issues, cancellation, planner, newest < 0 ? null : newest, schemaFooter).ConfigureAwait(false);
+        }
+
+        Totals(table, files, collected, aggregate);
+    }
+
+    /// <summary>Reads the footer of a file, or records the issue of its failure and returns null.</summary>
+    private async Task<ParquetFooter?> ReadFooterAsync(TableLocation location, LiveFile file, CollectedFile collected, FooterTailPlanner planner, IssueList issues, CancellationToken cancellation)
+    {
+        if (file.Size == null)
+        {
+            issues.Add(IssueCodes.FooterNotRead, "The listing gives no size for the file, so its footer was not read.", collected.Path);
+            return null;
+        }
+
+        try
+        {
+            ParquetFooter footer = await footerReader.ReadAsync(location.Path + "/" + file.Path, file.Size.Value, planner.Current, cancellation).ConfigureAwait(false);
+            planner.Observe(footer.FooterLength);
+            return footer;
+        }
+        catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception e)
+        {
+            CollectedIssue issue = FooterFailure(e, collected.Path);
+            issues.Add(issue.Code, issue.Message, issue.Path);
+            return null;
+        }
     }
 
     private static string Text(long value) => value.ToString(CultureInfo.InvariantCulture);
@@ -573,12 +706,31 @@ internal sealed class TableCollector
         CollectedFile[] collected,
         FooterAggregate aggregate,
         IssueList issues,
-        CancellationToken cancellation)
+        CancellationToken cancellation,
+        FooterTailPlanner? planner = null,
+        int? known = null,
+        ParquetFooter? knownFooter = null)
     {
         List<int> sample = Sample(files.Count, options.MaxFootersPerTable);
         var fileIssues = new CollectedIssue?[files.Count];
         int next = -1;
-        var planner = new FooterTailPlanner(options.FooterTailBytes, options.FooterTailFloorBytes, options.FooterTailMargin);
+        planner ??= new FooterTailPlanner(options.FooterTailBytes, options.FooterTailFloorBytes, options.FooterTailMargin);
+        if (known != null)
+        {
+            // The footer of this file was read already, for the columns: it is not read again, and a failure is not reported
+            // twice. When the sample of a limit leaves the file out, it takes the place of the last file of the sample, so
+            // that the limit holds.
+            int index = known.Value;
+            if (!sample.Remove(index) && sample.Count > 0)
+            {
+                sample.RemoveAt(sample.Count - 1);
+            }
+
+            if (knownFooter != null)
+            {
+                fileIssues[index] = Absorb(files[index], collected[index], index, knownFooter, aggregate);
+            }
+        }
         int workers = Math.Min(options.Parallelism, sample.Count);
         var tasks = new List<Task>(workers);
         for (int w = 0; w < workers; w++)
@@ -640,6 +792,11 @@ internal sealed class TableCollector
             return FooterFailure(e, collected.Path);
         }
 
+        return Absorb(file, collected, index, footer, aggregate);
+    }
+
+    private static CollectedIssue? Absorb(LiveFile file, CollectedFile collected, int index, ParquetFooter footer, FooterAggregate aggregate)
+    {
         if (footer.RowGroups.Any(g => g.Columns.Any(c => !c.HasMetadata)))
         {
             return new CollectedIssue(IssueCodes.FooterColumnsEncrypted, "Column chunks of the file have no metadata, as encrypted columns, so the footer counts as not read.", collected.Path);

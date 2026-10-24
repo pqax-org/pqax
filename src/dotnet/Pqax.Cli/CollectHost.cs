@@ -20,6 +20,6 @@ public sealed class CollectHost
     /// <summary>The HTTP client of OneLake, which the command does not dispose. Null, the default, creates one.</summary>
     public HttpClient? HttpClient { get; init; }
 
-    /// <summary>The DFS endpoint of OneLake. Null, the default, is the endpoint of OneLake.</summary>
+    /// <summary>The DFS endpoint of OneLake, for <c>--workspace</c>. Null, the default, is the endpoint of OneLake. <c>--adls</c> takes its endpoint from its URL.</summary>
     public Uri? Endpoint { get; init; }
 }

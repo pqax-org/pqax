@@ -1,12 +1,12 @@
 # Pqax.Collector
 
-Collects the footprint of Delta tables and writes it as a PQAX file. It reads the Delta log of each table and, at collection level 2, the footer of each Parquet file. It never reads row data, and it keeps no data value unless asked. The format is defined by the [PQAX serialization](https://github.com/pqax-org/pqax/blob/main/docs/serialization.md) and the [PQAX object model](https://github.com/pqax-org/pqax/blob/main/docs/object-model.md); the file is written with the [Pqax](https://github.com/pqax-org/pqax/blob/main/src/dotnet/Pqax/README.md) library.
+Collects the footprint of Delta tables, and of folders of Parquet files with no table format, and writes it as a PQAX file. It reads the Delta log of each table and, at collection level 2, the footer of each Parquet file. It never reads row data, and it keeps no data value unless asked. The format is defined by the [PQAX serialization](https://github.com/pqax-org/pqax/blob/main/docs/serialization.md) and the [PQAX object model](https://github.com/pqax-org/pqax/blob/main/docs/object-model.md); the file is written with the [Pqax](https://github.com/pqax-org/pqax/blob/main/src/dotnet/Pqax/README.md) library.
 
 | | |
 |---|---|
 | Targets | netstandard2.0 and net8.0 |
 | Dependencies | `Pqax`. On netstandard2.0, the `System.Text.Json` package. No Parquet library: the collector parses footers itself. |
-| Storage | A folder with the OneLake layout, or OneLake through its DFS endpoint, with GET requests only |
+| Storage | A folder with the OneLake layout, OneLake through its DFS endpoint, or a container of Azure Data Lake Storage Gen2 through the same API, with GET requests only |
 | Levels | 1, the Delta logs, and 2, also the Parquet footers |
 | Checkpoints | Through an `ICheckpointReader`. [Pqax.Collector.ParquetNet](https://github.com/pqax-org/pqax/blob/main/src/dotnet/Pqax.Collector.ParquetNet/README.md) provides one with Parquet.Net. |
 
@@ -53,6 +53,14 @@ On a real workspace of 78 tables and 5,236 files, a collection at level 2 with e
 
 The workspace and the items are named both by name or both by id. OneLake answers `400 FriendlyNameSupportDisabled` to a workspace id followed by item names.
 
+A container of a storage account with hierarchical namespace, Azure Data Lake Storage Gen2, is read by the same class with the endpoint of the account: Azure Storage serves the DFS API that OneLake serves, with the container where OneLake has the workspace. The token is for the same scope, and the identity needs the role Storage Blob Data Reader on the container or the account. `DiscoverFolderAsync` finds the tables under a folder of the container, as [Folders of a storage account](#folders-of-a-storage-account) says:
+
+```csharp
+using var storage = new OneLakeStorage("lake", tokenProvider,
+    new OneLakeStorageOptions { Endpoint = new Uri("https://contoso.dfs.core.windows.net") });   // the container "lake"
+IReadOnlyList<TableLocation> tables = await TableDiscovery.DiscoverFolderAsync(storage, "sales/curated", CancellationToken.None);
+```
+
 `pqax collect` in [Pqax.Cli](https://github.com/pqax-org/pqax/blob/main/src/dotnet/Pqax.Cli/README.md) does both.
 
 ## Public API
@@ -62,13 +70,14 @@ The workspace and the items are named both by name or both by id. OneLake answer
 | `PqaxCollector` | `CollectAsync(tables, progress, cancellation)` returns a `FootprintBuilder` with every table, its details, and the collection: library, times, level, requests, and bytes read |
 | `CollectorOptions` | The options below. `Validate()` checks them; the constructor of the collector calls it. |
 | `DetailDepth` | `Summary`, `Files`, `RowGroups`, `ColumnChunks` |
-| `TableLocation` | A table to collect: source kind and name, namespace, name, folder in the storage, and the locations and identifiers to record. See [Locations](#locations). |
-| `TableDiscovery` | `ListItemsAsync` lists the lakehouses, warehouses, mirrored databases, and SQL databases at the root of a storage. `DiscoverAsync` finds the tables of one item: `Tables/<table>` or `Tables/<schema>/<table>`, by where `_delta_log` is. In a warehouse, every folder under `Tables` is a schema. |
-| `SourceKinds` | The kinds of source: `OneLake lakehouse`, `OneLake warehouse`, and others |
+| `TableLocation` | A table to collect: format, source kind and name, namespace, name, folder in the storage, and the locations and identifiers to record. See [Locations](#locations). |
+| `TableFormats` | The formats of a table: `Delta` and `Parquet` |
+| `TableDiscovery` | `ListItemsAsync` lists the lakehouses, warehouses, mirrored databases, and SQL databases at the root of a storage. `DiscoverAsync` finds the tables of one item: `Tables/<table>` or `Tables/<schema>/<table>`, by where `_delta_log` is. In a warehouse, every folder under `Tables` is a schema. `DiscoverFolderAsync` finds the Delta tables and the folders of Parquet files under a folder of any layout, such as a container of a storage account. |
+| `SourceKinds` | The kinds of source: `OneLake lakehouse`, `OneLake warehouse`, `Storage folder`, and others |
 | `CollectionProgress` | Reported each time a table is done |
 | `IssueCodes` | The codes of the issues that the collector records |
 | `IStorage`, `StorageEntry` | Read-only storage: `ListAsync(path)` and `ReadRangeAsync(path, offset, length)`. A listing gives path, size, folder or file, and modification time. |
-| `LocalStorage`, `OneLakeStorage`, `OneLakeStorageOptions` | The two storages. Both count their requests and bytes through `IStorageStatistics`. |
+| `LocalStorage`, `OneLakeStorage`, `OneLakeStorageOptions` | The two storages. Both count their requests and bytes through `IStorageStatistics`. `OneLakeStorage` reads a container of a storage account with the endpoint of the account in `OneLakeStorageOptions.Endpoint`. |
 | `StorageException` | A failed request, with its HTTP status when there is one: a timeout or a broken connection has none. The message never holds a path. |
 | `StorageExtensions` | `ReadAllAsync`: a whole file in one request, with or without its size |
 | `ICheckpointReader`, `DeltaAction` and its kinds | The contract of a checkpoint reader: `AddAction`, `RemoveAction`, `MetadataAction`, `ProtocolAction`, `DomainMetadataAction`, `SidecarAction`, `CheckpointMetadataAction`, and `CommitInfoAction` for commits |
@@ -91,6 +100,16 @@ The workspace and the items are named both by name or both by id. OneLake answer
 | `FooterTailMargin` | 1.25 | The next files of a table are read with the largest footer seen so far times this factor. The footers of a table have about the same size, so one request per footer stays the rule while the bytes drop to what the footers take. |
 | `FooterTailFloorBytes` | 8192 | The fewest bytes read from the end of a file |
 
+`OneLakeStorageOptions` sets how the storage connects:
+
+| Option | Default | Meaning |
+|---|---|---|
+| `Endpoint` | `https://onelake.dfs.fabric.microsoft.com` | The DFS endpoint: OneLake, a regional OneLake endpoint, or a storage account, `https://<account>.dfs.core.windows.net`. With a storage account, the first argument of the storage is the container, and the messages of a failed request name the storage account instead of OneLake. |
+| `MaxRetries` | 4 | The repeats of a request after 429, 500, 502, 503, 504, or a network failure |
+| `HttpClient` | None | The client of the requests. Without one, the storage creates one and disposes it. |
+| `Timeout` | 5 minutes | The timeout of one request, when the storage creates its client |
+| `Trace` | None | Receives one line for each answer: the URL and the status code |
+
 ## What it reads
 
 For each table:
@@ -104,6 +123,8 @@ For each table:
 | Older commits | One request each, for the history, the most recent first, until the commit files read reach `MaxCommitsPerTable`. See [Commits](#commits). |
 | One listing of the table folder, at any depth | When the files of the version are known, at every level. `OneLakeStorage` lists with `recursive=true`, in as many pages as the listing takes, and `LocalStorage` counts one request. Through another storage, each folder is a listing of its own, and `_delta_log` and `_change_data` are not listed. It gives `unreferencedFileCount` and `unreferencedFileSize`. See [Unreferenced files](#unreferenced-files). |
 | The footer of each file | At level 2: the last `FooterTailBytes` bytes, and a second request only for a longer footer |
+
+For a folder of Parquet files, the format `Parquet`, there is no log: one listing of the folder gives the files, the footer of the most recent file gives the columns at every level, and at level 2 every other footer is read too, the first one not again. See [Folders of Parquet files](#folders-of-parquet-files).
 
 Every request goes through the `IStorage`, so the collection states its requests and bytes. When the storage implements `IStorageStatistics`, those numbers come from it and include retries and the pages of a listing.
 
@@ -163,12 +184,53 @@ Partitions and commits are kept from the `Files` depth, as in the prototype.
 | `OneLakeStorage`, by names | `abfss://<workspace>@<host>/<item>`, such as `abfss://My Workspace@onelake.dfs.fabric.microsoft.com/Sales.Lakehouse` | The source location, then `/Tables/<table>`, or `/Tables/<schema>/<table>` | None |
 | `OneLakeStorage`, by ids | `abfss://<workspace id>@<host>/<item id>` | The same | `workspaceId` and `itemId` |
 | `LocalStorage` | The full path of the item folder, with the separators of the platform, such as `C:\data\Sales.Lakehouse` | The full path of the table folder | None |
+| `OneLakeStorage` on a storage account, through `DiscoverFolderAsync` | `abfss://<container>@<host>/<folder>`, such as `abfss://lake@contoso.dfs.core.windows.net/sales` | The source location, then the folders down to the table | None. See [Folders of a storage account](#folders-of-a-storage-account). |
 | Another storage, or a storage that wraps one of these | None | None | None |
 
 - The workspace and the item are written as the caller gave them, without escaping. `<host>` is the host of the endpoint, `onelake.dfs.fabric.microsoft.com` by default.
 - An identifier is recorded only for a workspace or an item given as an id: a GUID with hyphens. A listing of the DFS endpoint has no item id, so with names the identifiers stay `null`: the collector does not guess them.
 - The tables with the same source kind, name, and location share one source. A `TableLocation` built by hand records what its constructor is given.
 - A local location is a full path, so it can hold the name of the user of the machine. The object model marks the locations and the identifiers as names, for the obfuscation to replace.
+
+### Folders of a storage account
+
+`TableDiscovery.DiscoverFolderAsync(storage, folder, maxDepth)` walks a folder of a storage that has no item layout, such as a container of Azure Data Lake Storage Gen2, with one listing for each folder walked:
+
+| Rule | Detail |
+|---|---|
+| Delta table | A folder that holds `_delta_log`. The walk does not enter it. |
+| Parquet table | A folder with at least one Parquet file and no subfolder. A Parquet file is a file whose name ends with `.parquet`, in any case. |
+| Hidden | Files and folders whose name starts with `_` or `.`, such as `_SUCCESS` and `_temporary`, as Spark writes them. A hidden folder does not count as a subfolder, and none is walked. |
+| Partition | A folder whose name holds `=`, such as `year=2024`, is not walked: a partitioned folder of Parquet files is not read in this version, and gives no table |
+| Depth | The folder itself is level 0 and may be a table. `maxDepth`, by default `TableDiscovery.DefaultFolderDepth`, 4, is the deepest level tested. A deeper table is found by starting from a deeper folder. |
+| Other folders | Walked while they are above `maxDepth`. An empty folder, a folder of other files, and a folder that does not exist give no table. |
+| Order | Depth first, by ordinal name, so the tables come sorted by path |
+
+Every table it finds has one source:
+
+| Field | Value |
+|---|---|
+| Source `kind` | `Storage folder` |
+| Source `name` | The last segment of the folder, or the container for its root |
+| Source `location` | `abfss://<container>@<host>/<folder>`, such as `abfss://lake@contoso.dfs.core.windows.net/sales/curated`; the full path on disk on a `LocalStorage` |
+| Source `identifiers` | None: a storage account assigns no id to a folder |
+| Table `namespace` | The folders between the folder and the table, empty for a table directly under it |
+| Table `name` | The last segment of the table folder. When the folder is itself a table, its name, with no namespace. |
+| Table `location` | The location of the table folder, in the same form as the source location |
+
+### Folders of Parquet files
+
+A table of the format `Parquet` has no log, so the footprint holds what the files and their footers say:
+
+| Field | Value |
+|---|---|
+| Files | The Parquet files directly in the folder, by name, with the size and the modification time of the listing. `fileCount`, `fileSize`, `fileSizes`, and `lastModifiedAt` come from them. |
+| Columns | The top-level fields of the footer of the most recent file, by modification time and then by name, as the object model says. The type is written with the names of the Delta schema, such as `long`, `string`, `decimal(18,2)`, `timestamp`, `array<string>`, so that it compares with a Delta table. A column is nullable when its field is optional. |
+| Rows | From the footers, at level 2. At level 1 the row count is unknown. |
+| Level 1 | Reads the footer of the most recent file for the columns only: `footerCount` is 0 and the depth is at most `Files` |
+| Level 2 | Reads every footer, or `MaxFootersPerTable` of them: the sample of the limit, where the most recent file takes the place of the last file when the sample leaves it out |
+| `unreferencedFileCount`, `unreferencedFileSize` | 0: every Parquet file of the folder is a file of the table |
+| `tableId`, `snapshotId`, `delta`, the commits, the operations, the metadata files, the non-live files | None: there is no table format to give them |
 
 ## Issues
 
@@ -222,7 +284,10 @@ It refuses an encrypted footer (`PARE`), a file that does not end with `PAR1`, a
 
 ## Limits
 
-- Collection levels 3 and 4, Iceberg tables, and folders of Parquet files with no table format are not supported in this version.
+- Collection levels 3 and 4 and Iceberg tables are not supported in this version.
+- A folder of Parquet files is read only when its files are directly in it: a partitioned folder, with `<column>=<value>` subfolders, gives no table. Its partition values would come from the paths, which this version does not read.
+- `DiscoverFolderAsync` stops at 4 levels below its folder by default. A container with many folders above its tables costs one listing for each.
+- A storage account is read through its DFS endpoint, which needs hierarchical namespace. A flat Blob Storage account, Amazon S3, and Databricks volumes are not supported in this version.
 - A checkpoint larger than 512 MB is not read.
 - The log compaction files, `<x>.<y>.compacted.json`, are counted with the log and not used.
 - All the files of a table are kept in memory until the footprint is built, as row objects in the builder.

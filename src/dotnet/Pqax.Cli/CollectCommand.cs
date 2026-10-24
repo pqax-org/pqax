@@ -9,8 +9,9 @@ using Pqax.Collector.ParquetNet;
 namespace Pqax.Cli;
 
 /// <summary>
-/// <c>pqax collect</c>: collects the footprint of the tables of OneLake items, or of a folder with the OneLake layout,
-/// and writes a PQAX file. It prints counts only, never the name of a table.
+/// <c>pqax collect</c>: collects the footprint of the tables of OneLake items, of a folder with the OneLake layout, or of
+/// a folder of an Azure Data Lake Storage Gen2 container, and writes a PQAX file. It prints counts only, never the name
+/// of a table.
 /// </summary>
 public static class CollectCommand
 {
@@ -51,11 +52,11 @@ public static class CollectCommand
         {
             return RunAsync(options, output, error, host).GetAwaiter().GetResult();
         }
-        catch (Exception e) when (options.Workspace != null && (e is SignInException || e is AuthenticationFailedException || e is RequestFailedException
+        catch (Exception e) when ((options.Workspace != null || options.Adls != null) && (e is SignInException || e is AuthenticationFailedException || e is RequestFailedException
             || e is CryptographicException || e is StorageException { IsAccessDenied: true }))
         {
-            // One line with the likely cause. A message of Azure.Identity or of OneLake never holds the secret.
-            error.WriteLine($"pqax collect: {SignIn.Describe(e)}");
+            // One line with the likely cause. A message of Azure.Identity or of the storage never holds the secret.
+            error.WriteLine($"pqax collect: {SignIn.Describe(e, storageAccount: options.Adls != null)}");
             return Program.ExitError;
         }
         catch (Exception e) when (e is StorageException || e is IOException || e is UnauthorizedAccessException || e is ArgumentException)
@@ -99,7 +100,8 @@ public static class CollectCommand
 
                 if (given.Audience != null && !given.Audience.StartsWith("https://storage.azure.com", StringComparison.OrdinalIgnoreCase))
                 {
-                    error.WriteLine($"pqax collect: the access token is for {given.Audience}, and OneLake takes one for https://storage.azure.com; it may refuse it.");
+                    string service = options.Adls != null ? "the storage account" : "OneLake";
+                    error.WriteLine($"pqax collect: the access token is for {given.Audience}, and {service} takes one for https://storage.azure.com; it may refuse it.");
                 }
             }
 
@@ -109,18 +111,36 @@ public static class CollectCommand
             var tokens = new TokenCache(credential);
             await tokens.GetAsync(CancellationToken.None).ConfigureAwait(false);
             var storageOptions = new OneLakeStorageOptions { Trace = options.Verbose ? line => error.WriteLine(line) : null, HttpClient = host.HttpClient };
-            if (host.Endpoint != null)
+            if (options.Adls != null)
+            {
+                // A container of a storage account is the filesystem of the same DFS API, at the endpoint of the account.
+                storageOptions.Endpoint = options.AdlsEndpoint!;
+            }
+            else if (host.Endpoint != null)
             {
                 storageOptions.Endpoint = host.Endpoint;
             }
 
-            var oneLake = new OneLakeStorage(options.Workspace!, tokens.GetAsync, storageOptions);
+            var oneLake = new OneLakeStorage(options.Adls != null ? options.AdlsFileSystem! : options.Workspace!, tokens.GetAsync, storageOptions);
             storage = oneLake;
             owned = oneLake;
         }
 
         using (owned)
         {
+            if (options.Adls != null)
+            {
+                IReadOnlyList<TableLocation> found = await TableDiscovery.DiscoverFolderAsync(storage, options.AdlsFolder, CancellationToken.None).ConfigureAwait(false);
+                output.WriteLine($"Found {Number(found.Count)} tables in {(options.AdlsFolder.Length == 0 ? "the container" : "the folder")}.");
+                if (found.Count == 0)
+                {
+                    error.WriteLine($"pqax collect: no table found. A table is a folder with _delta_log, or a folder of Parquet files with no subfolder, at most {Number(TableDiscovery.DefaultFolderDepth)} levels below the folder of --adls.");
+                    return Program.ExitError;
+                }
+
+                return await CollectAsync(storage, found, options, output, error).ConfigureAwait(false);
+            }
+
             IReadOnlyList<string> items = options.Items.Count > 0
                 ? options.Items
                 : await TableDiscovery.ListItemsAsync(storage, CancellationToken.None).ConfigureAwait(false);
@@ -137,37 +157,43 @@ public static class CollectCommand
                 return Program.ExitError;
             }
 
-            var collectorOptions = new CollectorOptions
-            {
-                Level = options.Level,
-                Depth = options.Depth,
-                MaxFootersPerTable = options.MaxFooters,
-                MaxCommitsPerTable = options.MaxCommits,
-                Parallelism = options.Parallelism,
-            };
-            var collector = new PqaxCollector(storage, collectorOptions, new ParquetNetCheckpointReader());
-            var progress = new Reporter(output);
-            FootprintBuilder builder = await collector.CollectAsync(tables, progress, CancellationToken.None).ConfigureAwait(false);
-            builder.Collection.CollectorApp = "pqax";
-            builder.Collection.CollectorAppVersion = Program.Version();
-            string? folder = Path.GetDirectoryName(Path.GetFullPath(options.Output!));
-            if (folder != null)
-            {
-                Directory.CreateDirectory(folder);
-            }
-
-            builder.Write(options.Output!);
-            ValidationResult result = PqaxValidator.Validate(options.Output!);
-            output.WriteLine($"{Path.GetFileName(options.Output)}: {Number(tables.Count)} tables, {Number(progress.Footers)} footers read, {Number(progress.Issues)} issues, "
-                + $"{Number(builder.Collection.RequestCount ?? 0)} requests, {Number(builder.Collection.BytesRead ?? 0)} bytes read; "
-                + (result.IsValid ? "valid" : $"invalid, {Number(result.Issues.Count)} issues"));
-            foreach (ValidationIssue issue in result.Issues)
-            {
-                error.WriteLine(issue.ToString());
-            }
-
-            return result.IsValid ? Program.ExitOk : Program.ExitInvalid;
+            return await CollectAsync(storage, tables, options, output, error).ConfigureAwait(false);
         }
+    }
+
+    /// <summary>Collects the tables, writes the file, and validates it.</summary>
+    private static async Task<int> CollectAsync(IStorage storage, IReadOnlyList<TableLocation> tables, CollectOptions options, TextWriter output, TextWriter error)
+    {
+        var collectorOptions = new CollectorOptions
+        {
+            Level = options.Level,
+            Depth = options.Depth,
+            MaxFootersPerTable = options.MaxFooters,
+            MaxCommitsPerTable = options.MaxCommits,
+            Parallelism = options.Parallelism,
+        };
+        var collector = new PqaxCollector(storage, collectorOptions, new ParquetNetCheckpointReader());
+        var progress = new Reporter(output);
+        FootprintBuilder builder = await collector.CollectAsync(tables, progress, CancellationToken.None).ConfigureAwait(false);
+        builder.Collection.CollectorApp = "pqax";
+        builder.Collection.CollectorAppVersion = Program.Version();
+        string? folder = Path.GetDirectoryName(Path.GetFullPath(options.Output!));
+        if (folder != null)
+        {
+            Directory.CreateDirectory(folder);
+        }
+
+        builder.Write(options.Output!);
+        ValidationResult result = PqaxValidator.Validate(options.Output!);
+        output.WriteLine($"{Path.GetFileName(options.Output)}: {Number(tables.Count)} tables, {Number(progress.Footers)} footers read, {Number(progress.Issues)} issues, "
+            + $"{Number(builder.Collection.RequestCount ?? 0)} requests, {Number(builder.Collection.BytesRead ?? 0)} bytes read; "
+            + (result.IsValid ? "valid" : $"invalid, {Number(result.Issues.Count)} issues"));
+        foreach (ValidationIssue issue in result.Issues)
+        {
+            error.WriteLine(issue.ToString());
+        }
+
+        return result.IsValid ? Program.ExitOk : Program.ExitInvalid;
     }
 
     private static string Number(long value) => value.ToString(CultureInfo.InvariantCulture);
@@ -177,11 +203,15 @@ public static class CollectCommand
         writer.WriteLine("Usage:");
         writer.WriteLine("  pqax collect --local <folder> --output <file.pqax> [--item <name.Kind>]... [options]");
         writer.WriteLine("  pqax collect --workspace <name or id> --item <name.Kind> [--item ...] --output <file.pqax> [identity] [options]");
+        writer.WriteLine("  pqax collect --adls https://<account>.dfs.core.windows.net/<container>[/<folder>] --output <file.pqax> [identity] [options]");
         writer.WriteLine();
         writer.WriteLine("--local reads a folder with the OneLake layout: <item>.<Kind>/Tables/[<schema>/]<table>. Without --item, every");
         writer.WriteLine("lakehouse, warehouse, mirrored database, and SQL database in the folder. --workspace reads OneLake after a sign-in;");
         writer.WriteLine("an item is named as in OneLake, such as Sales.Lakehouse.");
         writer.WriteLine("Name the workspace and the items both by name or both by id: OneLake refuses a workspace id with item names.");
+        writer.WriteLine("--adls reads a container of Azure Data Lake Storage Gen2 after a sign-in: a folder with _delta_log is a Delta table, a folder");
+        writer.WriteLine($"of Parquet files with no subfolder a Parquet table, down to {Number(TableDiscovery.DefaultFolderDepth)} levels below the folder. The identity needs Storage Blob");
+        writer.WriteLine("Data Reader on the container or the account.");
         writer.WriteLine();
         writer.WriteLine("Identity, one of these; a secret is read from an environment variable, never from the command line:");
         writer.WriteLine("  (none), --device-code                         A person, with a device code that the command prints. The default.");
@@ -202,7 +232,7 @@ public static class CollectCommand
         writer.WriteLine("  --max-footers <n>                             Footers read for each table, 0 for all. Default 0.");
         writer.WriteLine("  --max-commits <n>                             Commit files read for the history of each table; the commits the state needs are read anyway. Default 30.");
         writer.WriteLine("  --parallelism <n>                             Storage requests at the same time. Default 16.");
-        writer.WriteLine("  --verbose                                     Print the identity, and every OneLake request with its status code, to the error output.");
+        writer.WriteLine("  --verbose                                     Print the identity, and every storage request with its status code, to the error output.");
         writer.WriteLine();
         writer.WriteLine("Exit codes: 0 written and valid, 1 written and invalid, 2 wrong command line or failure.");
     }

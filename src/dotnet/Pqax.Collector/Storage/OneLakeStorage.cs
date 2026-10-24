@@ -24,6 +24,12 @@ namespace Pqax.Collector;
 /// host of the endpoint and the workspace and item as the caller gave them, and the identifiers <c>workspaceId</c> and
 /// <c>itemId</c> for those given as ids.
 /// </para>
+/// <para>
+/// OneLake serves the DFS API of Azure Data Lake Storage Gen2, with the workspace as the filesystem. With the endpoint
+/// of a storage account, such as <c>https://&lt;account&gt;.dfs.core.windows.net</c>, and the name of a container as the
+/// workspace, the class reads that container, with the same token and paths relative to the container. Its messages
+/// then name the storage account instead of OneLake.
+/// </para>
 /// </remarks>
 public sealed class OneLakeStorage : IStorage, IStorageStatistics, ILocatedStorage, IRecursiveStorage, IDisposable
 {
@@ -44,11 +50,14 @@ public sealed class OneLakeStorage : IStorage, IStorageStatistics, ILocatedStora
     private readonly string authority;
     private readonly int maxRetries;
     private readonly Action<string>? trace;
+
+    /// <summary>What the messages call the service: OneLake, or the storage account of an ADLS Gen2 endpoint.</summary>
+    private readonly string service;
     private long requests;
     private long bytes;
 
     /// <summary>Creates a storage for a workspace.</summary>
-    /// <param name="workspace">The name or the id of the workspace.</param>
+    /// <param name="workspace">The name or the id of the workspace, or the name of the container of a storage account.</param>
     /// <param name="tokenProvider">Returns an access token for <see cref="Scope"/>. It is called before every request.</param>
     /// <param name="options">The endpoint, the retries, and the HTTP client. Null for the defaults.</param>
     public OneLakeStorage(string workspace, Func<CancellationToken, Task<string>> tokenProvider, OneLakeStorageOptions? options = null)
@@ -81,9 +90,10 @@ public sealed class OneLakeStorage : IStorage, IStorageStatistics, ILocatedStora
         Uri endpointUri = options.Endpoint ?? DefaultEndpoint;
         baseUrl = endpointUri.ToString().TrimEnd('/') + "/" + Uri.EscapeDataString(workspace);
         authority = endpointUri.Authority;
+        service = endpointUri.Host.IndexOf(".dfs.core.", StringComparison.OrdinalIgnoreCase) >= 0 ? "The storage account" : "OneLake";
     }
 
-    /// <summary>The name or the id of the workspace.</summary>
+    /// <summary>The name or the id of the workspace, or the container of a storage account.</summary>
     public string Workspace { get; }
 
     /// <inheritdoc/>
@@ -313,6 +323,8 @@ public sealed class OneLakeStorage : IStorage, IStorageStatistics, ILocatedStora
         }
     }
 
+    private static string Lower(string name) => name.StartsWith("The ", StringComparison.Ordinal) ? "the" + name.Substring(3) : name;
+
     private static bool IsTransient(HttpStatusCode status)
     {
         int code = (int)status;
@@ -340,7 +352,7 @@ public sealed class OneLakeStorage : IStorage, IStorageStatistics, ILocatedStora
         return TimeSpan.FromSeconds(seconds);
     }
 
-    private static void EnsureSuccess(HttpResponseMessage response)
+    private void EnsureSuccess(HttpResponseMessage response)
     {
         if (response.IsSuccessStatusCode)
         {
@@ -348,7 +360,7 @@ public sealed class OneLakeStorage : IStorage, IStorageStatistics, ILocatedStora
         }
 
         int code = (int)response.StatusCode;
-        throw new StorageException($"OneLake answered {code} {response.ReasonPhrase}{ServiceErrorCode(response)}.", code);
+        throw new StorageException($"{service} answered {code} {response.ReasonPhrase}{ServiceErrorCode(response)}.", code);
     }
 
     /// <summary>The error code in the JSON body of a failed answer, as " (Code)", or nothing. Never the message, which can name a path.</summary>
@@ -383,7 +395,7 @@ public sealed class OneLakeStorage : IStorage, IStorageStatistics, ILocatedStora
         catch (Exception e) when (e is HttpRequestException || e is System.IO.IOException)
         {
             // The connection broke while the answer came in: a failed request, as IStorage says.
-            throw new StorageException("The answer of OneLake could not be read: " + e.GetType().Name + ".", null, e);
+            throw new StorageException("The answer of " + Lower(service) + " could not be read: " + e.GetType().Name + ".", null, e);
         }
 
         Interlocked.Add(ref bytes, body.Length);
@@ -426,13 +438,13 @@ public sealed class OneLakeStorage : IStorage, IStorageStatistics, ILocatedStora
             catch (HttpRequestException e)
             {
                 Interlocked.Increment(ref requests);
-                throw new StorageException("A request to OneLake failed: " + e.GetType().Name + ".", null, e);
+                throw new StorageException("A request to " + Lower(service) + " failed: " + e.GetType().Name + ".", null, e);
             }
             catch (TaskCanceledException e) when (!cancellation.IsCancellationRequested)
             {
                 // The last attempt timed out: a failed request, as IStorage says, and not a cancellation.
                 Interlocked.Increment(ref requests);
-                throw new StorageException("A request to OneLake timed out.", null, e);
+                throw new StorageException("A request to " + Lower(service) + " timed out.", null, e);
             }
 
             Interlocked.Increment(ref requests);

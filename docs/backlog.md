@@ -46,6 +46,7 @@ Each item has a stage: **Before publishing** means before the first NuGet, npm, 
 | Items by id as well as by name on OneLake, and a check of the API version `2018-11-09` against the current one | OneLake accepts both forms but not a mix | Later |
 | Depth per table from a budget, as the open question 1 of the object model asks | One depth for the whole collection today | Before 1.0 |
 | ~~Run the collector on a real workspace to check the listing of the table folders and the fields of format 0.2~~ Done on 21 October 2026, on a workspace of 78 tables: no issue, the listing cost 120 requests more than the 0.1 collector, and the unreferenced files exceeded the non-live files that the log tracks by two orders of magnitude on the tables that are rewritten daily without a VACUUM | The unreferenced files and the removal times were tested only on the fixture and on synthetic logs | Before 1.0 |
+| Other storages than OneLake. Azure Data Lake Storage Gen2 is done on 24 October 2026: `pqax collect --adls` reads a container through the DFS API of OneLake with the endpoint of the account, and finds its Delta tables and its folders of Parquet files. Amazon S3, Databricks volumes, partitioned folders of Parquet files, and Iceberg, in its own row, remain. | ADLS Gen2 is the same API as OneLake with another endpoint and sign-in; S3 and volumes are other storages with other APIs | Later |
 
 ## 4. Conformance kit and format
 
