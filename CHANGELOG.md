@@ -2,9 +2,9 @@
 
 The packages of a release share its version number, as section 7.1 of the [contracts](docs/contracts.md) says.
 
-## Unreleased
+## 0.2.1 - 2026-10-24
 
-Three tools: unattended sign-in for `pqax collect`, templates that collect a footprint on a schedule, and `pqax tables`, with the derived measures of the storage views in C# and in Python, and the object model defines those measures in its section 10. C# and Python now offer every measure of section 10, as the storage views do. The format does not change.
+The tools of the plan, with no change to the format. `pqax collect` signs in without a person and reads Azure Data Lake Storage Gen2 with `--adls`, where a folder of Parquet files is a table; templates collect a footprint on a schedule from GitHub Actions or from a Fabric notebook; `pqax tables` shows the derived measures of the storage views, which section 10 of the object model defines and C#, Python, and TypeScript compute the same way; `pqax export` writes the tables of a footprint as CSV, Parquet, or Delta, with a Power BI template over them; `pqax diff` compares two footprints of the same lakehouse; and the Python package has the collector, `pqax.collect`, with the same footprint as the C# one. The format does not change.
 
 ### Format
 

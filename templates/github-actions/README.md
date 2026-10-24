@@ -18,7 +18,7 @@
 
 The collect job has the permissions `contents: read` and `id-token: write`; only the commit job has `contents: write`.
 
-The template needs a release of `Pqax.Cli` that has the identity options of `pqax collect` and the command `pqax tables`: the first release after 0.2.0. Set `PQAX_VERSION` to it.
+The template needs a release of `Pqax.Cli` that has the identity options of `pqax collect` and the command `pqax tables`: 0.2.1 or later. Set `PQAX_VERSION` to it.
 
 ## Set it up
 
@@ -55,7 +55,7 @@ Set `PQAX_SIGN_IN` to `secret`, create a client secret for the application, and 
 
 | Variable | Required | Default | Content |
 |---|---|---|---|
-| `PQAX_VERSION` | Yes | | The version of `Pqax.Cli` to install, such as the first release after 0.2.0. A pinned version, so that a new release changes nothing until the variable changes. |
+| `PQAX_VERSION` | Yes | | The version of `Pqax.Cli` to install, such as `0.2.1`. A pinned version, so that a new release changes nothing until the variable changes. |
 | `PQAX_WORKSPACE` | Yes | | The name or the id of the workspace |
 | `PQAX_ITEMS` | Yes | | The items, separated by commas, as OneLake names them: `Sales.Lakehouse, Finance.Warehouse`. Name the workspace and the items both by name or both by id. |
 | `AZURE_CLIENT_ID` | Yes | | The client id of the application |

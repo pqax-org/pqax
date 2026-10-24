@@ -4,7 +4,7 @@
 
 | | |
 |---|---|
-| Version | 0.2.0 |
+| Version | 0.2.1 |
 | Format | Reads 0.1 and 0.2, writes 0.2. Reads every other version 0.x. |
 | Python | 3.10 or later |
 | Dependencies | None. `to_dataframe` uses pandas, or polars 1.0 or later, when one is installed. `export` writes Parquet with pyarrow and Delta with deltalake, when they are installed. `collect` reads Delta checkpoints with pyarrow, and signs in to OneLake with azure-identity when asked. |

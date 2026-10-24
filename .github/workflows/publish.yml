@@ -157,11 +157,10 @@ jobs:
           dotnet nuget push "*.nupkg" --api-key "$NUGET_API_KEY" --source "$SOURCE" --skip-duplicate --no-symbols
           dotnet nuget push "*.snupkg" --api-key "$NUGET_API_KEY" --source "$SOURCE" --skip-duplicate
 
-  # The reader first, then the views, which depend on it. Trusted publishing, with no token, but for the first publish
-  # of @pqax/views: npm attaches a trusted publisher only to a package that exists, so the secret NPM_TOKEN_VIEWS, when
-  # set, goes to npm for the views alone. Remove it, and the step that reads it, after the first publish, as
-  # RELEASING.md says. A version that npm already has is skipped, so that a re-run publishes only what is missing.
-  # --ignore-scripts leaves out prepublishOnly, which would build again and run the tests that verify ran.
+  # The reader first, then the views, which depend on it. Trusted publishing for both, with no token: the first publish of
+  # @pqax/views, 0.2.0, went out with a token, and its trusted publisher is set since. A version that npm already has is
+  # skipped, so that a re-run publishes only what is missing. --ignore-scripts leaves out prepublishOnly, which would build
+  # again and run the tests that verify ran.
   npm:
     needs: verify
     runs-on: ubuntu-latest
@@ -200,23 +199,8 @@ jobs:
           else
             npm publish --provenance --access public --ignore-scripts
           fi
-      - name: Publish the views with the token, first publish only
-        if: env.NPM_TOKEN_VIEWS != ''
-        working-directory: src/typescript/views
-        env:
-          NPM_TOKEN_VIEWS: ${{ secrets.NPM_TOKEN_VIEWS }}
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN_VIEWS }}
-        run: |
-          if [ "$(npm view "@pqax/views@${TAG#v}" version 2>/dev/null)" = "${TAG#v}" ]; then
-            echo "@pqax/views ${TAG#v} is already on npm"
-          else
-            npm publish --provenance --access public --ignore-scripts
-          fi
       - name: Publish the views with trusted publishing
-        if: env.NPM_TOKEN_VIEWS == ''
         working-directory: src/typescript/views
-        env:
-          NPM_TOKEN_VIEWS: ${{ secrets.NPM_TOKEN_VIEWS }}
         run: |
           if [ "$(npm view "@pqax/views@${TAG#v}" version 2>/dev/null)" = "${TAG#v}" ]; then
             echo "@pqax/views ${TAG#v} is already on npm"
