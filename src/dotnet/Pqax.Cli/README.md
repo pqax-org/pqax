@@ -169,7 +169,7 @@ pqax collect --adls https://<account>.dfs.core.windows.net/<container>[/<folder>
 It prints one line for each table that is done, with counts and never a name, then a last line:
 
 ```
-fixture.pqax: 2 tables, 5 footers read, 0 issues, 15 requests, 142178 bytes read; valid
+fixture.pqax: 2 tables, 5 footers read, 0 issues, 17 requests, 142178 bytes read; valid
 ```
 
 The exit code is 0 when the file is written and valid, 1 when the written file is invalid, and 2 for a wrong command line or a failure. `pqax collect --help` prints its usage.
