@@ -50,6 +50,8 @@ A new folder, `templates/`, with files to copy elsewhere. `github-actions/pqax-f
 
 Two new valid samples, `diff-before.pqax` and `diff-after.pqax`, are two footprints of one synthetic lakehouse a week apart, written with `pqax.Builder` by `make_diff.py`, with tables and columns added, removed, renamed, and recreated, files added and removed, an OPTIMIZE and a VACUUM. `expected/diff/diff-before.diff-after.json` is their expected diff, built from the changes the script declares and from the measures of the views, and `cross_check.py` compares the diff of the C# and Python command lines with it, with no tolerance, and their outputs with each other.
 
+`cross_check.py` also collects the fixture with `python -m pqax collect` when pyarrow is installed, checks the file with every validator, reader, and the measures as it checks the one of `pqax collect` in C#, and compares the two collections in every table and field, except the members of the collection that name the collector and the times.
+
 ## 0.2.0 - 2026-10-21
 
 Format version 0.2 adds five optional fields. On `tables`, `unreferencedFileCount` and `unreferencedFileSize` count the data files in storage that the version described does not reference, and `nonLiveOldestRemovedAt` and `nonLiveNewestRemovedAt` say when its non-live files were removed. On `partitions`, `lastModifiedAt` says when the files of a partition last changed. Compared with `nonLiveFileCount` and `nonLiveFileSize`, they let a reader tell the non-live files still in storage from those that a VACUUM already deleted, and see how old the tombstones are against the retention of the table.

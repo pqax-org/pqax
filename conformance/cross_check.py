@@ -6,8 +6,13 @@ Usage, from the root of the repository:
 
 Writers: Python (pqax.Builder) and C# (FootprintBuilder, through a small runner that the .NET 10 SDK runs as a
 file-based app). The TypeScript package has no writer. Each writer rewrites three samples of the kit: sample.pqax,
-sample.pqax again with at most 20 rows in a detail part, and extensions.pqax. When the C# command line builds, pqax
-collect also collects conformance/fixtures/lakehouse, and that file must give the results of expected/sample.json.
+sample.pqax again with at most 20 rows in a detail part, and extensions.pqax.
+
+Collectors: python -m pqax collect, when pyarrow is installed (pqax[collect]), and pqax collect in C#, when the C#
+command line builds, collect conformance/fixtures/lakehouse. Each file must give the results of expected/sample.json,
+and the two collections must hold the same values in every table and field, and in the collection of the manifest
+except the members that name the collector and the times: collectorApp, collectorAppVersion, collectorLib,
+collectorLibVersion, startedAt, and completedAt.
 
 Validators: python -m pqax check, the C# command line (pqax check, or the C# library when the command line does not
 build), and validate() of the TypeScript package through node. Readers: pqax.open in Python, PqaxDocument in C#, and
@@ -21,8 +26,9 @@ with a message.
 Measures: pqax.measures in Python, StorageMeasures in C#, and the view model of @pqax/views through node compute the
 derived measures of every file, which must equal conformance/expected/measures/<sample>.json, the measures of the
 views, value for value with no tolerance: every measure of section 10 of the object model for the tables, the columns,
-and the collection, except the two over a set of columns that only the views offer. A time compares as a moment. The file that pqax collect writes must give the measures of expected/measures/sample.json too,
-except daysSinceLastCommit, which counts the days to the time of the collection.
+and the collection, except the two over a set of columns that only the views offer. A time compares as a moment. The
+files that the collectors write must give the measures of expected/measures/sample.json too, except
+daysSinceLastCommit, which counts the days to the time of the collection.
 
 Diff: python -m pqax diff and pqax diff in C# compare samples/diff-before.pqax with samples/diff-after.pqax. The JSON of
 each must equal expected/diff/diff-before.diff-after.json value for value, with no tolerance, and the text and the JSON
@@ -57,6 +63,9 @@ TYPESCRIPT_PACKAGE = ROOT / "src" / "typescript" / "pqax"
 FIXTURE = KIT / "fixtures" / "lakehouse"
 DIFF_PAIR = (SAMPLES / "diff-before.pqax", SAMPLES / "diff-after.pqax")
 DIFF_EXPECTED = EXPECTED / "diff" / "diff-before.diff-after.json"
+# The members of the collection that name the collector and the times, which differ between two collections.
+COLLECTION_IDENTITY = ("collectorApp", "collectorAppVersion", "collectorLib", "collectorLibVersion", "startedAt",
+                       "completedAt")
 
 # What a writer writes: the name of the file, the sample it rewrites, its expected file, and the most rows of a part.
 JOBS = (("sample", "sample.pqax", "sample", None),
@@ -229,6 +238,21 @@ class Python:
         except ImportError as error:
             raise Skip(f"the package does not import: {error}")
         self.pqax = pqax
+
+    def extra(self, folder: Path) -> List[Tuple[Path, str, str]]:
+        """The fixture of the kit collected by python -m pqax collect, which every validator and reader then checks."""
+        try:
+            import pyarrow  # noqa: F401 - the collector reads the Delta checkpoints of the fixture with it
+        except ImportError:
+            print(f"  {self.name:<7} collector skipped: pyarrow is not installed (pip install \"pqax[collect]\")")
+            return []
+        target = folder / "collected.pqax"
+        completed = run([sys.executable, "-m", "pqax", "collect", "--local", str(FIXTURE), "--output", str(target)],
+                        cwd=ROOT, env=self.env)
+        if completed.returncode != 0 or not target.is_file():
+            raise RuntimeError(f"python -m pqax collect ended with exit code {completed.returncode}: "
+                               f"{last_lines(completed.stdout + completed.stderr)}")
+        return [(target, f"{self.name}/collected.pqax", "sample")]
 
     def write(self, jobs: List[Tuple[Path, Path, Optional[int]]]) -> None:
         for source, target, rows_per_part in jobs:
@@ -854,6 +878,59 @@ class Node:
 
 # ---- the diff ----
 
+def check_collections(files: List[Tuple[Path, str, str, bool]]) -> List[str]:
+    """What differs between the collections of the fixture by the collectors, read whole with the Python reader: every
+    table and field, a missing field counting as nulls, and the collection of the manifest without the members that
+    name the collector and the times."""
+    collected = [(path, label) for path, label, _, _ in files if label.endswith("/collected.pqax")]
+    if len(collected) < 2:
+        print("  collections: fewer than two collectors ran, so the collections are not compared")
+        return []
+    try:
+        import pqax
+    except ImportError as error:
+        return [f"collections: the Python reader does not import: {error}"]
+
+    def content(path: Path) -> Tuple[Dict[str, Any], Dict[str, Dict[str, list]], Dict[str, int]]:
+        with pqax.open(str(path)) as document:
+            names = set(pqax.TABLES) | set(document.table_names)
+            return (document.manifest.get("collection") or {}, {name: document.table(name) for name in names},
+                    {name: document.row_count(name) for name in names})
+
+    (first, first_label), problems = collected[0], []
+    try:
+        base = content(first)
+    except Exception as error:  # noqa: BLE001 - a file that cannot be read is a result
+        return [f"{first_label}: the collection could not be read: {type(error).__name__}: {error}"]
+    for path, label in collected[1:]:
+        try:
+            other = content(path)
+        except Exception as error:  # noqa: BLE001
+            problems.append(f"{label}: the collection could not be read: {type(error).__name__}: {error}")
+            continue
+        found: List[str] = []
+        for member in sorted(set(base[0]) | set(other[0])):
+            if member not in COLLECTION_IDENTITY and base[0].get(member) != other[0].get(member):
+                found.append(f"{label}: collection.{member} is {other[0].get(member)!r}, {first_label} has "
+                             f"{base[0].get(member)!r}")
+        compared = 0
+        for table in sorted(set(base[1]) | set(other[1])):
+            rows = base[2].get(table, 0)
+            if other[2].get(table, 0) != rows:
+                found.append(f"{label}: {table} has {other[2].get(table, 0)} rows, {first_label} has {rows}")
+                continue
+            left, right = base[1].get(table, {}), other[1].get(table, {})
+            for field in sorted(set(left) | set(right)):
+                a, b = left.get(field) or [None] * rows, right.get(field) or [None] * rows
+                compared += rows
+                found += [f"{label}: {table}.{field}[{index}] is {y!r}, {first_label} has {x!r}"
+                          for index, (x, y) in enumerate(zip(a, b)) if x != y]
+        print(f"  collections: {label} and {first_label}, {compared} values compared, "
+              + ("equal" if not found else f"{len(found)} differences"))
+        problems += found
+    return problems
+
+
 def check_diff(implementations: List[Any]) -> List[str]:
     """The diff of the two samples of the comparison test by each command line, against the expected diff and against
     each other. Returns the failures and prints one line for each command line."""
@@ -958,8 +1035,10 @@ def check(work: Path, skip: set, build: bool, expected: Dict[str, Dict[str, Any]
                 print(f"  {writer.name:<7} collector failed: {error}")
     print("  writers: " + ", ".join(implementation.name for implementation in implementations
                                     if hasattr(implementation, "write")) + "; the TypeScript package has no writer")
-    if any(label.endswith("/collected.pqax") for _, label, _, _ in files):
-        print("  collector: pqax collect on conformance/fixtures/lakehouse, checked against expected/sample.json")
+    collectors = [label.split("/")[0] for _, label, _, _ in files if label.endswith("/collected.pqax")]
+    if collectors:
+        print(f"  collectors: {', '.join(collectors)} on conformance/fixtures/lakehouse, checked against "
+              f"expected/sample.json")
 
     paths = [path for path, _, _, _ in files]
     expected_measures = {path.stem: json.loads(path.read_text(encoding="utf-8")) for path in MEASURES.glob("*.json")}
@@ -1021,6 +1100,7 @@ def check(work: Path, skip: set, build: bool, expected: Dict[str, Dict[str, Any]
             failures += [f"{label}: the {name} measures: {problem}" for problem in problems]
         print(f"{label:<{width}}  " + "".join(cells))
     print()
+    failures += check_collections(files)
     failures += check_diff(implementations)
     print()
     if failures:
@@ -1029,8 +1109,9 @@ def check(work: Path, skip: set, build: bool, expected: Dict[str, Dict[str, Any]
             print(f"  {failure}")
         return 1
     print(f"Every check passed: {len(files)} files, each checked by the validators and the readers of "
-          f"{', '.join(names)}, and the measures of {len(measured_paths)} of them against expected/measures; and the "
-          f"diff of the comparison test against expected/diff.")
+          f"{', '.join(names)}, and the measures of {len(measured_paths)} of them against expected/measures; the "
+          f"collections of the fixture by {len(collectors)} collectors compared with each other; and the diff of the "
+          f"comparison test against expected/diff.")
     return 0
 
 
