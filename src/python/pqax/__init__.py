@@ -13,7 +13,11 @@
     with pqax.open("footprint.pqax") as doc:
         tables = pqax.measures.measure(doc)["tables"]   # the waste and the other measures of the storage views
 
-The package needs only the standard library. to_dataframe uses pandas or polars when one is installed.
+    builder = pqax.collect.collect(pqax.collect.LocalStorage("workspace"))   # the footprint of the Delta tables
+    builder.write("footprint.pqax")
+
+The package needs only the standard library. to_dataframe uses pandas or polars when one is installed, the export
+to Parquet and Delta needs pyarrow and deltalake, and the collector reads Delta checkpoints with pyarrow.
 """
 from __future__ import annotations
 
@@ -24,7 +28,7 @@ from ._errors import (
 )
 from ._json import format_timestamp, parse_timestamp
 from ._schema import DETAIL_TABLES, FIELDS, FORMAT_VERSION, REFERENCES, REQUIRED, ROWS_PER_PART, SUMMARY_TABLES, TABLES
-from . import export, measures
+from . import collect, export, measures
 from .builder import Builder, BuilderOptions
 from .dataframe import to_dataframe
 from .reader import PqaxDocument, open, open_embedded

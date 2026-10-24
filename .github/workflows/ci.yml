@@ -26,7 +26,7 @@ jobs:
         run: dotnet test Pqax.slnx --nologo -p:ContinuousIntegrationBuild=true
       - name: Python package and tests
         run: |
-          pip install -e "src/python[dev]"
+          pip install -e "src/python[dev,collect]"
           python -m pytest tests/python -q
       # npm ci at the root installs the two workspaces and links the views to the reader.
       - name: TypeScript packages and tests
@@ -38,8 +38,8 @@ jobs:
       - name: Cross-implementation check
         run: python conformance/cross_check.py
 
-  # Every Python that pyproject.toml accepts, and the oldest and the newest of them with pandas, polars, pyarrow, and
-  # deltalake.
+  # Every Python that pyproject.toml accepts, and the oldest and the newest of them with pandas, polars, pyarrow,
+  # deltalake, and azure-identity.
   python-compat:
     runs-on: ubuntu-latest
     strategy:
@@ -48,8 +48,8 @@ jobs:
         python: ["3.10", "3.11", "3.12", "3.13", "3.14"]
         extras: ["dev"]
         include:
-          - { python: "3.10", extras: "dev,pandas,polars,parquet,delta" }
-          - { python: "3.14", extras: "dev,pandas,polars,parquet,delta" }
+          - { python: "3.10", extras: "dev,pandas,polars,parquet,delta,collect,azure" }
+          - { python: "3.14", extras: "dev,pandas,polars,parquet,delta,collect,azure" }
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7

@@ -230,6 +230,17 @@ A reader refuses three invalid files when it opens them: `container.manifestMiss
 1. Every valid sample gives no issue. For a VPAX, validate the footprint inside it, `Footprint.pqax`: the VPAX itself is not a PQAX file.
 2. For every member of `samples/invalid/expected.json`, the validator reports every code in `codes` for that file. It may report more.
 
+### A collector test
+
+A collector meets section 4.6 of the [contracts](../docs/contracts.md) when its collection of `fixtures/lakehouse`, read from the folder with the default options, gives:
+
+1. Every table and field of `samples/sample.pqax`, value for value, except `sources.location` and `tables.location`, which are the full paths of the item and table folders on the machine, and the collection of the manifest. With `--depth summary`, `files`, and `rowGroups`, the tables of `summary-only.pqax`, `files.pqax`, and `row-groups.pqax`.
+2. The facts of the table of the reader test above, such as the unreferenced file of 737 bytes and the removal time of the non-live file.
+3. The values of the C# collector, `pqax collect --local fixtures/lakehouse`, in every table and field, and in the collection except the members that name the collector and the times. With the defaults, the collection states 17 requests and 142,178 bytes read, and 12 requests and 13,841 bytes at level 1.
+4. The footers of the probe dump, each found by the size of its file, when the collector has a footer parser of its own.
+
+`tests/python/test_collect_fixture.py` and `test_collect_footer.py`, and the C# collector tests, check the first two and the last, and `cross_check.py` the third.
+
 ### The schema
 
 The schema checks one document at a time. It has no `$id` yet, so a validator loads the two files by name.
@@ -445,12 +456,14 @@ python conformance/cross_check.py --skip dotnet    # leaves out an implementatio
 | Role | Python | C# | TypeScript |
 |---|---|---|---|
 | Writer | `Builder.from_document` | `FootprintBuilder.From`, through a runner that the .NET 10 SDK runs as a file-based app | None |
-| Collector | | `pqax collect --local fixtures/lakehouse`, when the command line builds | |
+| Collector | `python -m pqax collect --local fixtures/lakehouse`, when pyarrow is installed: `pqax[collect]` | `pqax collect --local fixtures/lakehouse`, when the command line builds | |
 | Validator | `python -m pqax check` | `pqax check`, or `PqaxValidator` when the command line does not build | `validate`, through `node` |
 | Reader | `pqax.open` | `PqaxDocument.Open` | `openPqax`, through `node` |
 | Measures | `pqax.measures.measure` | `StorageMeasures.Compute`, through the runner | `buildModel` of `@pqax/views`, through `node` and `make_measures.py` |
 
-The files are `sample.pqax`, `sample.pqax` with at most 20 rows in a detail part, and `extensions.pqax`, as each writer writes them, the fixture as the collector writes it, which must give the results of `expected/sample.json`, and the samples `sample.pqax`, `multipart.pqax`, `extensions.pqax`, and `format-0.1.pqax` of the kit. Every validator must accept every file. Every reader must get the `rows`, the length of every table read whole, and `tablesFileSize`, `tablesRowCount`, `columnChunksCompressedSize`, `tables`, and `largestColumns` of the expected file of the sample. A written file has format version 0.2 and part names of its writer, so the parts are not compared. The measures of every file, by the three implementations, must equal `expected/measures/` of its sample value for value, for the tables, the columns, and the collection; for the collected fixture, the days since the last commit are left out, since they count to the time of the collection.
+The files are `sample.pqax`, `sample.pqax` with at most 20 rows in a detail part, and `extensions.pqax`, as each writer writes them, the fixture as each collector writes it, which must give the results of `expected/sample.json`, and the samples `sample.pqax`, `multipart.pqax`, `extensions.pqax`, and `format-0.1.pqax` of the kit. Every validator must accept every file. Every reader must get the `rows`, the length of every table read whole, and `tablesFileSize`, `tablesRowCount`, `columnChunksCompressedSize`, `tables`, and `largestColumns` of the expected file of the sample. A written file has format version 0.2 and part names of its writer, so the parts are not compared. The measures of every file, by the three implementations, must equal `expected/measures/` of its sample value for value, for the tables, the columns, and the collection; for the collected fixture, the days since the last commit are left out, since they count to the time of the collection.
+
+When both collectors run, their two files of the fixture are read whole with the Python reader and compared in every table and every field, a missing field counting as nulls, and in the collection of the manifest without `collectorApp`, `collectorAppVersion`, `collectorLib`, `collectorLibVersion`, `startedAt`, and `completedAt`: the requests and the bytes read must be equal too. Without pyarrow, the Python collector is skipped with a message, and with one collector the comparison is skipped.
 
 `python -m pqax diff` and `pqax diff` in C#, when the command line builds, compare `diff-before.pqax` with `diff-after.pqax`. The JSON of each must equal `expected/diff/diff-before.diff-after.json` value for value, and the text and the JSON of the two, with the default options and with `--sort` and `--top`, must be the same text, apart from the line ends. The TypeScript package has no diff.
 

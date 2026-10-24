@@ -1,5 +1,5 @@
-"""The command line: python -m pqax check <file>, python -m pqax info <file>, python -m pqax tables <file>, and
-python -m pqax diff <older> <newer>.
+"""The command line: python -m pqax check <file>, python -m pqax info <file>, python -m pqax tables <file>,
+python -m pqax diff <older> <newer>, and python -m pqax collect, which takes the options of pqax collect in C#.
 
 check exits with 0 when the file is valid, 1 when it is not, and 2 on a usage error or a file that cannot be read.
 tables writes one row per table with the derived measures of the storage views, or one JSON object with --json.
@@ -255,6 +255,12 @@ def main(argv: Optional[List[str]] = None) -> int:
             stream.reconfigure(errors="backslashreplace")  # type: ignore[union-attr]
         except (AttributeError, ValueError):
             pass
+    arguments_given = list(sys.argv[1:] if argv is None else argv)
+    if arguments_given[:1] == ["collect"]:
+        # The collector parses its own options, as pqax collect in C# does, so that a secret given by mistake on the
+        # command line is refused without being repeated.
+        from .collect._command import run as collect_command
+        return collect_command(arguments_given[1:])
     parser = argparse.ArgumentParser(prog="pqax",
                                      description="Check and describe PQAX files, and measure their tables.")
     parser.add_argument("--version", action="version",
@@ -283,6 +289,9 @@ def main(argv: Optional[List[str]] = None) -> int:
     export.add_argument("--if-exists", choices=("error", "skip"), default="error",
                         help="when the folder already has the footprint: exit with 1, or write nothing and exit with 0 "
                              "(default: error)")
+    commands.add_parser("collect", add_help=False,
+                        help="collect the footprint of the Delta tables of a folder, a mounted lakehouse, or OneLake; "
+                             "python -m pqax collect --help lists the options")
     for command in (check, info, tables):
         command.add_argument("file", help="a .pqax file, or a .vpax file that embeds one")
         command.add_argument("--part", help=f"the embedded part of a package (default: {EMBEDDED_PART} when the file "

@@ -1,5 +1,6 @@
 # Collects the PQAX footprint of a Fabric workspace every day, and keeps it as a workflow artifact and, optionally,
-# in the footprints/ folder of the repository. Copy this file to .github/workflows/ of a private repository and set
+# in the footprints/ folder of the repository, with its tables exported as CSV, Parquet, or Delta when PQAX_EXPORT
+# names a format. Copy this file to .github/workflows/ of a private repository and set
 # the variables that templates/github-actions/README.md lists. The workflow reads OneLake and writes nothing there.
 name: PQAX footprint
 
@@ -23,6 +24,7 @@ env:
   PQAX_OPTIONS: ${{ vars.PQAX_OPTIONS }}
   PQAX_RETENTION_DAYS: ${{ vars.PQAX_RETENTION_DAYS || '30' }}
   PQAX_KEEP_DAYS: ${{ vars.PQAX_KEEP_DAYS || '90' }}
+  PQAX_EXPORT: ${{ vars.PQAX_EXPORT }}
 
 jobs:
   collect:
@@ -34,6 +36,7 @@ jobs:
       id-token: write   # the OpenID Connect token that azure/login exchanges
     outputs:
       name: ${{ steps.name.outputs.name }}
+      stem: ${{ steps.name.outputs.stem }}
     env:
       AZURE_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}
       AZURE_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
@@ -52,6 +55,10 @@ jobs:
             oidc|secret) ;;
             *) echo "::error::PQAX_SIGN_IN is oidc or secret, not '$PQAX_SIGN_IN'"; exit 1 ;;
           esac
+          case "$PQAX_EXPORT" in
+            ""|csv|parquet|delta) ;;
+            *) echo "::error::PQAX_EXPORT is csv, parquet, delta, or empty, not '$PQAX_EXPORT'"; exit 1 ;;
+          esac
 
       - name: Name the footprint
         id: name
@@ -59,6 +66,7 @@ jobs:
           # The workspace in lowercase letters, digits, and hyphens, then the date: sales-analytics-2026-10-22.pqax
           slug=$(printf '%s' "$PQAX_WORKSPACE" | tr '[:upper:]' '[:lower:]' | tr -cs 'a-z0-9' '-' | sed 's/^-*//; s/-*$//')
           echo "name=${slug:-workspace}-$(date -u +%Y-%m-%d).pqax" >> "$GITHUB_OUTPUT"
+          echo "stem=${slug:-workspace}-$(date -u +%Y-%m-%d)" >> "$GITHUB_OUTPUT"
 
       - uses: actions/setup-dotnet@v6
         with:
@@ -116,6 +124,30 @@ jobs:
           compression-level: 0   # a PQAX file is a zip already
           if-no-files-found: ignore
 
+      - uses: actions/setup-python@v7
+        if: env.PQAX_EXPORT != ''
+        with:
+          python-version: "3.12"
+
+      - name: Export the tables
+        if: env.PQAX_EXPORT != ''
+        env:
+          NAME: ${{ steps.name.outputs.name }}
+        run: |
+          # The Python package of the same release: CSV needs nothing more, Parquet pyarrow, Delta deltalake.
+          if [ "$PQAX_EXPORT" = csv ]; then package="pqax==$PQAX_VERSION"; else package="pqax[$PQAX_EXPORT]==$PQAX_VERSION"; fi
+          python -m pip install --quiet --disable-pip-version-check "$package"
+          python -m pqax export "out/$NAME" --to out/export --format "$PQAX_EXPORT"
+
+      - name: Keep the export as an artifact
+        if: ${{ !cancelled() && env.PQAX_EXPORT != '' && steps.name.outputs.stem != '' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ steps.name.outputs.stem }}-export
+          path: out/export
+          retention-days: ${{ env.PQAX_RETENTION_DAYS }}
+          if-no-files-found: ignore
+
   commit:
     needs: collect
     if: vars.PQAX_COMMIT == 'true'
@@ -129,6 +161,22 @@ jobs:
         with:
           name: ${{ needs.collect.outputs.name }}
           path: footprints
+
+      - uses: actions/setup-python@v7
+        if: env.PQAX_EXPORT != ''
+        with:
+          python-version: "3.12"
+
+      - name: Append the export
+        if: env.PQAX_EXPORT != ''
+        env:
+          NAME: ${{ needs.collect.outputs.name }}
+        run: |
+          # The export of the repository grows day after day: each footprint appends its rows to the same tables, and
+          # a footprint already there is skipped.
+          if [ "$PQAX_EXPORT" = csv ]; then package="pqax==$PQAX_VERSION"; else package="pqax[$PQAX_EXPORT]==$PQAX_VERSION"; fi
+          python -m pip install --quiet --disable-pip-version-check "$package"
+          python -m pqax export "footprints/$NAME" --to exports --format "$PQAX_EXPORT" --if-exists skip
 
       - name: Prune old footprints and commit
         env:
@@ -144,6 +192,7 @@ jobs:
             fi
           done
           git add footprints
+          if [ -d exports ]; then git add exports; fi
           if git diff --cached --quiet; then
             echo "Nothing to commit."
             exit 0
