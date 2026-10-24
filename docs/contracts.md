@@ -414,6 +414,24 @@ pqax.diff.ORDERS                                                         # ("tot
 python -m pqax diff <older> <newer> [--part NAME] [--sort total|waste|rows|files|name] [--top N] [--json]
 ```
 
+The collector of section 4.6 is in the subpackage `pqax.collect`, as decided on 23 October 2026: the Delta log reader and the footer parser, which needs the standard library only, at levels 1 and 2. pyarrow reads the Delta checkpoints in Parquet, with the extra `pqax[collect]`, and azure-identity gives the identities of the Azure SDK, with the extra `pqax[azure]`; a missing library raises `ImportError` naming the extra, and the command exits with 2 and names it. The options, the defaults, the issue codes, the output lines, and the exit codes are those of `pqax collect` in C#. `--mount` reads the folder of one item that holds `Tables`, such as the default lakehouse of a Fabric notebook, and `--endpoint` another DFS endpoint, such as an ADLS Gen2 account.
+
+```python
+pqax.collect.collect(storage, tables=None, *, items=None, level=2, depth="columnChunks", max_footers=0, max_commits=30,
+                     parallelism=16, include_data_values=False, include_partition_values=False, options=None,
+                     progress=None, checkpoint_reader="auto") -> pqax.Builder
+pqax.collect.LocalStorage(root), LocalStorage.mount(folder, item=None)
+pqax.collect.OneLakeStorage(workspace, token_provider, *, endpoint="https://onelake.dfs.fabric.microsoft.com", max_retries=4,
+                            timeout=300.0, trace=None)
+pqax.collect.list_items(storage), discover(storage, item) -> list[TableLocation]
+pqax.collect.parse_footer(data, include_data_values=False) -> ParquetFooter      # FooterError(code, message) on bad bytes
+pqax.collect.CollectorOptions, DetailDepth, CollectionProgress, IssueCodes, ISSUE_CODES, ArrowCheckpointReader
+pqax.collect.identity.TokenCache(get_token), access_token(value), azure_cli(tenant=None), azure_credential(credential)
+python -m pqax collect --local <folder> | --mount <folder> | --workspace <name or id> --item <name.Kind> ... --output <file>
+                       [--endpoint <url>] [identity] [--depth ...] [--level 1|2] [--max-footers n] [--max-commits n]
+                       [--parallelism n] [--verbose]
+```
+
 ### 4.6 Collector
 
 Namespace `Pqax.Collector`. The storage access, the Delta log, the tail read of a footer, and the allow-list of footer keys were first tried in a probe that preceded the collector, on a real Fabric lakehouse and warehouse; the collector supersedes it.
@@ -439,6 +457,8 @@ public sealed class PqaxCollector
 The collector parses Parquet footers itself, from the Thrift compact protocol and `parquet.thrift`, and reads a footer with one request in the common case: the tail of the file first, then more when the footer is longer. Without an `ICheckpointReader`, a table whose log needs a checkpoint gets an issue, and its summary holds what the JSON commits say. `Pqax.Collector.ParquetNet` provides the checkpoint reader with Parquet.Net, with the definition-level handling that the probe needed. Data values are never kept unless the options ask for them, and footer key-value metadata is kept only for keys on the allow-list. A failure on one table or file becomes an issue, and the collection goes on.
 
 At every collection level, the collector lists the folder of each table, at any depth, to count the unreferenced files of format 0.2: one request for each folder, or the pages of one recursive listing where the storage has one. A listing that fails becomes an issue, `AccessDenied` for a 403 and `DataFilesNotListed` otherwise, and the two unreferenced fields of the table are then absent.
+
+Two collectors meet this contract: `Pqax.Collector` in C#, the reference, and `pqax.collect` in Python, a port of it with the same options, reads, totals, issue codes, and limits, as section 4.5 lists. Their footprints of `conformance/fixtures/lakehouse` hold the same values in every table and field, the requests and the bytes of the collection included, and differ only in the members of the collection that name the collector and the times, which `conformance/cross_check.py` checks. The message of an issue that quotes the error of a JSON parser is worded by that parser; the codes do not differ.
 
 ## 5. Tests
 

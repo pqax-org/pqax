@@ -7,7 +7,7 @@
 | Version | 0.2.0 |
 | Format | Reads 0.1 and 0.2, writes 0.2. Reads every other version 0.x. |
 | Python | 3.10 or later |
-| Dependencies | None. `to_dataframe` uses pandas, or polars 1.0 or later, when one is installed. `export` writes Parquet with pyarrow and Delta with deltalake, when they are installed. |
+| Dependencies | None. `to_dataframe` uses pandas, or polars 1.0 or later, when one is installed. `export` writes Parquet with pyarrow and Delta with deltalake, when they are installed. `collect` reads Delta checkpoints with pyarrow, and signs in to OneLake with azure-identity when asked. |
 
 ## Install
 
@@ -17,6 +17,8 @@ pip install "pqax[pandas]"             # with pandas, for to_dataframe
 pip install "pqax[polars]"             # with polars, for to_dataframe
 pip install "pqax[parquet]"            # with pyarrow, for export to Parquet
 pip install "pqax[delta]"              # with deltalake and pyarrow, for export to Delta
+pip install "pqax[collect]"            # with pyarrow, for the collector
+pip install "pqax[azure]"              # with azure-identity, for the sign-in of the collector
 ```
 
 From the root of the repository:
@@ -27,7 +29,7 @@ pip install -e "src/python[pandas]"    # with pandas, for to_dataframe
 pip install -e "src/python[dev]"       # with pytest and jsonschema, for the tests
 ```
 
-Python versions: 3.10 or later. The tests run on 3.10 and 3.14, each without extras and with both pandas and polars. The package has no dependency: the `pandas` and `polars` extras only install the library that `to_dataframe` uses, and the `parquet` and `delta` extras the libraries that `export` uses. The tests run with pyarrow and deltalake where they run with pandas and polars.
+Python versions: 3.10 or later. The tests run on 3.10 and 3.14, each without extras and with both pandas and polars. The package has no dependency: the `pandas` and `polars` extras only install the library that `to_dataframe` uses, the `parquet` and `delta` extras the libraries that `export` uses, and the `collect` and `azure` extras those that `collect` uses. The tests run with pyarrow, deltalake, and azure-identity where they run with pandas and polars.
 
 ## Read a file
 
@@ -174,9 +176,10 @@ python -m pqax info model.vpax           # a VPAX file: the PQAX file that it em
 python -m pqax tables footprint.pqax     # one row per table: rows, files, live bytes, waste, and waste share
 python -m pqax export footprint.pqax --to exports   # the tables and their measures as CSV, Parquet, or Delta
 python -m pqax diff monday.pqax friday.pqax   # the tables and columns added, removed, and kept, the largest change first
+python -m pqax collect --local workspace --output footprint.pqax   # the footprint of the Delta tables of a folder or OneLake
 ```
 
-`check` prints one line for each issue, its code first, then a summary line. The commands take `--part NAME` for another embedded part. `tables` takes `--sort waste|total|rows|files|name`, `--top N`, `--wide` for the small files and the overhead, and `--json` for one JSON object; it writes what `pqax tables` of [Pqax.Cli](https://github.com/pqax-org/pqax/blob/main/src/dotnet/Pqax.Cli/README.md#tables) writes. `diff` takes `--sort total|waste|rows|files|name`, `--top N`, and `--json`, and `--part NAME` for both files; it writes what `pqax diff` of [Pqax.Cli](https://github.com/pqax-org/pqax/blob/main/src/dotnet/Pqax.Cli/README.md#diff) writes, the same text and the same JSON. The installed package also has a `pqax` command.
+`check` prints one line for each issue, its code first, then a summary line. The commands take `--part NAME` for another embedded part. `tables` takes `--sort waste|total|rows|files|name`, `--top N`, `--wide` for the small files and the overhead, and `--json` for one JSON object; it writes what `pqax tables` of [Pqax.Cli](https://github.com/pqax-org/pqax/blob/main/src/dotnet/Pqax.Cli/README.md#tables) writes. `diff` takes `--sort total|waste|rows|files|name`, `--top N`, and `--json`, and `--part NAME` for both files; it writes what `pqax diff` of [Pqax.Cli](https://github.com/pqax-org/pqax/blob/main/src/dotnet/Pqax.Cli/README.md#diff) writes, the same text and the same JSON. `collect` takes the options of `pqax collect` in C#, as the section below says. The installed package also has a `pqax` command.
 
 ## Export the tables, day after day
 
@@ -232,6 +235,72 @@ A footprint whose id the `footprints` table of the folder already has is refused
 
 In a Fabric notebook, `--to /lakehouse/default/Tables --format delta` writes the tables straight into the lakehouse attached to the notebook.
 
+## Collect a footprint
+
+`pqax.collect` collects the footprint of the Delta tables of a lakehouse and writes it as a PQAX file. It is a port of the C# collector, [Pqax.Collector](https://github.com/pqax-org/pqax/blob/main/src/dotnet/Pqax.Collector/README.md), and that README describes what both read and what they keep: the options, the requests, the commits read, the unreferenced files, the locations, the issues, the footer failures, and the footer parser. It reads the Delta log of each table and, at level 2, the footer of each Parquet file, never a row, and it keeps no data value unless asked. On the synthetic lakehouse of the conformance kit its footprint holds the same values as the one of `pqax collect` in C#, in every table and field, and the requests and bytes too; only the members of the collection that name the collector and the times differ, and [cross_check.py](https://github.com/pqax-org/pqax/blob/main/conformance/README.md#cross-implementation-check) checks it.
+
+| Extra | Installs | For |
+|---|---|---|
+| `pqax[collect]` | pyarrow 16 or later | The Delta checkpoints in Parquet. The Delta log in JSON, the checkpoints in JSON, and the footers, which the collector parses itself from the Thrift compact protocol, need the standard library only. |
+| `pqax[azure]` | azure-identity 1.15 or later | The sign-in identities of the Azure SDK: the device code, the browser, a service principal, a managed identity, and the environment |
+
+```bash
+pip install "pqax[collect]"                                                                        # a folder or a notebook
+pip install "pqax[collect,azure]"                                                                  # OneLake with a sign-in
+python -m pqax collect --local workspace --output footprint.pqax                                   # a folder in the OneLake layout
+python -m pqax collect --mount /lakehouse/default --item Sales.Lakehouse --output sales.pqax       # the lakehouse of a notebook
+python -m pqax collect --workspace "My Workspace" --item Sales.Lakehouse --output sales.pqax --access-token-env PQAX_TOKEN
+python -m pqax collect --workspace "My Workspace" --item Sales.Lakehouse --output sales.pqax --azure-cli
+python -m pqax collect --workspace "My Workspace" --item Sales.Lakehouse --output sales.pqax       # a device code, with pqax[azure]
+```
+
+The command has the options of `pqax collect` in C#, with the same names, defaults, checks, and messages: `--local`, `--workspace`, `--item`, `--output`, `--depth`, `--level`, `--max-footers`, `--max-commits`, `--parallelism`, `--verbose`, and the identities of the [Pqax.Cli README](https://github.com/pqax-org/pqax/blob/main/src/dotnet/Pqax.Cli/README.md#identities). It prints the same lines, with counts and never the name of a table, and has the same exit codes: 0 when the file is written and valid, 1 when it is written and not valid, 2 for a wrong command line or a failure, such as a missing folder, no table, a refused sign-in or token, or a missing library. A secret given on the command line, as `--client-secret` or `--access-token`, is refused without being repeated. Two options are Python's own:
+
+| Option | What it does |
+|---|---|
+| `--mount <folder>` | Reads the folder of one item, which holds `Tables`, as `/lakehouse/default` where a Fabric notebook mounts its default lakehouse. The folder has no item level, so `--item` names the item, such as `Sales.Lakehouse`; without it, the item is the name of the folder as a lakehouse. The locations are the full paths of the folders, as with `--local`. |
+| `--endpoint <url>` | With `--workspace`, the DFS endpoint, `https://onelake.dfs.fabric.microsoft.com` by default. An ADLS Gen2 account has the same API: `--endpoint https://<account>.dfs.core.windows.net`, with the container as the workspace. |
+
+| Identity | Needs |
+|---|---|
+| `--access-token-env NAME` | Nothing more. The token for `https://storage.azure.com` is in the environment variable NAME, as a notebook gives it with `notebookutils.credentials.getToken("storage")`. An expired token stops the command, and a token for another audience gets a warning. |
+| `--azure-cli [--tenant <id>]` | The Azure CLI, signed in with `az login`: the command runs `az account get-access-token --resource https://storage.azure.com` |
+| None, `--device-code`, `--browser`, `--client-id` with `--client-secret-env` or `--client-certificate`, `--managed-identity`, `--env-credential` | `pqax[azure]`. Without it, the command exits with 2 and a line that names the extra. |
+
+The function does the same from Python and returns a `pqax.Builder`:
+
+```python
+import pqax.collect as collect
+
+storage = collect.LocalStorage.mount("/lakehouse/default", "Sales.Lakehouse")     # or LocalStorage("workspace")
+builder = collect.collect(storage, level=2, max_commits=30)                      # every table of every item
+builder.collection = {"collectorApp": "my notebook", "collectorAppVersion": "1", **builder.collection}
+builder.write("sales.pqax")
+
+token = notebookutils.credentials.getToken("storage")
+storage = collect.OneLakeStorage("My Workspace", lambda: token)                  # a token provider, called per request
+tables = collect.discover(storage, "Sales.Lakehouse")
+builder = collect.collect(storage, tables, depth="files", progress=print)
+
+from azure.identity import DefaultAzureCredential
+provider = collect.identity.TokenCache(collect.identity.azure_credential(DefaultAzureCredential()))
+storage = collect.OneLakeStorage("My Workspace", provider)                       # a token cached until 5 minutes before it expires
+```
+
+| Name | What it is |
+|---|---|
+| `collect(storage, tables=None, *, items=None, level=2, depth="columnChunks", max_footers=0, max_commits=30, parallelism=16, include_data_values=False, include_partition_values=False, options=None, progress=None, checkpoint_reader="auto")` | The footprint of the tables, or of every table of `items`, or of every item that `list_items` finds. It returns a `Builder` whose `collection` has `collectorLib` `pqax.collect`, its version, the times, the level, and the requests and bytes; the caller sets `collectorApp` and `collectorAppVersion`. `checkpoint_reader="auto"` reads the checkpoints with pyarrow and raises `ImportError` naming `pqax[collect]` without it; `None` reads none, and a table that needs its checkpoint then gets the issue `DeltaCheckpointNotRead`. A failure on one table or file becomes an issue, and the collection goes on. |
+| `CollectorOptions`, `DetailDepth`, `CollectionProgress` | The options of `CollectorOptions` in C#, in snake case, with `validate()`; the depths `SUMMARY`, `FILES`, `ROW_GROUPS`, `COLUMN_CHUNKS`; what `progress` receives each time a table is done |
+| `LocalStorage(root)`, `LocalStorage.mount(folder, item=None)`, `OneLakeStorage(workspace, token_provider, *, endpoint=..., max_retries=4, timeout=300, trace=None)` | The storages: `list(path)`, `read_range(path, offset, length)`, `list_files(path, excluded)`, `location_of(path)`, `identifiers_of(item)`, `request_count`, `bytes_read`. `OneLakeStorage` sends GET requests only, retries 429 and 5xx with `Retry-After`, keeps one connection per thread, goes through the proxy of `HTTPS_PROXY`, and traces `GET <url> -> <status>`, never a header. |
+| `StorageEntry`, `StorageError` | An entry of a listing; a failed request, with `status`, `is_not_found`, and `is_access_denied`, and a message without a path |
+| `list_items(storage)`, `discover(storage, item)`, `TableLocation`, `SourceKinds` | The discovery of `TableDiscovery` in C# |
+| `parse_footer(data, include_data_values=False)`, `FooterReader`, `FooterTailPlanner`, `FooterError`, `ParquetFooter` and its parts | The footer parser, usable alone. It raises `FooterError`, with the issue code in `code`, and nothing else on bad bytes. |
+| `ArrowCheckpointReader`, `AddAction`, `RemoveAction`, `MetadataAction`, `ProtocolAction`, `DomainMetadataAction`, `SidecarAction`, `CheckpointMetadataAction`, `CommitInfoAction`, `DeletionVector` | The checkpoint reader, and the actions that another reader, a callable `(storage, path) -> actions`, returns |
+| `IssueCodes`, `ISSUE_CODES` | The 17 issue codes of the C# collector |
+| `identity` | `TokenCache`, `access_token`, `azure_cli`, `azure_credential`, `create_credential`, `SignInError` |
+
+What differs from C#: the message of an issue that quotes the error of a JSON parser, since the two parsers word their errors differently; the codes are the same. The tables are collected on threads, as many as `parallelism`, and the requests in flight never exceed it.
+
 ## API
 
 | Name | What it is |
@@ -246,6 +315,7 @@ In a Fabric notebook, `--to /lakehouse/default/Tables --format delta` writes the
 | `export` | `export(path_or_file, to, format="csv", part=None, if_exists="error")`, `COLUMNS`, `SCHEMAS`, `FORMATS`, `footprint_id(data)`, `AlreadyExportedError`. See above. |
 | `Builder`, `BuilderOptions` | The writer |
 | `diff` | The comparison of two footprints. See above. |
+| `collect` | The collector. See above. |
 | `format_timestamp(datetime)`, `parse_timestamp(text)` | Timestamps in the form of the format, `2026-10-05T08:15:30.000Z` |
 | `TABLES`, `SUMMARY_TABLES`, `DETAIL_TABLES`, `FIELDS`, `REQUIRED`, `REFERENCES` | The names of the format |
 
@@ -264,6 +334,7 @@ All derive from `PqaxError`, whose `code` is the validation code that the error 
 
 ## Limits
 
+- The collector has the limits of the C# collector: levels 1 and 2, Delta tables only, checkpoints up to 512 MB, the log compaction files counted and not used, and every file of a table in memory until the footprint is built. Its footer parser is plain Python: about 25 microseconds per column chunk on a laptop, so about half a minute of parsing for a million column chunks.
 - The reader keeps a table in memory once it is read. A part of 250,000 column chunks takes about 0.15 s to parse.
 - A part that holds more than 1 GB of JSON text is not read, and is reported or raised as such.
 - The rows of a part are the length of its longest array, not what the manifest states, so that a file that states more rows than it holds cannot make the reader allocate them. In a valid file the two agree.
