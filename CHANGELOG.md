@@ -2,6 +2,16 @@
 
 The packages of a release share its version number, as section 7.1 of the [contracts](docs/contracts.md) says.
 
+## Unreleased
+
+### PyPI
+
+`pqax export --format delta` writes into a mounted lakehouse: `/lakehouse/default/Tables` in a Fabric notebook, or `/dbfs` on Databricks. deltalake commits the Delta log by renaming a file, and the mount has no rename, so the export turns on its option `allow_unsafe_rename` there, which commits by a copy and a delete. The first run of the Fabric notebook found it on 24 October 2026.
+
+### Templates
+
+`fabric/pqax-footprint.ipynb` ran in a Fabric workspace on 24 October 2026, from the editor: the install, the collection of the default lakehouse over the mount, the check, and the copy into `Files` worked, and the export failed on the rename above until this fix. Two runs started by the job API, which Fabric treats as scheduled runs, failed in their first statement where the editor passed it: for a schedule or a pipeline, put `pqax[collect,delta]` in an Environment of the workspace and attach it to the notebook instead of the install cell, as its README now says.
+
 ## 0.2.1 - 2026-10-24
 
 The tools of the plan, with no change to the format. `pqax collect` signs in without a person and reads Azure Data Lake Storage Gen2 with `--adls`, where a folder of Parquet files is a table; templates collect a footprint on a schedule from GitHub Actions or from a Fabric notebook; `pqax tables` shows the derived measures of the storage views, which section 10 of the object model defines and C#, Python, and TypeScript compute the same way; `pqax export` writes the tables of a footprint as CSV, Parquet, or Delta, with a Power BI template over them; `pqax diff` compares two footprints of the same lakehouse; and the Python package has the collector, `pqax.collect`, with the same footprint as the C# one. The format does not change.

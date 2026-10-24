@@ -45,6 +45,17 @@ FOOTPRINTS = "footprints"
 """The table with one row for each footprint exported. It is written last, so a footprint in it is complete."""
 
 _EXTRAS = {"parquet": ("pyarrow",), "delta": ("deltalake", "pyarrow")}
+_MOUNTS_WITHOUT_RENAME = ("/lakehouse/", "/dbfs/")
+
+
+def _delta_storage_options(location: Any) -> Optional[Dict[str, str]]:
+    """The storage options of deltalake for a folder. deltalake commits the Delta log by renaming a file, and a mounted
+    file system such as /lakehouse/default in a Fabric notebook or /dbfs on Databricks has no rename: its option
+    allow_unsafe_rename commits by a copy and a delete there. A plain folder needs no option."""
+    path = str(location).replace("\\", "/")
+    return {"allow_unsafe_rename": "true"} if path.startswith(_MOUNTS_WITHOUT_RENAME) else None
+
+
 
 # The kind of a column: string, integer, number, boolean, timestamp, date, or json (the text of a list, a map, or an
 # object). The kind is fixed by the format, not by the values, so that the exports of several days have one schema.
@@ -407,7 +418,8 @@ class _Writer:
             return ids
         if not _is_delta(location):
             return []
-        table = self.modules["deltalake"].DeltaTable(location).to_pyarrow_table(columns=["footprintId"])
+        table = self.modules["deltalake"].DeltaTable(location, storage_options=_delta_storage_options(location))
+        table = table.to_pyarrow_table(columns=["footprintId"])
         return table["footprintId"].to_pylist()
 
     def check(self, table: _Table) -> None:
@@ -448,7 +460,8 @@ class _Writer:
             self.modules["pyarrow.parquet"].write_table(data, temporary)
             os.replace(temporary, target)
             return
-        self.modules["deltalake"].write_deltalake(location, data, mode="append", schema_mode="merge")
+        self.modules["deltalake"].write_deltalake(location, data, mode="append", schema_mode="merge",
+                                                  storage_options=_delta_storage_options(location))
 
 
 def export(path_or_file: Any, to: Any, *, format: str = "csv", part: Optional[str] = None, if_exists: str = "error",

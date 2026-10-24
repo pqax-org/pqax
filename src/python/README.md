@@ -183,7 +183,7 @@ python -m pqax collect --local workspace --output footprint.pqax   # the footpri
 
 ## Export the tables, day after day
 
-`pqax.export` writes the tables of a footprint and its derived measures as CSV, Parquet, or Delta, so that a BI tool or a lakehouse can load them. The exports of several days go into the same folder and append to the same tables, and each row says which footprint it comes from. The [Power BI template](https://github.com/pqax-org/pqax/blob/main/templates/powerbi/README.md) reads them.
+`pqax.export` writes the tables of a footprint and its derived measures as CSV, Parquet, or Delta, so that a BI tool or a lakehouse can load them. The exports of several days go into the same folder and append to the same tables, and each row says which footprint it comes from. The [Power BI template](https://github.com/pqax-org/pqax/blob/main/templates/powerbi/README.md) reads them. On a mounted file system without rename, `/lakehouse/default` in a Fabric notebook or `/dbfs` on Databricks, the Delta log is committed by a copy and a delete, the option `allow_unsafe_rename` of deltalake, which the export turns on there by itself.
 
 ```bash
 python -m pqax export footprint.pqax --to exports                    # CSV, with the standard library only

@@ -1048,3 +1048,16 @@ def test_the_command_runs_in_a_process_of_its_own(tmp_path):
     assert completed.returncode == 0, completed.stdout + completed.stderr
     assert SAMPLE_ID in completed.stdout.rstrip("\n").splitlines()[-1]
     assert read_csv(to / "footprints.csv")[1][0][0] == SAMPLE_ID
+
+
+@pytest.mark.parametrize("location, expected", [
+    ("/lakehouse/default/Tables", {"allow_unsafe_rename": "true"}),
+    ("/lakehouse/default/Tables/footprints", {"allow_unsafe_rename": "true"}),
+    ("/dbfs/mnt/exports", {"allow_unsafe_rename": "true"}),
+    ("exports", None), ("/data/exports", None), ("C:\exports\Tables", None), ("/lakehouse", None)])
+def test_delta_on_a_mount_without_rename_commits_by_copy_and_delete(location, expected):
+    """The mount of a Fabric notebook or of Databricks has no rename, which deltalake uses to commit: the export
+    turns on allow_unsafe_rename there and nowhere else."""
+    from pqax.export import _delta_storage_options
+
+    assert _delta_storage_options(location) == expected

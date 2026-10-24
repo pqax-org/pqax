@@ -2,7 +2,7 @@
 
 [`pqax-footprint.ipynb`](pqax-footprint.ipynb) collects the footprint of the default lakehouse of a Fabric notebook, or of items of a workspace, with the collector of the Python package, `python -m pqax collect`, as the identity that runs the notebook. It keeps the file in the `Files` area of the default lakehouse, and exports its tables and their measures as Delta tables into the `Tables` of the lakehouse, where the [Power BI template](../powerbi/README.md) reads them in Direct Lake.
 
-**This notebook has not run in a Fabric workspace yet.** Its cells ran outside Fabric, as the last section says. The first run in a workspace confirms what that section lists as not verified.
+**The notebook ran in a Fabric workspace on 24 October 2026**, from the editor, up to the export: with 0.2.1 the export failed on the Delta commit over the mount, which 0.2.2 fixes. The last section says what is verified. A run started by a schedule, a pipeline, or the job API does not run the install cell: see "Run it every day".
 
 | Cell | What it does |
 |---|---|
@@ -24,7 +24,7 @@ The notebook runs as a PySpark notebook or as a Python notebook: it uses Python,
 
 ## Run it every day
 
-A notebook has its own schedule: in the notebook, Run, Schedule, with a daily repetition. To pass parameters, or to collect several lakehouses or workspaces, create a pipeline with one Notebook activity per run of the notebook, set the parameters under Base parameters with the names of the parameter cell, and give the pipeline a schedule trigger, such as every day at 04:00. Link the activities that export into the same tables with On success, so that they run one after the other: two exports that append to the same Delta table at the same time can conflict. A scheduled run uses the token of the identity that owns the schedule or the pipeline, so that identity needs the role on every workspace collected. The files of the lakehouse are not pruned: a later cell or a pipeline step can delete the footprints older than a number of days.
+A run started by a schedule, a pipeline, or the job API does not run `%pip`: two such runs failed in their first statement on 24 October 2026 where the editor passed it. For a schedule, create an Environment in the workspace with the library `pqax[collect,delta]`, attach it to the notebook, and delete the install cell. A notebook has its own schedule: in the notebook, Run, Schedule, with a daily repetition. To pass parameters, or to collect several lakehouses or workspaces, create a pipeline with one Notebook activity per run of the notebook, set the parameters under Base parameters with the names of the parameter cell, and give the pipeline a schedule trigger, such as every day at 04:00. Link the activities that export into the same tables with On success, so that they run one after the other: two exports that append to the same Delta table at the same time can conflict. A scheduled run uses the token of the identity that owns the schedule or the pipeline, so that identity needs the role on every workspace collected. The files of the lakehouse are not pruned: a later cell or a pipeline step can delete the footprints older than a number of days.
 
 ## What is verified
 
@@ -32,9 +32,9 @@ A notebook has its own schedule: in the notebook, Run, Schedule, with a daily re
 |---|---|
 | The notebook is valid JSON of nbformat 4.5, with cell ids, and each code cell but `%pip` parses as Python | Done |
 | Every code cell run in order outside Fabric, on Windows with Python 3.14, the package of this branch, pyarrow 26, and deltalake 1.6.6, with a stub of `notebookutils` and the parameters set as a pipeline sets them: `SOURCE = "lakehouse"` with a copy of the lakehouse of the synthetic fixture as `MOUNT`, and `SOURCE = "workspace"` against a local fake of the DFS endpoint over the fixture, through `--endpoint` in `EXTRA_OPTIONS`. Both wrote a valid footprint, checked, described, and exported it as 18 Delta tables. On the same fake endpoint, `pqax.collect` and the C# collector gave the same footprint field by field, the requests and the bytes included. | Done |
-| `%pip install "pqax[collect,delta]==0.2.1"` in a Fabric notebook: 0.2.1 is on PyPI since 24 October 2026, and the notebook has not run in Fabric yet | Not verified |
-| That `/lakehouse/default` lists the tables of the default lakehouse with their `_delta_log` folders, and that `notebookutils.runtime.context` has `defaultLakehouseName` and `currentWorkspaceName` | Not verified |
+| `%pip install "pqax[collect,delta]"` in a Fabric notebook, from the editor | Verified on 24 October 2026 with 0.2.1 |
+| That `/lakehouse/default` lists the tables of the default lakehouse with their `_delta_log` folders, and that `notebookutils.runtime.context` has `defaultLakehouseName` and `currentWorkspaceName` | Verified on 24 October 2026: the collection over the mount gave the footprint of the lakehouse |
 | That `notebookutils.credentials.getToken("storage")` gives a token that OneLake accepts for the DFS endpoint, and how long it lasts | Not verified |
-| That deltalake writes Delta tables into `/lakehouse/default/Tables` that the lakehouse shows as tables, and that Direct Lake reads | Not verified |
-| That `/lakehouse/default/Files` is writable from the notebook | Not verified |
+| That deltalake writes Delta tables into `/lakehouse/default/Tables` that the lakehouse shows as tables, and that Direct Lake reads | Failed on 24 October 2026 with 0.2.1: the mount has no rename, which deltalake uses to commit the log. 0.2.2 commits by a copy and a delete there. To verify again |
+| That `/lakehouse/default/Files` is writable from the notebook | Verified on 24 October 2026: the footprint was copied into `Files/footprints` |
 | A scheduled run, and a run from a pipeline with base parameters | Not verified |
