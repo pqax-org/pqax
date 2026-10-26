@@ -6,12 +6,13 @@ import datetime
 import os
 import re
 import sys
+import urllib.parse
 from typing import Any, Callable, List, Optional, TextIO, Tuple
 
 from .. import __version__
 from ..validator import validate
 from .collector import CollectionProgress, DetailDepth, collect
-from .discovery import discover, list_items
+from .discovery import DEFAULT_FOLDER_DEPTH, discover, discover_folder, list_items
 from .identity import SignInError, TokenCache, access_token, azure_cli, azure_credential, create_credential
 from .storage import DEFAULT_ENDPOINT, LocalStorage, OneLakeStorage, StorageError
 
@@ -23,6 +24,12 @@ _SECRET_OPTIONS = ("--client-secret", "--access-token", "--client-certificate-pa
 _VARIABLE = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
 _AAD_CODE = re.compile(r"AADSTS\d+")
 _UTC = datetime.timezone.utc
+#: The name of a filesystem (container) of a storage account: 3 to 63 lowercase letters, digits, and single dashes.
+_FILESYSTEM = re.compile(r"[a-z0-9](?!.*--)[a-z0-9-]{1,61}[a-z0-9]")
+_DOT = re.compile(r"%2[eE]")
+#: A host name of --adls: letters, digits, dashes, dots, and underscores. An IPv6 address is in brackets.
+_HOST = re.compile(r"[\w.-]+")
+_ADLS_FORM = "--adls takes https://<account>.dfs.core.windows.net/<container>[/<folder>]"
 
 _IDENTITY_MODES = {
     "--device-code": "device-code", "--browser": "browser", "--managed-identity": "managed-identity",
@@ -38,6 +45,13 @@ class Options:
         self.local: Optional[str] = None
         self.mount: Optional[str] = None
         self.workspace: Optional[str] = None
+        #: The URL of a folder of an ADLS Gen2 container, and what it names: the DFS endpoint of the account, such as
+        #: https://<account>.dfs.core.windows.net, the filesystem (container), and the folder, decoded, "" for the
+        #: container itself.
+        self.adls: Optional[str] = None
+        self.adls_endpoint: Optional[str] = None
+        self.adls_file_system: Optional[str] = None
+        self.adls_folder = ""
         self.items: List[str] = []
         self.output: Optional[str] = None
         self.endpoint: Optional[str] = None
@@ -81,7 +95,7 @@ def parse(args: List[str]) -> Tuple[Optional[Options], Optional[str]]:
             return None
 
         value: Optional[str]
-        if arg in ("--local", "--mount", "--workspace", "--output", "--tenant", "--client-id", "--endpoint"):
+        if arg in ("--local", "--mount", "--workspace", "--adls", "--output", "--tenant", "--client-id", "--endpoint"):
             value = following()
             name = arg[2:].replace("-", "_")
             if name == "client_id":
@@ -153,8 +167,15 @@ def parse(args: List[str]) -> Tuple[Optional[Options], Optional[str]]:
             return None, f"{arg} needs a value."
         i += 1
 
-    if sum(source is not None for source in (options.local, options.mount, options.workspace)) != 1:
-        return None, "give one of --local, --mount, or --workspace."
+    if sum(source is not None for source in (options.local, options.mount, options.workspace, options.adls)) != 1:
+        return None, "give one of --local, --mount, --workspace, or --adls."
+    if options.adls is not None:
+        if options.items:
+            return None, "--item does not apply to --adls: the tables are found under the folder of the URL."
+        problem, parts = parse_adls(options.adls)
+        if parts is None:
+            return None, problem
+        options.adls_endpoint, options.adls_file_system, options.adls_folder = parts
     if options.workspace is not None and not options.items:
         return None, "--workspace needs at least one --item."
     if options.mount is not None and len(options.items) > 1:
@@ -164,10 +185,63 @@ def parse(args: List[str]) -> Tuple[Optional[Options], Optional[str]]:
     if options.endpoint is not None and options.workspace is None:
         return None, "--endpoint applies to --workspace only."
     if (identity is not None or options.tenant is not None or options.client_id is not None
-            or options.password_variable is not None) and options.workspace is None:
-        return None, "--tenant, --client-id, and the identity options apply to --workspace only."
+            or options.password_variable is not None) and options.workspace is None and options.adls is None:
+        return None, "--tenant, --client-id, and the identity options apply to --workspace and --adls only."
     problem = _check(options, identity)
     return (None, problem) if problem is not None else (options, None)
+
+
+def parse_adls(url: str) -> Tuple[Optional[str], Optional[Tuple[str, str, str]]]:
+    """Splits the URL of --adls into the DFS endpoint of the account, the filesystem, and the folder, as ParseAdls of
+    the C# command, or gives the problem. It takes https://<account>.dfs.core.windows.net/<filesystem>[/<folder>] and
+    abfss://<filesystem>@<account>.dfs.core.windows.net[/<folder>]. A problem never quotes the URL, which could carry
+    a SAS token.
+
+    The URL is read as System.Uri reads it in C#: the scheme and the host in lower case, the default port 443 left out,
+    a backslash taken for a slash, the . and .. segments of the path resolved, and the segments decoded."""
+    if "?" in url or "#" in url:
+        return ("--adls takes a URL without a query: a SAS token is not accepted, since it would stay in the shell "
+                "history. Sign in with one of the identities."), None
+    try:
+        parts = urllib.parse.urlsplit(url.strip())
+        host, port = parts.hostname, parts.port
+    except ValueError:
+        return _ADLS_FORM + ".", None
+    user, at, _ = parts.netloc.rpartition("@")
+    if (not parts.scheme or not host or (at and parts.scheme != "abfss") or "@" in user
+            or not (":" in host or _HOST.fullmatch(host))):
+        return _ADLS_FORM + ".", None
+    if host.endswith(".blob.core.windows.net"):
+        return ("--adls takes the DFS endpoint of the account, <account>.dfs.core.windows.net, not the blob "
+                "endpoint."), None
+    if host.endswith("fabric.microsoft.com"):
+        return "--adls is for a storage account; for OneLake, use --workspace and --item.", None
+    # The dot segments are resolved as RFC 3986 says, an empty segment included, before the empty ones are dropped.
+    resolved: List[str] = []
+    for segment in parts.path.replace("\\", "/").split("/"):
+        dots = _DOT.sub(".", segment)
+        if dots == "..":
+            if resolved:
+                resolved.pop()
+        elif dots != ".":
+            resolved.append(segment)
+    segments = [urllib.parse.unquote(segment) for segment in resolved if segment]
+    if parts.scheme == "https":
+        file_system = segments.pop(0) if segments else None
+    elif parts.scheme == "abfss":
+        file_system = urllib.parse.unquote(user) if user else None
+    else:
+        return _ADLS_FORM + ".", None
+    if file_system is None:
+        return _ADLS_FORM + ": the container is missing.", None
+    if not _FILESYSTEM.fullmatch(file_system):
+        return "the container of --adls is not a valid name: 3 to 63 lowercase letters, digits, and dashes.", None
+    if any(segment in (".", "..") for segment in segments):
+        return _ADLS_FORM + ": the folder cannot hold . or .. segments.", None
+    authority = f"[{host}]" if ":" in host else host
+    if port is not None and port != 443:
+        authority += f":{port}"
+    return None, ("https://" + authority, file_system, "/".join(segments))
 
 
 def _check(options: Options, identity: Optional[str]) -> Optional[str]:
@@ -197,14 +271,22 @@ def usage(stream: TextIO) -> None:
         "  python -m pqax collect --mount <folder> --output <file.pqax> [--item <name.Kind>] [options]",
         "  python -m pqax collect --workspace <name or id> --item <name.Kind> [--item ...] --output <file.pqax> "
         "[identity] [options]",
+        "  python -m pqax collect --adls https://<account>.dfs.core.windows.net/<container>[/<folder>] "
+        "--output <file.pqax> [identity] [options]",
         "",
         "--local reads a folder with the OneLake layout: <item>.<Kind>/Tables/[<schema>/]<table>. Without --item, every",
         "lakehouse, warehouse, mirrored database, and SQL database in the folder. --mount reads the folder of one item,",
         "which holds Tables, as /lakehouse/default in a Fabric notebook; --item names it, else the folder name does.",
         "--workspace reads OneLake after a sign-in; an item is named as in OneLake, such as Sales.Lakehouse.",
         "Name the workspace and the items both by name or both by id: OneLake refuses a workspace id with item names.",
-        "--endpoint <url> reads another DFS endpoint, such as https://<account>.dfs.core.windows.net for ADLS Gen2,",
-        "with the container as the workspace. Default " + DEFAULT_ENDPOINT + ".",
+        "--endpoint <url>, with --workspace, reads another DFS endpoint in the OneLake layout, such as an ADLS Gen2",
+        "account, https://<account>.dfs.core.windows.net, with the container as the workspace. Default",
+        DEFAULT_ENDPOINT + ".",
+        "--adls reads a container of Azure Data Lake Storage Gen2 after a sign-in: a folder with _delta_log is a Delta "
+        "table, a folder",
+        f"of Parquet files with no subfolder a Parquet table, down to {DEFAULT_FOLDER_DEPTH} levels below the folder. "
+        "The identity needs Storage Blob",
+        "Data Reader on the container or the account.",
         "",
         "Identity, one of these; a secret is read from an environment variable, never from the command line:",
         "  --access-token-env <NAME>                     An access token for https://storage.azure.com, in the variable NAME.",
@@ -226,7 +308,7 @@ def usage(stream: TextIO) -> None:
         "  --max-footers <n>                             Footers read for each table, 0 for all. Default 0.",
         "  --max-commits <n>                             Commit files read for the history of each table; the commits the state needs are read anyway. Default 30.",
         "  --parallelism <n>                             Storage requests at the same time. Default 16.",
-        "  --verbose                                     Print the identity, and every OneLake request with its status code, to the error output.",
+        "  --verbose                                     Print the identity, and every storage request with its status code, to the error output.",
         "",
         "The Delta checkpoints need pyarrow: pip install \"pqax[collect]\".",
         "Exit codes: 0 written and valid, 1 written and invalid, 2 wrong command line or failure.",
@@ -290,11 +372,21 @@ def _aad(error: BaseException) -> str:
     return f"the sign-in was refused ({code}): {cause}"
 
 
-def describe(error: BaseException) -> str:
-    """One line with the likely cause of a failed sign-in or a refused token. Never a secret."""
+def describe(error: BaseException, storage_account: bool = False) -> str:
+    """One line with the likely cause of a failed sign-in or a refused token. Never a secret. For a container of a
+    storage account, from --adls, a status 401 or 403 names the token and the data role of Azure Storage instead of
+    Fabric."""
     name = type(error).__name__
     if isinstance(error, SignInError):
         line = str(error)
+    elif storage_account and isinstance(error, StorageError) and error.status == 401:
+        line = (f"{str(error).rstrip().rstrip('.')}: the storage account refused the token. An access token must be "
+                f"for https://storage.azure.com, from the tenant of the account, and not expired.")
+    elif storage_account and isinstance(error, StorageError) and error.status == 403:
+        line = (f"{str(error).rstrip().rstrip('.')}: the identity cannot read the container. It needs the role "
+                f"Storage Blob Data Reader on the container or the account, or ACLs that give it read and execute on "
+                f"the folders; Reader, Contributor, or Owner of the account alone do not read data. A network rule of "
+                f"the account also answers 403.")
     elif name == "CredentialUnavailableError":
         line = (f"the identity is not available here: {_first_line(error)} For --managed-identity, the command must run "
                 f"where Azure gives the identity; for --azure-cli, run az login first.")
@@ -331,7 +423,8 @@ def _sign_in(options: Options, error: TextIO) -> Callable[[], Tuple[str, Optiona
             raise SignInError(f"the access token of --access-token-env expired at "
                               f"{expires.strftime('%Y-%m-%d %H:%M:%S')} UTC.")
         if audience is not None and not audience.lower().startswith("https://storage.azure.com"):
-            error.write(f"pqax collect: the access token is for {audience}, and OneLake takes one for "
+            service = "the storage account" if options.adls is not None else "OneLake"
+            error.write(f"pqax collect: the access token is for {audience}, and {service} takes one for "
                         f"https://storage.azure.com; it may refuse it.\n")
         return lambda: (token, expires)
     if mode == "azure-cli":
@@ -364,11 +457,12 @@ def run(args: List[str], output: Optional[TextIO] = None, error: Optional[TextIO
     except ImportError as missing:
         error.write(f"pqax collect: {missing}\n")
         return EXIT_ERROR
+    remote = options.workspace is not None or options.adls is not None
     try:
         return _run(options, output, error)
     except (SignInError, StorageError) as failure:
-        if options.workspace is not None and (isinstance(failure, SignInError) or failure.is_access_denied):
-            error.write(f"pqax collect: {describe(failure)}\n")
+        if remote and (isinstance(failure, SignInError) or failure.is_access_denied):
+            error.write(f"pqax collect: {describe(failure, storage_account=options.adls is not None)}\n")
         else:
             error.write(f"pqax collect: {type(failure).__name__}: {failure}\n")
         return EXIT_ERROR
@@ -376,8 +470,8 @@ def run(args: List[str], output: Optional[TextIO] = None, error: Optional[TextIO
         error.write(f"pqax collect: {type(failure).__name__}: {failure}\n")
         return EXIT_ERROR
     except Exception as failure:  # noqa: BLE001 - the errors of azure-identity, which may not be installed
-        if options.workspace is not None and type(failure).__module__.startswith(("azure.", "msal")):
-            error.write(f"pqax collect: {describe(failure)}\n")
+        if remote and type(failure).__module__.startswith(("azure.", "msal")):
+            error.write(f"pqax collect: {describe(failure, storage_account=options.adls is not None)}\n")
             return EXIT_ERROR
         raise
 
@@ -407,17 +501,32 @@ def _run(options: Options, output: TextIO, error: TextIO) -> int:
         tokens = TokenCache(get_token)
         tokens.get()
         trace = (lambda line: (error.write(line + "\n"), error.flush())) if options.verbose else None
-        storage = OneLakeStorage(options.workspace, tokens, endpoint=options.endpoint or DEFAULT_ENDPOINT, trace=trace)
+        if options.adls is not None:
+            # A container of a storage account is the filesystem of the same DFS API, at the endpoint of the account.
+            storage = OneLakeStorage(options.adls_file_system, tokens, endpoint=options.adls_endpoint, trace=trace)
+        else:
+            storage = OneLakeStorage(options.workspace, tokens, endpoint=options.endpoint or DEFAULT_ENDPOINT,
+                                     trace=trace)
         items = list(options.items)
 
-    tables = []
-    for item in items:
-        tables.extend(discover(storage, item))
-    output.write(f"Found {len(tables)} tables in {len(items)} items.\n")
-    output.flush()
-    if not tables:
-        error.write("pqax collect: no table found. An item is a folder such as Sales.Lakehouse, with a Tables folder.\n")
-        return EXIT_ERROR
+    if options.adls is not None:
+        tables = discover_folder(storage, options.adls_folder)
+        output.write(f"Found {len(tables)} tables in {'the folder' if options.adls_folder else 'the container'}.\n")
+        output.flush()
+        if not tables:
+            error.write(f"pqax collect: no table found. A table is a folder with _delta_log, or a folder of Parquet "
+                        f"files with no subfolder, at most {DEFAULT_FOLDER_DEPTH} levels below the folder of --adls.\n")
+            return EXIT_ERROR
+    else:
+        tables = []
+        for item in items:
+            tables.extend(discover(storage, item))
+        output.write(f"Found {len(tables)} tables in {len(items)} items.\n")
+        output.flush()
+        if not tables:
+            error.write("pqax collect: no table found. An item is a folder such as Sales.Lakehouse, with a Tables "
+                        "folder.\n")
+            return EXIT_ERROR
 
     counts = {"footers": 0, "issues": 0}
 
