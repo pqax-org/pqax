@@ -2,6 +2,16 @@
 
 The packages of a release share its version number, as section 7.1 of the [contracts](docs/contracts.md) says.
 
+## Unreleased
+
+### PyPI
+
+`python -m pqax collect --adls <url>` collects the tables of a container of Azure Data Lake Storage Gen2, as `pqax collect --adls` does in C#: the same two forms of the URL, `https://<account>.dfs.core.windows.net/<container>[/<folder>]` and `abfss://<container>@<account>.dfs.core.windows.net[/<folder>]`, read as `System.Uri` reads them, the same refusals and messages, among them a URL with a query such as a SAS token, which is never quoted, the blob host, a OneLake host, and a container name that Azure Storage does not allow, the identities of `--workspace`, and the same lines and exit codes. The collector has what the C# collector has for it: `pqax.collect.discover_folder` finds the Delta tables and the folders of Parquet files under a folder, 4 levels deep by default, as tables of a source of the kind `Storage folder` with `abfss://` locations; `TableLocation` has a `format`, and `TableFormats` names the two; a folder of Parquet files is collected from one listing, with its columns from the footer of its most recent file in the type names of the Delta schema; and `OneLakeStorage` names the storage account in its messages for the endpoint of an account, where a 401 and a 403 of the command are one line on the token and on the role Storage Blob Data Reader. The messages that list the sources and the identities name `--adls` too. `--endpoint` does not change. On a synthetic container, the footprints of the two command lines hold the same values in every table and field, the requests and the bytes included. Reads 0.1 and 0.2, writes 0.2.
+
+### Conformance kit
+
+`cross_check.py` also collects a synthetic container of Azure Data Lake Storage Gen2 with `pqax collect --adls` in C# and `python -m pqax collect --adls`, through `container_check.py`, which builds the container from the fixture, synthetic Delta logs, and a footer with every type annotation, and serves it on a fake DFS endpoint on 127.0.0.1. The two footprints of each of five collections must hold the same values in every table and field, the two command lines must print the same lines, and sixteen command lines that fail or are refused must give the same exit code and the same first line of the error output.
+
 ## 0.2.2 - 2026-10-24
 
 ### PyPI
