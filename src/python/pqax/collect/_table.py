@@ -1,10 +1,12 @@
 """The collection of one table: its Delta log, the footers of its files at level 2, and its columns, partitions,
-physical schemas, writers, operations, details, and totals. A failure becomes an issue of the table."""
+physical schemas, writers, operations, details, and totals; or, for a folder of Parquet files, its files from one
+listing and its columns from the footer of its most recent file. A failure becomes an issue of the table."""
 from __future__ import annotations
 
 import datetime
 import enum
 import threading
+import urllib.parse
 from concurrent.futures import Executor
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -12,12 +14,18 @@ from ._issues import Issue, IssueCodes, IssueList
 from .delta import (
     CommitInfoAction, DeltaColumn, DeltaLog, DeltaLogReader, LiveFile, MetadataAction, loads, parse_schema, timestamp,
 )
-from .discovery import TableLocation
-from .footer import FooterError, FooterReader, FooterTailPlanner, ParquetColumnChunk, ParquetFooter, ParquetLeafColumn
+from .discovery import TableFormats, TableLocation, is_parquet_file
+from .footer import (
+    FooterError, FooterReader, FooterTailPlanner, ParquetColumnChunk, ParquetFooter, ParquetLeafColumn, top_level_fields,
+)
 from .storage import StorageError, list_files
 
 _CONSTRAINT_PREFIX = "delta.constraints."
 _NON_DATA_FOLDERS = ("_delta_log", "_change_data")
+_EPOCH = datetime.datetime(1970, 1, 1, tzinfo=datetime.timezone.utc)
+_MILLISECOND = datetime.timedelta(milliseconds=1)
+#: Below any time in milliseconds: a file without a time is older than every other.
+_NO_TIME = -(2 ** 63)
 
 
 class DetailDepth(enum.IntEnum):
@@ -73,6 +81,16 @@ def distribution(values: List[int]) -> Optional[Dict[str, int]]:
 
 def _time(milliseconds: Optional[int]) -> Optional[datetime.datetime]:
     return None if milliseconds is None else timestamp(milliseconds)
+
+
+def _milliseconds(moment: Optional[datetime.datetime]) -> Optional[int]:
+    """A time of a listing in milliseconds since 1970, the precision of the log, rounded down as in C#. A time without
+    a zone is in UTC."""
+    if moment is None:
+        return None
+    if moment.tzinfo is None:
+        moment = moment.replace(tzinfo=datetime.timezone.utc)
+    return (moment - _EPOCH) // _MILLISECOND
 
 
 class CollectedColumn:
@@ -335,6 +353,18 @@ def _sample(count: int, maximum: int) -> List[int]:
     return sample
 
 
+def _footer_failure(error: BaseException, path: str) -> Issue:
+    """The issue of a footer read that failed. A 401 or a 403 of the storage is AccessDenied, another failure of the
+    storage FooterNotRead, a footer that the reader refuses has the code of its FooterError, and anything else is
+    FooterNotRead. Whatever the code, the footer counts as not read."""
+    if isinstance(error, StorageError):
+        code = IssueCodes.ACCESS_DENIED if error.is_access_denied else IssueCodes.FOOTER_NOT_READ
+        return Issue(code, f"The footer could not be read: {error}", path)
+    if isinstance(error, FooterError):
+        return Issue(error.code, str(error), path)
+    return Issue(IssueCodes.FOOTER_NOT_READ, f"The footer could not be read: {type(error).__name__}: {error}", path)
+
+
 def _excluded(root: str, path: str) -> bool:
     if root and not (len(path) > len(root) and path[len(root)] == "/" and path.startswith(root)):
         return False
@@ -354,6 +384,8 @@ class TableCollector:
         self.footer_reader = FooterReader(storage, options.footer_tail_bytes, options.include_data_values)
 
     def collect(self, location: TableLocation, source: int) -> CollectedTable:
+        if location.format == TableFormats.PARQUET:
+            return self._collect_parquet(location, source)
         issues = IssueList()
         table = CollectedTable(location, source)
         log: Optional[DeltaLog] = None
@@ -375,6 +407,84 @@ class TableCollector:
                 table = CollectedTable(location, source)
         table.issues.extend(issues.to_list())
         return table
+
+    def _collect_parquet(self, location: TableLocation, source: int) -> CollectedTable:
+        """A folder of Parquet files with no table format: its files from one listing of the folder, its columns from
+        the footer of the most recent file, and at level 2 every footer. Nothing is known of a history, a version, or
+        metadata files, and every Parquet file of the folder is a file of the table."""
+        issues = IssueList()
+        table = CollectedTable(location, source)
+        entries = None
+        try:
+            entries = self.storage.list(location.path)
+        except StorageError as error:
+            issues.add(IssueCodes.ACCESS_DENIED if error.is_access_denied else IssueCodes.TABLE_NOT_READ,
+                       f"The table folder could not be listed: {error}")
+        except Exception as error:  # noqa: BLE001 - a failure on one table becomes an issue
+            issues.add(IssueCodes.TABLE_NOT_READ,
+                       f"The table folder could not be listed: {type(error).__name__}: {error}")
+        if entries is not None:
+            try:
+                self._build_parquet(table, entries, issues)
+            except Exception as error:  # noqa: BLE001 - whatever was built is dropped, so the table stays consistent
+                issues.add(IssueCodes.TABLE_NOT_READ,
+                           f"The table could not be collected: {type(error).__name__}: {error}")
+                table = CollectedTable(location, source)
+        table.issues.extend(issues.to_list())
+        return table
+
+    def _build_parquet(self, table: CollectedTable, entries: List[Any], issues: IssueList) -> None:
+        files = [LiveFile(urllib.parse.quote(entry.name, safe=""), entry.name, size=entry.size,
+                          modification_time=_milliseconds(entry.last_modified))
+                 for entry in sorted((entry for entry in entries if is_parquet_file(entry)),
+                                     key=lambda entry: _ordinal(entry.name))]
+        totals = table.totals
+        # Every Parquet file of the folder is a file of the table, so none is unreferenced.
+        totals["unreferencedFileCount"] = 0
+        totals["unreferencedFileSize"] = 0
+        totals["footerCount"] = 0
+        table.collected_level = 1
+        # The columns come from the most recent file, as the object model says: the latest modification time, then the
+        # last name.
+        newest = -1
+        for i, file in enumerate(files):
+            time = file.modification_time if file.modification_time is not None else _NO_TIME
+            if newest < 0 or time >= (files[newest].modification_time if files[newest].modification_time is not None
+                                      else _NO_TIME):
+                newest = i
+        collected = self._files(table, files)
+        planner = FooterTailPlanner(self.options.footer_tail_bytes, self.options.footer_tail_floor_bytes,
+                                    self.options.footer_tail_margin)
+        schema_footer: Optional[ParquetFooter] = None
+        if newest >= 0:
+            schema_footer = self._read_columns_footer(table.location, files[newest], collected[newest], planner, issues)
+            if schema_footer is not None:
+                for name, data_type, is_nullable in top_level_fields(schema_footer):
+                    column = CollectedColumn(name, data_type, name)
+                    column.is_nullable = is_nullable
+                    table.columns.append(column)
+        aggregate = _FooterAggregate(table, self.options.depth)
+        if self.options.level >= 2:
+            self._read_footers(table, files, collected, aggregate, issues, planner, newest if newest >= 0 else None,
+                               schema_footer)
+        self._totals(table, files, collected, aggregate)
+
+    def _read_columns_footer(self, location: TableLocation, file: LiveFile, collected: CollectedFile,
+                             planner: FooterTailPlanner, issues: IssueList) -> Optional[ParquetFooter]:
+        """The footer of the file that gives the columns of a folder of Parquet files, or None after the issue of its
+        failure."""
+        if file.size is None:
+            issues.add(IssueCodes.FOOTER_NOT_READ, "The listing gives no size for the file, so its footer was not read.",
+                       collected.path)
+            return None
+        try:
+            footer = self.footer_reader.read(f"{location.path}/{file.path}", file.size, planner.current)
+            planner.observe(footer.footer_length)
+            return footer
+        except Exception as error:  # noqa: BLE001 - every failure is an issue, as for the other footers
+            issue = _footer_failure(error, collected.path)
+            issues.add(issue.code, issue.message, issue.path)
+            return None
 
     def _properties(self, metadata: Optional[MetadataAction]) -> Optional[Dict[str, str]]:
         if metadata is None:
@@ -562,11 +672,23 @@ class TableCollector:
         return values.get(name)
 
     def _read_footers(self, table: CollectedTable, files: List[LiveFile], collected: List[CollectedFile],
-                      aggregate: "_FooterAggregate", issues: IssueList) -> None:
+                      aggregate: "_FooterAggregate", issues: IssueList, planner: Optional[FooterTailPlanner] = None,
+                      known: Optional[int] = None, known_footer: Optional[ParquetFooter] = None) -> None:
         sample = _sample(len(files), self.options.max_footers_per_table)
-        planner = FooterTailPlanner(self.options.footer_tail_bytes, self.options.footer_tail_floor_bytes,
-                                    self.options.footer_tail_margin)
+        if planner is None:
+            planner = FooterTailPlanner(self.options.footer_tail_bytes, self.options.footer_tail_floor_bytes,
+                                        self.options.footer_tail_margin)
         file_issues: List[Optional[Issue]] = [None] * len(files)
+        if known is not None:
+            # The footer of this file was read already, for the columns: it is not read again, and a failure is not
+            # reported twice. When the sample of a limit leaves the file out, it takes the place of the last file of
+            # the sample, so that the limit holds.
+            if known in sample:
+                sample.remove(known)
+            elif sample:
+                sample.pop()
+            if known_footer is not None:
+                file_issues[known] = self._absorb(files[known], collected[known], known, known_footer, aggregate)
         # The first files of a table start together, so they are read with the initial tail, as in C#; the later ones
         # with the tail that the footers read so far give.
         together = min(self.options.parallelism, len(sample))
@@ -600,14 +722,13 @@ class TableCollector:
         try:
             footer = self.footer_reader.read(f"{location.path}/{file.path}", file.size, tail)
             planner.observe(footer.footer_length)
-        except StorageError as error:
-            code = IssueCodes.ACCESS_DENIED if error.is_access_denied else IssueCodes.FOOTER_NOT_READ
-            return Issue(code, f"The footer could not be read: {error}", collected.path)
-        except FooterError as error:
-            return Issue(error.code, str(error), collected.path)
-        except Exception as error:  # noqa: BLE001 - any other failure: the footer counts as not read
-            return Issue(IssueCodes.FOOTER_NOT_READ, f"The footer could not be read: {type(error).__name__}: {error}",
-                         collected.path)
+        except Exception as error:  # noqa: BLE001 - any failure: the footer counts as not read
+            return _footer_failure(error, collected.path)
+        return self._absorb(file, collected, index, footer, aggregate)
+
+    @staticmethod
+    def _absorb(file: LiveFile, collected: CollectedFile, index: int, footer: ParquetFooter,
+                aggregate: "_FooterAggregate") -> Optional[Issue]:
         if any(not chunk.has_metadata for group in footer.row_groups for chunk in group.columns):
             return Issue(IssueCodes.FOOTER_COLUMNS_ENCRYPTED, "Column chunks of the file have no metadata, as "
                          "encrypted columns, so the footer counts as not read.", collected.path)

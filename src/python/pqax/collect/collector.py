@@ -160,10 +160,11 @@ def collect(storage: Any, tables: Optional[Sequence[TableLocation]] = None, *, i
             include_partition_values: bool = False, options: Optional[CollectorOptions] = None,
             progress: Optional[Callable[[CollectionProgress], None]] = None,
             checkpoint_reader: Any = "auto") -> Builder:
-    """Collects the footprint of the Delta tables of a storage and returns a pqax.Builder with it.
+    """Collects the footprint of the Delta tables, and of the folders of Parquet files, of a storage and returns a
+    pqax.Builder with it.
 
-    tables are the tables to collect, as discover() finds them; when None, the tables of items, or of every item that
-    list_items() finds. The keywords are the options, or options= gives them all. progress receives a
+    tables are the tables to collect, as discover() or discover_folder() finds them; when None, the tables of items, or
+    of every item that list_items() finds. The keywords are the options, or options= gives them all. progress receives a
     CollectionProgress each time a table is done, one call at a time. checkpoint_reader reads the Delta checkpoints in
     Parquet: "auto" uses pyarrow and raises ImportError naming pqax[collect] when it is missing, None reads none (a
     table that needs its checkpoint then gets an issue), and any callable (storage, path) -> actions is used as it is.
@@ -263,7 +264,7 @@ def _add_table(builder: Builder, table: CollectedTable, source_id: int, options:
     location = table.location
     row: Dict[str, Any] = {
         "source": source_id, "namespace": list(location.namespace), "name": location.name,
-        "location": location.location, "format": "Delta", "tableId": table.table_id,
+        "location": location.location, "format": location.format, "tableId": table.table_id,
         "description": table.description, "createdAt": table.created_at, "properties": table.properties,
         "snapshotId": table.snapshot_id, "snapshotTimestamp": table.snapshot_timestamp,
         "delta": _without_none(table.delta) if table.delta is not None else None,

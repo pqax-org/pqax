@@ -1,5 +1,6 @@
 """The collector: the footprint of the Delta tables of a lakehouse, from their logs and the footers of their Parquet
-files, without reading a row. A port of the C# collector, Pqax.Collector, with the same options, issues, and output.
+files, and of the folders of Parquet files of a storage account, without reading a row. A port of the C# collector,
+Pqax.Collector, with the same options, issues, and output.
 
     import pqax.collect
 
@@ -21,7 +22,9 @@ from .delta import (
     AddAction, CheckpointMetadataAction, CommitInfoAction, DeletionVector, DomainMetadataAction, MetadataAction,
     ProtocolAction, RemoveAction, SidecarAction,
 )
-from .discovery import SourceKinds, TableLocation, discover, list_items
+from .discovery import (
+    DEFAULT_FOLDER_DEPTH, SourceKinds, TableFormats, TableLocation, discover, discover_folder, list_items,
+)
 from .footer import (
     DEFAULT_TAIL_BYTES, MAX_FOOTER_LENGTH, FooterError, FooterReader, FooterTailPlanner, ParquetColumnChunk,
     ParquetFooter, ParquetKeyValue, ParquetLeafColumn, ParquetPageEncodingStats, ParquetRowGroup,
@@ -32,11 +35,11 @@ from . import identity
 
 __all__ = [
     "AddAction", "ArrowCheckpointReader", "CheckpointMetadataAction", "CollectionProgress", "CollectorOptions",
-    "CommitInfoAction", "DEFAULT_ENDPOINT", "DEFAULT_TAIL_BYTES", "DeletionVector", "DetailDepth",
-    "DomainMetadataAction", "FooterError", "FooterReader", "FooterTailPlanner", "ISSUE_CODES", "Issue", "IssueCodes",
-    "LIBRARY_NAME", "LocalStorage", "MAX_FOOTER_LENGTH", "MetadataAction", "OneLakeStorage", "ParquetColumnChunk",
-    "ParquetFooter", "ParquetKeyValue", "ParquetLeafColumn", "ParquetPageEncodingStats", "ParquetRowGroup",
-    "ParquetSchemaElement", "ParquetSortingColumn", "ProtocolAction", "RemoveAction", "SCOPE", "SidecarAction",
-    "SourceKinds", "StorageEntry", "StorageError", "TableLocation", "collect", "discover", "identity", "list_items",
-    "parse_footer",
+    "CommitInfoAction", "DEFAULT_ENDPOINT", "DEFAULT_FOLDER_DEPTH", "DEFAULT_TAIL_BYTES", "DeletionVector",
+    "DetailDepth", "DomainMetadataAction", "FooterError", "FooterReader", "FooterTailPlanner", "ISSUE_CODES", "Issue",
+    "IssueCodes", "LIBRARY_NAME", "LocalStorage", "MAX_FOOTER_LENGTH", "MetadataAction", "OneLakeStorage",
+    "ParquetColumnChunk", "ParquetFooter", "ParquetKeyValue", "ParquetLeafColumn", "ParquetPageEncodingStats",
+    "ParquetRowGroup", "ParquetSchemaElement", "ParquetSortingColumn", "ProtocolAction", "RemoveAction", "SCOPE",
+    "SidecarAction", "SourceKinds", "StorageEntry", "StorageError", "TableFormats", "TableLocation", "collect",
+    "discover", "discover_folder", "identity", "list_items", "parse_footer",
 ]
