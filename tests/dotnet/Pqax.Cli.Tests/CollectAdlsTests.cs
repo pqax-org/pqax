@@ -366,6 +366,10 @@ public class CollectAdlsTests
         { "newline filesystem", ["collect", "--adls", Account + "/lake%0A/data", "--output", UnusedOutput], "not a valid name" },
         { "newline filesystem abfss", ["collect", "--adls", "abfss://lake%0A@pqaxtest.dfs.core.windows.net/data", "--output", UnusedOutput], "not a valid name" },
         { "dot segments above the filesystem", ["collect", "--adls", Account + "/lake/..", "--output", UnusedOutput], "the container is missing" },
+        { "encoded slash and ..", ["collect", "--adls", Account + "/lake/x%2F..%2Fy", "--output", UnusedOutput], "cannot hold . or .. segments" },
+        { "encoded slash and .", ["collect", "--adls", Account + "/lake/x%2F.", "--output", UnusedOutput], "cannot hold . or .. segments" },
+        { "encoded slash and encoded ..", ["collect", "--adls", Account + "/lake/x%2F%2E%2E%2Fy", "--output", UnusedOutput], "cannot hold . or .. segments" },
+        { "encoded slash and .. abfss", ["collect", "--adls", Container + "/..%2Fy", "--output", UnusedOutput], "cannot hold . or .. segments" },
         { "sas", ["collect", "--adls", Url + "?sv=2024-01-01&sp=rl&sig=" + Signature, "--output", UnusedOutput], null },
         { "sas abfss", ["collect", "--adls", Container + "/data?sig=" + Signature, "--output", UnusedOutput], null },
     };

@@ -217,7 +217,7 @@ def parse_adls(url: str) -> Tuple[Optional[str], Optional[Tuple[str, str, str]]]
     if host.endswith("fabric.microsoft.com"):
         return "--adls is for a storage account; for OneLake, use --workspace and --item.", None
     # The dot segments are resolved as RFC 3986 says, %2E-encoded too and an empty segment included, before the empty
-    # ones are dropped, so none is left to refuse.
+    # ones are dropped.
     resolved: List[str] = []
     for segment in parts.path.replace("\\", "/").split("/"):
         dots = _DOT.sub(".", segment)
@@ -237,6 +237,9 @@ def parse_adls(url: str) -> Tuple[Optional[str], Optional[Tuple[str, str, str]]]
         return _ADLS_FORM + ": the container is missing.", None
     if not _FILESYSTEM.fullmatch(file_system):
         return "the container of --adls is not a valid name: 3 to 63 lowercase letters, digits, and dashes.", None
+    # The . and .. segments are resolved above; a %2F can still make one after decoding.
+    if any(part in (".", "..") for segment in segments for part in segment.split("/")):
+        return _ADLS_FORM + ": the folder cannot hold . or .. segments.", None
     authority = f"[{host}]" if ":" in host else host
     if port is not None and port != 443:
         authority += f":{port}"
