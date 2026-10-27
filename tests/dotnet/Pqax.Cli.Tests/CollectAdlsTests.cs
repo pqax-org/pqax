@@ -209,6 +209,29 @@ public class CollectAdlsTests
         Assert.Equal(Container + "/my data/raw", table.Location);
     }
 
+    // System.Uri reads the URL before CollectOptions splits it: the host in lower case, port 443 left out, a backslash taken
+    // for a slash, the dot segments resolved, %2E-encoded too, and the segments and the container percent-decoded.
+    [Theory]
+    [InlineData(Account + "/lake/a/../b", "https://pqaxtest.dfs.core.windows.net/", "lake", "b")]
+    [InlineData(Account + "/lake/a//../b", "https://pqaxtest.dfs.core.windows.net/", "lake", "a/b")]
+    [InlineData(Account + "/lake/./a/%2E/b", "https://pqaxtest.dfs.core.windows.net/", "lake", "a/b")]
+    [InlineData(Account + "/lake/a/%2E%2E/b", "https://pqaxtest.dfs.core.windows.net/", "lake", "b")]
+    [InlineData(Account + "/../lake/x", "https://pqaxtest.dfs.core.windows.net/", "lake", "x")]
+    [InlineData(Container + "/a/../b", "https://pqaxtest.dfs.core.windows.net/", "lake", "b")]
+    [InlineData("https://PQAXTEST.dfs.core.windows.net:443/lake/data", "https://pqaxtest.dfs.core.windows.net/", "lake", "data")]
+    [InlineData(Account + "/lake\\a\\b", "https://pqaxtest.dfs.core.windows.net/", "lake", "a/b")]
+    [InlineData(Account + "/la%6Be/my%20data", "https://pqaxtest.dfs.core.windows.net/", "lake", "my data")]
+    [InlineData("abfss://la%6Be@pqaxtest.dfs.core.windows.net/my%20data", "https://pqaxtest.dfs.core.windows.net/", "lake", "my data")]
+    [InlineData("https://127.0.0.1:10000/lake/data", "https://127.0.0.1:10000/", "lake", "data")]
+    public void The_url_is_read_as_system_uri_reads_it(string url, string endpoint, string fileSystem, string folder)
+    {
+        CollectOptions? options = CollectOptions.Parse(["collect", "--adls", url, "--output", UnusedOutput], out string? problem);
+        Assert.True(options != null, $"{url} was refused: {problem}");
+        Assert.Equal(endpoint, options.AdlsEndpoint!.AbsoluteUri);
+        Assert.Equal(fileSystem, options.AdlsFileSystem);
+        Assert.Equal(folder, options.AdlsFolder);
+    }
+
     [Fact]
     public void The_options_of_a_collection_apply_to_a_container()
     {
@@ -340,6 +363,9 @@ public class CollectAdlsTests
         { "short filesystem", ["collect", "--adls", Account + "/ab/data", "--output", UnusedOutput], null },
         { "long filesystem", ["collect", "--adls", Account + "/" + new string('a', 64) + "/data", "--output", UnusedOutput], null },
         { "underscore filesystem", ["collect", "--adls", Account + "/my_lake/data", "--output", UnusedOutput], null },
+        { "newline filesystem", ["collect", "--adls", Account + "/lake%0A/data", "--output", UnusedOutput], "not a valid name" },
+        { "newline filesystem abfss", ["collect", "--adls", "abfss://lake%0A@pqaxtest.dfs.core.windows.net/data", "--output", UnusedOutput], "not a valid name" },
+        { "dot segments above the filesystem", ["collect", "--adls", Account + "/lake/..", "--output", UnusedOutput], "the container is missing" },
         { "sas", ["collect", "--adls", Url + "?sv=2024-01-01&sp=rl&sig=" + Signature, "--output", UnusedOutput], null },
         { "sas abfss", ["collect", "--adls", Container + "/data?sig=" + Signature, "--output", UnusedOutput], null },
     };

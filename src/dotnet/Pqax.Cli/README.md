@@ -157,6 +157,8 @@ pqax collect --adls https://<account>.dfs.core.windows.net/<container>[/<folder>
 | A OneLake host | OneLake is read with `--workspace` |
 | A URL with no container, or a container name that is not 3 to 63 lowercase letters, digits, and dashes | The naming rule of Azure Storage |
 
+The URL is read as `System.Uri` reads it before the command splits it into the endpoint, the container, and the folder. The host is taken in lower case and the port 443 is left out, so `https://PQAXTEST.dfs.core.windows.net:443/lake` is the account `pqaxtest.dfs.core.windows.net`; another port stays in the endpoint. A backslash in the path is taken for a slash. The `.` and `..` segments are resolved, also when written `%2E`, so `/lake/a/../b` is the folder `b` of the container `lake`, and `/lake/..` has no container. The segments and the container are then percent-decoded: `my%20data` is the folder `my data`, and `la%6Be` the container `lake`, while `a%2Fb` is two levels, `a/b`. A container that decodes to a name outside the rule above is refused, such as `lake%0A` with its final newline. Any host but the blob endpoint and the OneLake hosts is accepted, such as the DFS endpoint of another cloud or an emulator on `127.0.0.1`.
+
 | Option | Default | Meaning |
 |---|---|---|
 | `--depth summary\|files\|rowGroups\|columnChunks` | `columnChunks` | The detail kept for each table |
