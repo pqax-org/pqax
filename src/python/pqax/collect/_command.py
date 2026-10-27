@@ -236,6 +236,9 @@ def parse_adls(url: str) -> Tuple[Optional[str], Optional[Tuple[str, str, str]]]
         return _ADLS_FORM + ": the container is missing.", None
     if not _FILESYSTEM.fullmatch(file_system):
         return "the container of --adls is not a valid name: 3 to 63 lowercase letters, digits, and dashes.", None
+    # A backslash in the path is already a slash, so one left after decoding came from a %5C.
+    if any("\\" in segment for segment in segments):
+        return _ADLS_FORM + ": the folder cannot hold a backslash; separate its folders with /.", None
     # The . and .. segments are resolved above; a %2F can still make one after decoding.
     if any(part in (".", "..") for segment in segments for part in segment.split("/")):
         return _ADLS_FORM + ": the folder cannot hold . or .. segments.", None
