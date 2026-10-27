@@ -12,8 +12,11 @@ public sealed class CollectOptions
 
     private static readonly Regex VariableName = new("^[A-Za-z_][A-Za-z0-9_]*$", RegexOptions.CultureInvariant);
 
-    /// <summary>The name of a filesystem (container) of a storage account: 3 to 63 lowercase letters, digits, and single dashes.</summary>
-    private static readonly Regex FileSystemName = new("^[a-z0-9](?!.*--)[a-z0-9-]{1,61}[a-z0-9]$", RegexOptions.CultureInvariant);
+    /// <summary>
+    /// The name of a filesystem (container) of a storage account: 3 to 63 lowercase letters, digits, and single dashes. It ends
+    /// with <c>\z</c>, since <c>$</c> also matches before a final newline.
+    /// </summary>
+    private static readonly Regex FileSystemName = new(@"^[a-z0-9](?!.*--)[a-z0-9-]{1,61}[a-z0-9]\z", RegexOptions.CultureInvariant);
 
     private readonly List<string> items = [];
 
@@ -362,6 +365,7 @@ public sealed class CollectOptions
             return "--adls is for a storage account; for OneLake, use --workspace and --item.";
         }
 
+        // System.Uri has already resolved the . and .. segments, %2E-encoded too, so none is left to refuse.
         List<string> segments = url.AbsolutePath.Split('/', StringSplitOptions.RemoveEmptyEntries).Select(Uri.UnescapeDataString).ToList();
         string? fileSystem;
         if (url.Scheme == "https")
@@ -386,11 +390,6 @@ public sealed class CollectOptions
         if (!FileSystemName.IsMatch(fileSystem))
         {
             return "the container of --adls is not a valid name: 3 to 63 lowercase letters, digits, and dashes.";
-        }
-
-        if (segments.Any(s => s == "." || s == ".."))
-        {
-            return Form + ": the folder cannot hold . or .. segments.";
         }
 
         AdlsEndpoint = new Uri("https://" + url.Authority);
