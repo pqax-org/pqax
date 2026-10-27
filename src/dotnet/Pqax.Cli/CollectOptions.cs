@@ -366,7 +366,7 @@ public sealed class CollectOptions
             return "--adls is for a storage account; for OneLake, use --workspace and --item.";
         }
 
-        // System.Uri has already resolved the . and .. segments, %2E-encoded too, so none is left to refuse.
+        // System.Uri has already resolved the . and .. segments, %2E-encoded too; a %2F can still make one after decoding.
         List<string> segments = url.AbsolutePath.Split('/', StringSplitOptions.RemoveEmptyEntries).Select(Uri.UnescapeDataString).ToList();
         string? fileSystem;
         if (url.Scheme == "https")
@@ -391,6 +391,11 @@ public sealed class CollectOptions
         if (!FileSystemName.IsMatch(fileSystem))
         {
             return "the container of --adls is not a valid name: 3 to 63 lowercase letters, digits, and dashes.";
+        }
+
+        if (segments.SelectMany(s => s.Split('/')).Any(s => s == "." || s == ".."))
+        {
+            return Form + ": the folder cannot hold . or .. segments.";
         }
 
         AdlsEndpoint = new Uri("https://" + url.Authority);

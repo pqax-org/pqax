@@ -269,6 +269,7 @@ The URL is read as `System.Uri` reads it in C#: the scheme and the host in lower
 | A OneLake host, one that ends with `fabric.microsoft.com` | OneLake is read with `--workspace` |
 | A URL that is not https or abfss, an https URL with a user, a port out of range, or a host that holds other than letters, digits, dashes, dots, and underscores | Not the form of the URL of a container |
 | No container, or a container name that is not 3 to 63 lowercase letters, digits, and dashes | The naming rule of Azure Storage |
+| A folder with a `.` or `..` segment once decoded, such as `x%2F..%2Fy` | The folder would climb out of where the URL points |
 
 Two options are Python's own:
 

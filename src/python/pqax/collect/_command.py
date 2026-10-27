@@ -236,7 +236,8 @@ def parse_adls(url: str) -> Tuple[Optional[str], Optional[Tuple[str, str, str]]]
         return _ADLS_FORM + ": the container is missing.", None
     if not _FILESYSTEM.fullmatch(file_system):
         return "the container of --adls is not a valid name: 3 to 63 lowercase letters, digits, and dashes.", None
-    if any(segment in (".", "..") for segment in segments):
+    # The . and .. segments are resolved above; a %2F can still make one after decoding.
+    if any(part in (".", "..") for segment in segments for part in segment.split("/")):
         return _ADLS_FORM + ": the folder cannot hold . or .. segments.", None
     authority = f"[{host}]" if ":" in host else host
     if port is not None and port != 443:
