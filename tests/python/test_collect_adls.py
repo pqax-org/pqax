@@ -302,6 +302,9 @@ WRONG_COMMAND_LINES = [
     ("user in https", ["--adls", "https://someone@pqaxtest.dfs.core.windows.net/lake"], FORM),
     ("bad port", ["--adls", "https://pqaxtest.dfs.core.windows.net:99999/lake"], FORM),
     ("escaped host", ["--adls", "https://pqax%74est.dfs.core.windows.net/lake"], FORM),
+    # A backslash is a slash in the path only: right after the host, it is part of the host.
+    ("backslash after the host", ["--adls", ACCOUNT_ENDPOINT + "\\lake\\data"], FORM),
+    ("backslash after the host abfss", ["--adls", "abfss://lake@pqaxtest.dfs.core.windows.net\\data"], FORM),
     ("blob host", ["--adls", "https://pqaxtest.blob.core.windows.net/lake/data"], BLOB),
     ("blob host abfss", ["--adls", "abfss://lake@pqaxtest.blob.core.windows.net/data"], BLOB),
     ("onelake host", ["--adls", "https://onelake.dfs.fabric.microsoft.com/Workspace/Item.Lakehouse/Tables"], ONELAKE),
@@ -318,6 +321,8 @@ WRONG_COMMAND_LINES = [
     ("underscore filesystem", ["--adls", ACCOUNT_ENDPOINT + "/my_lake/data"], NAME),
     ("double dash filesystem", ["--adls", ACCOUNT_ENDPOINT + "/my--lake/data"], NAME),
     ("dash at the end", ["--adls", ACCOUNT_ENDPOINT + "/lake-/data"], NAME),
+    ("newline filesystem", ["--adls", ACCOUNT_ENDPOINT + "/lake%0A/data"], NAME),
+    ("newline filesystem abfss", ["--adls", "abfss://lake%0A@pqaxtest.dfs.core.windows.net/data"], NAME),
     ("password in abfss", ["--adls", "abfss://lake:x@pqaxtest.dfs.core.windows.net/data"], NAME),
     ("sas", ["--adls", URL + "?sv=2024-01-01&sp=rl&sig=" + SIGNATURE], SAS),
     ("sas abfss", ["--adls", CONTAINER + "/data?sig=" + SIGNATURE], SAS),
