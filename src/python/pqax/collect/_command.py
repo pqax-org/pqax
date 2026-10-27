@@ -198,7 +198,7 @@ def parse_adls(url: str) -> Tuple[Optional[str], Optional[Tuple[str, str, str]]]
     a SAS token.
 
     The URL is read as System.Uri reads it in C#: the scheme and the host in lower case, the default port 443 left out,
-    a backslash taken for a slash, the . and .. segments of the path resolved, and the segments decoded."""
+    a backslash in the path taken for a slash, the . and .. segments of the path resolved, and the segments decoded."""
     if "?" in url or "#" in url:
         return ("--adls takes a URL without a query: a SAS token is not accepted, since it would stay in the shell "
                 "history. Sign in with one of the identities."), None
@@ -216,7 +216,8 @@ def parse_adls(url: str) -> Tuple[Optional[str], Optional[Tuple[str, str, str]]]
                 "endpoint."), None
     if host.endswith("fabric.microsoft.com"):
         return "--adls is for a storage account; for OneLake, use --workspace and --item.", None
-    # The dot segments are resolved as RFC 3986 says, an empty segment included, before the empty ones are dropped.
+    # The dot segments are resolved as RFC 3986 says, %2E-encoded too and an empty segment included, before the empty
+    # ones are dropped, so none is left to refuse.
     resolved: List[str] = []
     for segment in parts.path.replace("\\", "/").split("/"):
         dots = _DOT.sub(".", segment)
@@ -236,8 +237,6 @@ def parse_adls(url: str) -> Tuple[Optional[str], Optional[Tuple[str, str, str]]]
         return _ADLS_FORM + ": the container is missing.", None
     if not _FILESYSTEM.fullmatch(file_system):
         return "the container of --adls is not a valid name: 3 to 63 lowercase letters, digits, and dashes.", None
-    if any(segment in (".", "..") for segment in segments):
-        return _ADLS_FORM + ": the folder cannot hold . or .. segments.", None
     authority = f"[{host}]" if ":" in host else host
     if port is not None and port != 443:
         authority += f":{port}"
