@@ -10,7 +10,8 @@ public sealed class CollectOptions
     /// <summary>The options that would carry a secret as their value. They are refused, and the value is never echoed.</summary>
     private static readonly string[] SecretOptions = ["--client-secret", "--access-token", "--client-certificate-password"];
 
-    private static readonly Regex VariableName = new("^[A-Za-z_][A-Za-z0-9_]*$", RegexOptions.CultureInvariant);
+    /// <summary>The name of an environment variable. It ends with <c>\z</c>, since <c>$</c> also matches before a final newline.</summary>
+    private static readonly Regex VariableName = new(@"^[A-Za-z_][A-Za-z0-9_]*\z", RegexOptions.CultureInvariant);
 
     /// <summary>
     /// The name of a filesystem (container) of a storage account: 3 to 63 lowercase letters, digits, and single dashes. It ends

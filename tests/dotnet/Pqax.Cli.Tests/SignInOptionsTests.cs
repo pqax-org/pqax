@@ -227,6 +227,9 @@ public class SignInOptionsTests
         { "--access-token-env", "eyJ0.S3cret.Token" },
         { "--access-token-env", "S3cret=Value" },
         { "--client-certificate-password-env", "S3cret$Value" },
+        { "--client-secret-env", "S3cret_NAME\n" },
+        { "--access-token-env", "S3cret_NAME\n" },
+        { "--client-certificate-password-env", "S3cret_NAME\n" },
     };
 
     [Theory]
