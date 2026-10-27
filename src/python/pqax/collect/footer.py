@@ -789,6 +789,161 @@ def _visit(schema: List[ParquetSchemaElement], index: int, children: int, path: 
     return index
 
 
+# ---- the columns of a folder of Parquet files ----
+
+def top_level_fields(footer: ParquetFooter) -> List[Tuple[str, str, bool]]:
+    """The top-level fields of the schema of a footer, as (name, type, nullable): the type that Spark gives the field
+    when it reads the file, in the names of the Delta schema, such as long, decimal(18,2), or array<string>, so that the
+    columns of a folder of Parquet files compare with those of a Delta table. A field is nullable when it is optional.
+    Raises FooterError for a schema nested more than 64 levels deep."""
+    schema = footer.schema
+    fields: List[Tuple[str, str, bool]] = []
+    if not schema:
+        return fields
+    count = schema[0].num_children or 0
+    index = 1
+    for _ in range(count):
+        if index >= len(schema):
+            break
+        element = schema[index]
+        text: List[str] = []
+        index = _append_field(schema, index, text, 0)
+        fields.append((element.name, "".join(text), element.repetition is None or element.repetition == "OPTIONAL"))
+    return fields
+
+
+def _append_field(schema, index: int, text: List[str], depth: int) -> int:
+    """Appends the type of the element at an index, repeated or not, and returns the index after its subtree."""
+    if schema[index].repetition == "REPEATED":
+        # A repeated field outside a list annotation is a list of its values.
+        text.append("array<")
+        following = _append_type(schema, index, text, depth)
+        text.append(">")
+        return following
+    return _append_type(schema, index, text, depth)
+
+
+def _append_type(schema, index: int, text: List[str], depth: int) -> int:
+    """Appends the type of the element at an index, ignoring its repetition, and returns the index after its subtree."""
+    if depth > 64:
+        raise FooterError(IssueCodes.FOOTER_INVALID, "The schema is nested too deep.")
+    element = schema[index]
+    if element.num_children is None:
+        text.append(_primitive(element))
+        return index + 1
+    children = element.num_children
+    first = index + 1
+    annotation = element.logical_type if element.logical_type is not None else element.converted_type
+    if annotation == "LIST" and children == 1 and first < len(schema) and schema[first].repetition == "REPEATED":
+        repeated = schema[first]
+        text.append("array<")
+        if repeated.num_children == 1 and repeated.name != "array" and repeated.name != element.name + "_tuple":
+            # The three levels of the specification: the repeated group holds the element.
+            following = _append_type(schema, first + 1, text, depth + 1)
+        else:
+            # The two levels of older writers: the repeated field is the element.
+            following = _append_type(schema, first, text, depth + 1)
+        text.append(">")
+        return following
+    if (annotation in ("MAP", "MAP_KEY_VALUE") and children == 1 and first < len(schema)
+            and schema[first].repetition == "REPEATED" and schema[first].num_children == 2):
+        text.append("map<")
+        following = _append_type(schema, first + 1, text, depth + 1)
+        text.append(",")
+        if following < len(schema):
+            following = _append_type(schema, following, text, depth + 1)
+        text.append(">")
+        return following
+    if annotation is not None and annotation.startswith("VARIANT"):
+        text.append("variant")
+        return _skip_subtree(schema, index)
+    text.append("struct<")
+    position = first
+    for child in range(children):
+        if position >= len(schema):
+            break
+        if child > 0:
+            text.append(",")
+        text.append(schema[position].name + ":")
+        position = _append_field(schema, position, text, depth + 1)
+    text.append(">")
+    return position
+
+
+def _skip_subtree(schema, index: int) -> int:
+    """The index after the subtree of the element at an index."""
+    pending = 1
+    position = index
+    while pending > 0 and position < len(schema):
+        pending += (schema[position].num_children or 0) - 1
+        position += 1
+    return position
+
+
+def _primitive(element: ParquetSchemaElement) -> str:
+    logical = element.logical_type
+    converted = element.converted_type
+    decimal = _decimal_type(element)
+    physical = element.type
+    if physical == "BOOLEAN":
+        return "boolean"
+    if physical == "INT32":
+        if decimal is not None:
+            return decimal
+        if logical == "DATE" or converted == "DATE":
+            return "date"
+        return {(8, True): "byte", (16, True): "short", (8, False): "short", (16, False): "integer",
+                (32, False): "long"}.get(_integer(logical, converted), "integer")
+    if physical == "INT64":
+        if decimal is not None:
+            return decimal
+        if logical is not None and logical.startswith("TIMESTAMP("):
+            return "timestamp_ntz" if logical.endswith(", LOCAL)") else "timestamp"
+        if converted in ("TIMESTAMP_MILLIS", "TIMESTAMP_MICROS"):
+            return "timestamp"
+        return "decimal(20,0)" if _integer(logical, converted) == (64, False) else "long"
+    if physical == "INT96":
+        return "timestamp"
+    if physical == "FLOAT":
+        return "float"
+    if physical == "DOUBLE":
+        return "double"
+    if physical == "BYTE_ARRAY":
+        if decimal is not None:
+            return decimal
+        return ("string" if logical in ("STRING", "ENUM", "JSON") or converted in ("UTF8", "ENUM", "JSON")
+                else "binary")
+    if physical == "FIXED_LEN_BYTE_ARRAY":
+        return decimal if decimal is not None else "float" if logical == "FLOAT16" else "binary"
+    return "binary"
+
+
+def _decimal_type(element: ParquetSchemaElement) -> Optional[str]:
+    """decimal(p,s) from the logical type or the converted type, or None."""
+    logical = element.logical_type
+    if logical is not None and logical.startswith("DECIMAL("):
+        return "decimal" + logical[len("DECIMAL"):].replace(" ", "")
+    if element.converted_type == "DECIMAL" and element.precision is not None:
+        return f"decimal({element.precision},{element.scale or 0})"
+    return None
+
+
+_INTEGER_CONVERTED = {"INT_8": (8, True), "INT_16": (16, True), "INT_32": (32, True), "INT_64": (64, True),
+                      "UINT_8": (8, False), "UINT_16": (16, False), "UINT_32": (32, False), "UINT_64": (64, False)}
+
+
+def _integer(logical: Optional[str], converted: Optional[str]) -> Optional[Tuple[int, bool]]:
+    """The bit width and the sign of an integer annotation, or None."""
+    if logical is not None and logical.startswith("INTEGER("):
+        # INTEGER(<width>, SIGNED) or INTEGER(<width>, UNSIGNED), as the parser writes it.
+        comma = logical.find(",")
+        width = logical[8:comma] if comma > 8 else ""
+        if width.isascii() and width.isdigit() and int(width) <= 0x7FFFFFFF:
+            return int(width), "UNSIGNED" not in logical
+        return None
+    return _INTEGER_CONVERTED.get(converted) if converted is not None else None
+
+
 class FooterReader:
     """Reads the footer of a Parquet file, and nothing else.
 

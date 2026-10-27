@@ -347,6 +347,11 @@ class OneLakeStorage(_Counter):
     The discovery records abfss://<workspace>@<host>/<item> as the location of a source, with the host of the endpoint
     and the workspace and item as the caller gave them, and the identifiers workspaceId and itemId for those given as
     ids.
+
+    OneLake serves the DFS API of Azure Data Lake Storage Gen2, with the workspace as the filesystem. With the endpoint
+    of a storage account, https://<account>.dfs.core.windows.net, and the name of a container as the workspace, the
+    storage reads that container, with the same token and paths relative to the container. Its messages then name the
+    storage account instead of OneLake: an endpoint whose host holds .dfs.core. is a storage account.
     """
 
     def __init__(self, workspace: str, token_provider: Callable[[], str], *, endpoint: str = DEFAULT_ENDPOINT,
@@ -374,6 +379,8 @@ class OneLakeStorage(_Counter):
         self._authority = parsed.netloc.rsplit("@", 1)[-1]
         self._base_path = parsed.path.rstrip("/") + "/" + urllib.parse.quote(workspace, safe="")
         self._local = threading.local()
+        #: What the messages call the service: OneLake, or the storage account of an ADLS Gen2 endpoint.
+        self._service = "The storage account" if ".dfs.core." in parsed.hostname.lower() else "OneLake"
 
     # ---- listing ----
 
@@ -560,7 +567,7 @@ class OneLakeStorage(_Counter):
                     time.sleep(self._backoff(attempt, None))
                     attempt += 1
                     continue
-                raise StorageError("A request to OneLake timed out.") from error
+                raise StorageError(f"A request to {self._lower_service} timed out.") from error
             except (OSError, http.client.HTTPException) as error:
                 self._drop_connection()
                 self._count()
@@ -568,7 +575,7 @@ class OneLakeStorage(_Counter):
                     time.sleep(self._backoff(attempt, None))
                     attempt += 1
                     continue
-                raise StorageError(f"A request to OneLake failed: {type(error).__name__}.") from error
+                raise StorageError(f"A request to {self._lower_service} failed: {type(error).__name__}.") from error
             self._count()
             if self._trace is not None:
                 self._trace(f"GET {self._scheme}://{self._netloc}{target} -> {status}")
@@ -596,8 +603,11 @@ class OneLakeStorage(_Counter):
                     pass
         return float(min(30, 2 ** attempt))
 
-    @staticmethod
-    def _ensure_success(status: int, reason: str, body: bytes) -> None:
+    @property
+    def _lower_service(self) -> str:
+        return "the" + self._service[3:] if self._service.startswith("The ") else self._service
+
+    def _ensure_success(self, status: int, reason: str, body: bytes) -> None:
         if 200 <= status < 300:
             return
         code = ""
@@ -608,4 +618,4 @@ class OneLakeStorage(_Counter):
                 code = f" ({error['code']})"  # never the message, which can name a path
         except ValueError:
             pass
-        raise StorageError(f"OneLake answered {status} {reason}{code}.", status)
+        raise StorageError(f"{self._service} answered {status} {reason}{code}.", status)

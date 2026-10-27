@@ -1,6 +1,7 @@
 """What the tests of the collector, pqax.collect, share: the fixture and its probe dump, synthetic Delta logs, storages
 that record or fail requests, a writer of the Thrift compact protocol for footers that the fixture does not have, a
-fake OneLake DFS endpoint on 127.0.0.1, and the comparison of two footprints.
+fake OneLake DFS endpoint on 127.0.0.1, the synthetic container of a storage account and a way to send the HTTPS
+requests of OneLakeStorage to the fake endpoint, and the comparison of two footprints.
 
 The tests are written from the interface note of the Python collector (24 October 2026), the README of the C#
 collector, section 4.6 of docs/contracts.md, and the kit; never from the code of pqax.collect. This module imports
@@ -953,7 +954,12 @@ class FakeDfs:
             def do_POST(self) -> None:
                 fake._handle(self, "POST")
 
-        self._server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        class Server(ThreadingHTTPServer):
+            # A collection sends up to 16 requests at a time, each on a connection of its own: a short queue of
+            # connections would refuse some of them.
+            request_queue_size = 128
+
+        self._server = Server(("127.0.0.1", 0), Handler)
         self._server.daemon_threads = True
         self._server.block_on_close = False
         threading.Thread(target=self._server.serve_forever, daemon=True).start()
@@ -1056,6 +1062,253 @@ def error_answer(status: int, code: str) -> Answer:
 def range_of(call: Call) -> Tuple[int, int]:
     first, _, last = (call.range or "").split("=", 1)[1].partition("-")
     return int(first), int(last)
+
+
+def listed_directory(call: Call) -> Optional[str]:
+    """The folder that a call lists, decoded, "" for the root, or None for a read."""
+    if call.query.get("resource") != "filesystem":
+        return None
+    return call.query.get("directory", "")
+
+
+def read_path(call: Call) -> Optional[str]:
+    """The file that a call reads, relative to the filesystem, or None for a listing."""
+    if call.query.get("resource") == "filesystem":
+        return None
+    return call.path.lstrip("/").split("/", 1)[-1]
+
+
+class HttpsRedirect:
+    """Sends the HTTPS connections of OneLakeStorage to a fake DFS endpoint on 127.0.0.1, as the HTTP client of the C#
+    tests does, so that a storage on the endpoint of a storage account, such as https://pqaxtest.dfs.core.windows.net,
+    reads the fake while its URLs, its locations, and its messages stay those of the account. It records the host of
+    each connection, and leaves out the proxies of the environment."""
+
+    def __init__(self, fake: FakeDfs, monkeypatch: Any) -> None:
+        import http.client
+        self.hosts: List[str] = []
+        hosts, fake_port = self.hosts, fake.port
+
+        class Connection(http.client.HTTPConnection):
+            def __init__(self, host: str, port: Any = None, timeout: Any = 60, **_: Any) -> None:
+                hosts.append(host)
+                super().__init__("127.0.0.1", fake_port, timeout=timeout)
+
+        monkeypatch.setattr(http.client, "HTTPSConnection", Connection)
+        for name in ("HTTPS_PROXY", "HTTP_PROXY", "ALL_PROXY", "https_proxy", "http_proxy", "all_proxy"):
+            monkeypatch.delenv(name, raising=False)
+        monkeypatch.setenv("NO_PROXY", "*")
+
+
+# ---- a container of a storage account ----
+
+ACCOUNT_HOST = "pqaxtest.dfs.core.windows.net"
+ACCOUNT_ENDPOINT = "https://" + ACCOUNT_HOST
+FILESYSTEM = "lake"
+#: The ABFSS URI of the root of the container.
+CONTAINER = f"abfss://{FILESYSTEM}@{ACCOUNT_HOST}"
+#: The modification times of the files of the container: whole seconds, which the listing of the DFS endpoint keeps.
+OLDER = datetime.datetime(2026, 10, 1, 8, 0, 0, tzinfo=UTC)
+NEWER = OLDER + datetime.timedelta(hours=1)
+#: The two Parquet files at the top of the folder of the lakehouse table of the fixture.
+OLDER_FILE = "part-0001.parquet"
+NEWER_FILE = "part-0002.parquet"
+#: Bytes that end with .parquet in their name and are no Parquet file: a test fails if the collector reads them.
+NOT_PARQUET = b"This text is not a Parquet file and must not be read."
+#: The tables that the discovery of data finds with the default depth, in their order: path, namespace, and format.
+DATA_TABLES = (("data/a/b/c/deep", ("a", "b", "c"), "Delta"), ("data/eu/sales", ("eu",), "Delta"),
+               ("data/mixed/inner", ("mixed",), "Parquet"), ("data/raw", (), "Parquet"), ("data/sales", (), "Delta"),
+               ("data/upper", (), "Parquet"))
+#: The table at depth 5 under data, which only a larger maximum depth finds.
+DEEPER = "data/a/b/c/d/deeper"
+
+
+def dump_of(name: str) -> Dict[str, Any]:
+    """The dump of a file at the top of the folder of the lakehouse table of the fixture."""
+    return next(file for file in SALES.files if file["path"] == name)
+
+
+class Container(Lake):
+    """A folder that the fake DFS endpoint serves as the container lake of the account pqaxtest, or that LocalStorage
+    reads."""
+
+    def copy_delta(self, table: str) -> None:
+        """A copy of the lakehouse table of the fixture, with its log and all its files."""
+        source = local_path(SALES.table_path)
+        for path in sorted(source.rglob("*")):
+            if path.is_file():
+                self.write(f"{table}/{path.relative_to(source).as_posix()}", path.read_bytes())
+
+    def log_only(self, table: str) -> None:
+        """A Delta table whose log has one commit and no file."""
+        self.commit(table, 0, protocol(), metadata(), commit_info(0))
+
+    def touch(self, path: str, moment: datetime.datetime) -> None:
+        os.utime(self.full(path), (moment.timestamp(), moment.timestamp()))
+
+    def copy_file(self, name: str, path: str, moment: datetime.datetime) -> None:
+        """A copy of a Parquet file at the top of the lakehouse table of the fixture, with a modification time."""
+        self.write(path, file_bytes(f"{SALES.table_path}/{name}"))
+        self.touch(path, moment)
+
+    def parquet_folder(self, folder: str) -> None:
+        """A folder of Parquet files as a Spark job leaves it: the two files of the fixture, the newer one second, a
+        _SUCCESS file, a _temporary folder, and files that end with .parquet but start with _ or ., which are not data
+        files. Those are newer than the data files, so that a collector that took them for data files would read them
+        first."""
+        self.copy_file(OLDER_FILE, f"{folder}/{OLDER_FILE}", OLDER)
+        self.copy_file(NEWER_FILE, f"{folder}/{NEWER_FILE}", NEWER)
+        self.write(f"{folder}/_SUCCESS", "")
+        for name in ("_temporary/0/part-0009.parquet", "_ignored.parquet", ".hidden.parquet"):
+            self.write(f"{folder}/{name}", NOT_PARQUET)
+            self.touch(f"{folder}/{name}", NEWER + datetime.timedelta(hours=1))
+
+
+def container(root: Any) -> Container:
+    """The container that the tests of a storage folder share, as FolderLayout of the C# tests: under data, Delta
+    tables at depths 1, 2, 4, and 5, folders of Parquet files, an empty folder, a folder of other files, a partitioned
+    folder, and folders whose names start with _ or . The Parquet files are copies of the fixture."""
+    lake = Container(root)
+    lake.copy_delta("data/sales")
+    lake.copy_delta("data/eu/sales")
+    lake.log_only("data/a/b/c/deep")
+    lake.log_only(DEEPER)
+    lake.parquet_folder("data/raw")
+    # A folder of Parquet files and a subfolder: not a table, but the subfolder is one.
+    lake.copy_file(OLDER_FILE, "data/mixed/x.parquet", OLDER)
+    lake.copy_file(OLDER_FILE, "data/mixed/inner/y.parquet", OLDER)
+    # The extension in another case still names a data file.
+    lake.copy_file(OLDER_FILE, "data/upper/DATA.PARQUET", OLDER)
+    # No table: an empty folder, other files, partitions, and folders that the walk skips.
+    lake.full("data/empty").mkdir(parents=True)
+    lake.write("data/other/a.csv", "id,name\n1,synthetic\n")
+    lake.write("data/other/b.json", '{"id":1}\n')
+    lake.copy_file(OLDER_FILE, "data/events/year=2024/part-0001.parquet", OLDER)
+    lake.copy_file(OLDER_FILE, "data/events/year=2025/part-0001.parquet", OLDER)
+    lake.log_only("data/_staging/t")
+    lake.log_only("data/.hidden/t")
+    lake.write("data/readme.txt", "A file next to the folders.")
+    return lake
+
+
+# ---- footers with any schema ----
+
+PHYSICAL_TYPES = ("BOOLEAN", "INT32", "INT64", "INT96", "FLOAT", "DOUBLE", "BYTE_ARRAY", "FIXED_LEN_BYTE_ARRAY")
+REPETITIONS = ("REQUIRED", "OPTIONAL", "REPEATED")
+CONVERTED_TYPES = ("UTF8", "MAP", "MAP_KEY_VALUE", "LIST", "ENUM", "DECIMAL", "DATE", "TIME_MILLIS", "TIME_MICROS",
+                   "TIMESTAMP_MILLIS", "TIMESTAMP_MICROS", "UINT_8", "UINT_16", "UINT_32", "UINT_64", "INT_8", "INT_16",
+                   "INT_32", "INT_64", "JSON", "BSON", "INTERVAL")
+# The members of the union LogicalType of parquet.thrift that are empty structures, and the units of TimeUnit.
+EMPTY_LOGICAL_TYPES = {"STRING": 1, "MAP": 2, "LIST": 3, "ENUM": 4, "DATE": 6, "UNKNOWN": 11, "JSON": 12, "BSON": 13,
+                       "UUID": 14, "FLOAT16": 15}
+TIME_UNITS = {"MILLIS": 1, "MICROS": 2, "NANOS": 3}
+
+
+@dataclass(frozen=True)
+class Element:
+    """A field of the schema of a footer: a leaf with a physical type, or a group with children. logical is a member
+    of the union LogicalType: a name such as "STRING" or "LIST", or ("DECIMAL", precision, scale),
+    ("TIMESTAMP", unit, adjusted_to_utc), ("TIME", unit, adjusted_to_utc), ("INTEGER", width, signed), or
+    ("VARIANT",)."""
+
+    name: str
+    type: Optional[str] = None
+    repetition: Optional[str] = "OPTIONAL"
+    children: Tuple["Element", ...] = ()
+    converted: Optional[str] = None
+    logical: Any = None
+    type_length: Optional[int] = None
+    scale: Optional[int] = None
+    precision: Optional[int] = None
+
+
+def leaf(name: str, physical: str, repetition: Optional[str] = "OPTIONAL", **annotations: Any) -> Element:
+    return Element(name, physical, repetition, **annotations)
+
+
+def group(name: str, *children: Element, repetition: Optional[str] = "OPTIONAL", **annotations: Any) -> Element:
+    return Element(name, None, repetition, tuple(children), **annotations)
+
+
+def _write_logical(w: Thrift, logical: Any) -> None:
+    w.begin(10)
+    if isinstance(logical, str):
+        w.begin(EMPTY_LOGICAL_TYPES[logical]).end()
+    elif logical[0] == "DECIMAL":
+        w.begin(5).i32(1, logical[2]).i32(2, logical[1]).end()
+    elif logical[0] in ("TIME", "TIMESTAMP"):
+        w.begin(7 if logical[0] == "TIME" else 8).boolean(1, logical[2])
+        w.begin(2).begin(TIME_UNITS[logical[1]]).end().end()
+        w.end()
+    elif logical[0] == "INTEGER":
+        w.begin(10).byte(1, logical[1]).boolean(2, logical[2]).end()
+    elif logical[0] == "VARIANT":
+        w.begin(16).end()
+    else:
+        raise ValueError(f"No such logical type in the kit: {logical!r}")
+    w.end()
+
+
+def schema_footer(fields: Sequence[Element], rows: int = 1) -> bytes:
+    """A FileMetaData whose schema has these top-level fields, and one row group of rows with one column chunk for each
+    leaf, as a writer orders them: depth first."""
+    w = Thrift()
+    w.i32(1, 2)
+    elements: List[Tuple[Element, Tuple[str, ...]]] = []
+    leaves: List[Tuple[Element, Tuple[str, ...]]] = []
+
+    def walk(element: Element, path: Tuple[str, ...]) -> None:
+        elements.append((element, path))
+        if element.type is not None:
+            leaves.append((element, path))
+        for child in element.children:
+            walk(child, path + (child.name,))
+
+    for field in fields:
+        walk(field, (field.name,))
+    w.list_of(2, Thrift.STRUCT, len(elements) + 1)
+    w.element().binary(4, "schema").i32(5, len(fields)).end()
+    for element, _ in elements:
+        w.element()
+        if element.type is not None:
+            w.i32(1, PHYSICAL_TYPES.index(element.type))
+        if element.type_length is not None:
+            w.i32(2, element.type_length)
+        if element.repetition is not None:
+            w.i32(3, REPETITIONS.index(element.repetition))
+        w.binary(4, element.name)
+        if element.type is None:
+            w.i32(5, len(element.children))
+        if element.converted is not None:
+            w.i32(6, CONVERTED_TYPES.index(element.converted))
+        if element.scale is not None:
+            w.i32(7, element.scale)
+        if element.precision is not None:
+            w.i32(8, element.precision)
+        if element.logical is not None:
+            _write_logical(w, element.logical)
+        w.end()
+    w.i64(3, rows)
+    w.list_of(4, Thrift.STRUCT, 1)
+    w.element()
+    w.list_of(1, Thrift.STRUCT, len(leaves))
+    for index, (element, path) in enumerate(leaves):
+        w.element()
+        w.i64(2, 4)
+        w.begin(3)
+        w.i32(1, PHYSICAL_TYPES.index(element.type or "INT64"))
+        w.list_of(2, Thrift.I32, 1).value_i32(ENCODING_PLAIN)
+        w.list_of(3, Thrift.BINARY, len(path))
+        for name in path:
+            w.value_binary(name)
+        w.i32(4, CODEC_ZSTD).i64(5, rows).i64(6, 100 + index).i64(7, 50 + index).i64(9, 4)
+        w.end()
+        w.end()
+    w.i64(2, 100 * len(leaves)).i64(3, rows)
+    w.end()
+    w.binary(6, "Synthetic writer 1.0")
+    w.end()
+    return w.bytes()
 
 
 # ---- tokens ----

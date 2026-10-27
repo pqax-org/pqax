@@ -414,7 +414,7 @@ pqax.diff.ORDERS                                                         # ("tot
 python -m pqax diff <older> <newer> [--part NAME] [--sort total|waste|rows|files|name] [--top N] [--json]
 ```
 
-The collector of section 4.6 is in the subpackage `pqax.collect`, as decided on 23 October 2026: the Delta log reader and the footer parser, which needs the standard library only, at levels 1 and 2. pyarrow reads the Delta checkpoints in Parquet, with the extra `pqax[collect]`, and azure-identity gives the identities of the Azure SDK, with the extra `pqax[azure]`; a missing library raises `ImportError` naming the extra, and the command exits with 2 and names it. The options, the defaults, the issue codes, the output lines, and the exit codes are those of `pqax collect` in C#. `--mount` reads the folder of one item that holds `Tables`, such as the default lakehouse of a Fabric notebook, and `--endpoint` another DFS endpoint, such as an ADLS Gen2 account.
+The collector of section 4.6 is in the subpackage `pqax.collect`, as decided on 23 October 2026: the Delta log reader and the footer parser, which needs the standard library only, at levels 1 and 2. pyarrow reads the Delta checkpoints in Parquet, with the extra `pqax[collect]`, and azure-identity gives the identities of the Azure SDK, with the extra `pqax[azure]`; a missing library raises `ImportError` naming the extra, and the command exits with 2 and names it. The options, the defaults, the issue codes, the output lines, and the exit codes are those of `pqax collect` in C#. `--adls` reads a container of Azure Data Lake Storage Gen2, with the two forms of the URL, the refusals, and the messages of `pqax collect --adls`, reading the URL as `System.Uri` does, and `discover_folder` finds its Delta tables and its folders of Parquet files as `TableDiscovery.DiscoverFolderAsync` does, so that the two command lines name a storage account the same way and give the same footprint. `--mount` reads the folder of one item that holds `Tables`, such as the default lakehouse of a Fabric notebook, and `--endpoint`, with `--workspace`, another DFS endpoint in the OneLake layout. The messages that list the sources name `--mount` beside the sources of C#.
 
 ```python
 pqax.collect.collect(storage, tables=None, *, items=None, level=2, depth="columnChunks", max_footers=0, max_commits=30,
@@ -424,10 +424,13 @@ pqax.collect.LocalStorage(root), LocalStorage.mount(folder, item=None)
 pqax.collect.OneLakeStorage(workspace, token_provider, *, endpoint="https://onelake.dfs.fabric.microsoft.com", max_retries=4,
                             timeout=300.0, trace=None)
 pqax.collect.list_items(storage), discover(storage, item) -> list[TableLocation]
+pqax.collect.discover_folder(storage, folder, max_depth=DEFAULT_FOLDER_DEPTH) -> list[TableLocation]   # 4 by default
+pqax.collect.TableLocation(..., format="Delta"), TableFormats.DELTA, TableFormats.PARQUET
 pqax.collect.parse_footer(data, include_data_values=False) -> ParquetFooter      # FooterError(code, message) on bad bytes
 pqax.collect.CollectorOptions, DetailDepth, CollectionProgress, IssueCodes, ISSUE_CODES, ArrowCheckpointReader
 pqax.collect.identity.TokenCache(get_token), access_token(value), azure_cli(tenant=None), azure_credential(credential)
-python -m pqax collect --local <folder> | --mount <folder> | --workspace <name or id> --item <name.Kind> ... --output <file>
+python -m pqax collect --local <folder> | --mount <folder> | --workspace <name or id> --item <name.Kind> ...
+                       | --adls https://<account>.dfs.core.windows.net/<container>[/<folder>] --output <file>
                        [--endpoint <url>] [identity] [--depth ...] [--level 1|2] [--max-footers n] [--max-commits n]
                        [--parallelism n] [--verbose]
 ```
@@ -460,7 +463,7 @@ At every collection level, the collector lists the folder of each table, at any 
 
 The collector reads OneLake and Azure Data Lake Storage Gen2. A container of a storage account with hierarchical namespace serves the DFS API of OneLake, with the container where OneLake has the workspace, so `OneLakeStorage` reads it with the endpoint of the account, `https://<account>.dfs.core.windows.net`, and a token of the same scope. `TableDiscovery.DiscoverFolderAsync` finds the tables under a folder of it, to a bounded depth: a folder with `_delta_log` is a Delta table, and a folder of Parquet files with no subfolder is a table of the format `Parquet`, whose columns come from the footer of its most recent file, as section 6.5 of the [object model](object-model.md) says. Their source has the kind `Storage folder`, one of the kinds that section 6.3 lists.
 
-Two collectors meet this contract: `Pqax.Collector` in C#, the reference, and `pqax.collect` in Python, a port of it with the same options, reads, totals, issue codes, and limits, as section 4.5 lists. Their footprints of `conformance/fixtures/lakehouse` hold the same values in every table and field, the requests and the bytes of the collection included, and differ only in the members of the collection that name the collector and the times, which `conformance/cross_check.py` checks. The message of an issue that quotes the error of a JSON parser is worded by that parser; the codes do not differ.
+Two collectors meet this contract: `Pqax.Collector` in C#, the reference, and `pqax.collect` in Python, a port of it with the same options, reads, totals, issue codes, and limits, as section 4.5 lists. Their footprints of `conformance/fixtures/lakehouse` hold the same values in every table and field, the requests and the bytes of the collection included, and differ only in the members of the collection that name the collector and the times, which `conformance/cross_check.py` checks. So do the footprints that `pqax collect --adls` and `python -m pqax collect --adls` take of the synthetic container of `conformance/container_check.py`, served by a fake DFS endpoint, with its Delta tables, its folders of Parquet files, its hidden and partitioned folders, and a footer with every type annotation; the two command lines print the same lines and fail and refuse with the same messages. The message of an issue that quotes the error of a JSON parser is worded by that parser, and the name of an exception in a message by its language; the codes do not differ.
 
 ## 5. Tests
 

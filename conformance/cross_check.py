@@ -12,7 +12,9 @@ Collectors: python -m pqax collect, when pyarrow is installed (pqax[collect]), a
 command line builds, collect conformance/fixtures/lakehouse. Each file must give the results of expected/sample.json,
 and the two collections must hold the same values in every table and field, and in the collection of the manifest
 except the members that name the collector and the times: collectorApp, collectorAppVersion, collectorLib,
-collectorLibVersion, startedAt, and completedAt.
+collectorLibVersion, startedAt, and completedAt. When both run, they also collect a synthetic container of Azure Data
+Lake Storage Gen2 with --adls, through a fake DFS endpoint on 127.0.0.1, which must give the same footprints in the
+same way, and the same lines and the same errors: see container_check.py.
 
 Validators: python -m pqax check, the C# command line (pqax check, or the C# library when the command line does not
 build), and validate() of the TypeScript package through node. Readers: pqax.open in Python, PqaxDocument in C#, and
@@ -49,6 +51,7 @@ from collections import defaultdict
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
+import container_check
 import make_measures
 
 KIT = Path(__file__).resolve().parent
@@ -878,18 +881,11 @@ class Node:
 
 # ---- the diff ----
 
-def check_collections(files: List[Tuple[Path, str, str, bool]]) -> List[str]:
-    """What differs between the collections of the fixture by the collectors, read whole with the Python reader: every
-    table and field, a missing field counting as nulls, and the collection of the manifest without the members that
-    name the collector and the times."""
-    collected = [(path, label) for path, label, _, _ in files if label.endswith("/collected.pqax")]
-    if len(collected) < 2:
-        print("  collections: fewer than two collectors ran, so the collections are not compared")
-        return []
-    try:
-        import pqax
-    except ImportError as error:
-        return [f"collections: the Python reader does not import: {error}"]
+def compare_collections(first: Path, first_label: str, second: Path, label: str) -> Tuple[List[str], int]:
+    """What differs between two collections of the same tables, read whole with the Python reader: every table and
+    field, a missing field counting as nulls, and the collection of the manifest without the members that name the
+    collector and the times; and the number of values compared."""
+    import pqax
 
     def content(path: Path) -> Tuple[Dict[str, Any], Dict[str, Dict[str, list]], Dict[str, int]]:
         with pqax.open(str(path)) as document:
@@ -897,38 +893,76 @@ def check_collections(files: List[Tuple[Path, str, str, bool]]) -> List[str]:
             return (document.manifest.get("collection") or {}, {name: document.table(name) for name in names},
                     {name: document.row_count(name) for name in names})
 
-    (first, first_label), problems = collected[0], []
     try:
         base = content(first)
     except Exception as error:  # noqa: BLE001 - a file that cannot be read is a result
-        return [f"{first_label}: the collection could not be read: {type(error).__name__}: {error}"]
-    for path, label in collected[1:]:
-        try:
-            other = content(path)
-        except Exception as error:  # noqa: BLE001
-            problems.append(f"{label}: the collection could not be read: {type(error).__name__}: {error}")
+        return [f"{first_label}: the collection could not be read: {type(error).__name__}: {error}"], 0
+    try:
+        other = content(second)
+    except Exception as error:  # noqa: BLE001
+        return [f"{label}: the collection could not be read: {type(error).__name__}: {error}"], 0
+    found: List[str] = []
+    for member in sorted(set(base[0]) | set(other[0])):
+        if member not in COLLECTION_IDENTITY and base[0].get(member) != other[0].get(member):
+            found.append(f"{label}: collection.{member} is {other[0].get(member)!r}, {first_label} has "
+                         f"{base[0].get(member)!r}")
+    compared = 0
+    for table in sorted(set(base[1]) | set(other[1])):
+        rows = base[2].get(table, 0)
+        if other[2].get(table, 0) != rows:
+            found.append(f"{label}: {table} has {other[2].get(table, 0)} rows, {first_label} has {rows}")
             continue
-        found: List[str] = []
-        for member in sorted(set(base[0]) | set(other[0])):
-            if member not in COLLECTION_IDENTITY and base[0].get(member) != other[0].get(member):
-                found.append(f"{label}: collection.{member} is {other[0].get(member)!r}, {first_label} has "
-                             f"{base[0].get(member)!r}")
-        compared = 0
-        for table in sorted(set(base[1]) | set(other[1])):
-            rows = base[2].get(table, 0)
-            if other[2].get(table, 0) != rows:
-                found.append(f"{label}: {table} has {other[2].get(table, 0)} rows, {first_label} has {rows}")
-                continue
-            left, right = base[1].get(table, {}), other[1].get(table, {})
-            for field in sorted(set(left) | set(right)):
-                a, b = left.get(field) or [None] * rows, right.get(field) or [None] * rows
-                compared += rows
-                found += [f"{label}: {table}.{field}[{index}] is {y!r}, {first_label} has {x!r}"
-                          for index, (x, y) in enumerate(zip(a, b)) if x != y]
+        left, right = base[1].get(table, {}), other[1].get(table, {})
+        for field in sorted(set(left) | set(right)):
+            a, b = left.get(field) or [None] * rows, right.get(field) or [None] * rows
+            compared += rows
+            found += [f"{label}: {table}.{field}[{index}] is {y!r}, {first_label} has {x!r}"
+                      for index, (x, y) in enumerate(zip(a, b)) if x != y]
+    return found, compared
+
+
+def check_collections(files: List[Tuple[Path, str, str, bool]]) -> List[str]:
+    """What differs between the collections of the fixture by the collectors, as compare_collections says."""
+    collected = [(path, label) for path, label, _, _ in files if label.endswith("/collected.pqax")]
+    if len(collected) < 2:
+        print("  collections: fewer than two collectors ran, so the collections are not compared")
+        return []
+    try:
+        import pqax  # noqa: F401 - the reader of the comparison
+    except ImportError as error:
+        return [f"collections: the Python reader does not import: {error}"]
+    (first, first_label), problems = collected[0], []
+    for path, label in collected[1:]:
+        found, compared = compare_collections(first, first_label, path, label)
         print(f"  collections: {label} and {first_label}, {compared} values compared, "
               + ("equal" if not found else f"{len(found)} differences"))
         problems += found
     return problems
+
+
+def check_container(work: Path, implementations: List[Any]) -> List[str]:
+    """python -m pqax collect --adls and pqax collect --adls in C# on the synthetic container of container_check.py,
+    when both collectors can run. Returns the failures."""
+    python = next((implementation for implementation in implementations if implementation.name == "python"), None)
+    dotnet = next((implementation for implementation in implementations if implementation.name == "dotnet"), None)
+    reason = None
+    if python is None or dotnet is None:
+        reason = "it needs the Python and the C# collectors"
+    elif not dotnet.cli:
+        reason = dotnet.cli_note or "the C# command line was not built"
+    else:
+        try:
+            import pyarrow  # noqa: F401 - the Python collector reads the Delta checkpoints of the container with it
+        except ImportError:
+            reason = "pyarrow is not installed (pip install \"pqax[collect]\")"
+    if reason is not None:
+        print(f"  container skipped: {reason}")
+        return []
+    try:
+        return container_check.check(work / "container-check", python.env, dotnet.dotnet, DOTNET_CLI,
+                                     compare_collections)
+    except Exception as error:  # noqa: BLE001 - a check that cannot run is a result
+        return [f"container: {type(error).__name__}: {error}"]
 
 
 def check_diff(implementations: List[Any]) -> List[str]:
@@ -1101,6 +1135,7 @@ def check(work: Path, skip: set, build: bool, expected: Dict[str, Dict[str, Any]
         print(f"{label:<{width}}  " + "".join(cells))
     print()
     failures += check_collections(files)
+    failures += check_container(work, implementations)
     failures += check_diff(implementations)
     print()
     if failures:
@@ -1110,8 +1145,8 @@ def check(work: Path, skip: set, build: bool, expected: Dict[str, Dict[str, Any]
         return 1
     print(f"Every check passed: {len(files)} files, each checked by the validators and the readers of "
           f"{', '.join(names)}, and the measures of {len(measured_paths)} of them against expected/measures; the "
-          f"collections of the fixture by {len(collectors)} collectors compared with each other; and the diff of the "
-          f"comparison test against expected/diff.")
+          f"collections of the fixture by {len(collectors)} collectors compared with each other, and those of the "
+          f"synthetic container when both collectors ran; and the diff of the comparison test against expected/diff.")
     return 0
 
 

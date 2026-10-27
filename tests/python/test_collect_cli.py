@@ -55,11 +55,11 @@ def workspace(output, *identity):
 
 
 CHECKS = [
-    (lambda out: [], "give one of --local, --mount, or --workspace."),
-    (lambda out: ["--output", out], "give one of --local, --mount, or --workspace."),
+    (lambda out: [], "give one of --local, --mount, --workspace, or --adls."),
+    (lambda out: ["--output", out], "give one of --local, --mount, --workspace, or --adls."),
     (lambda out: ["--local", LAKEHOUSE, "--workspace", WORKSPACE, "--item", "I.Lakehouse", "--output", out],
-     "give one of --local, --mount, or --workspace."),
-    (lambda out: ["--local", LAKEHOUSE, "--mount", LAKEHOUSE, "--output", out], "give one of --local, --mount, or --workspace."),
+     "give one of --local, --mount, --workspace, or --adls."),
+    (lambda out: ["--local", LAKEHOUSE, "--mount", LAKEHOUSE, "--output", out], "give one of --local, --mount, --workspace, or --adls."),
     (lambda out: ["--workspace", WORKSPACE, "--output", out], "--workspace needs at least one --item."),
     (lambda out: ["--local", LAKEHOUSE], "--output is missing."),
     (lambda out: ["--local", LAKEHOUSE, "--output"], "--output needs a value."),
@@ -73,11 +73,11 @@ CHECKS = [
     (lambda out: ["--local", LAKEHOUSE, "--output", out, "--parallelism", "x"], "--parallelism needs a number of at least 1."),
     (lambda out: ["--local", LAKEHOUSE, "--output", out, "--no-such-option"], "unknown option '--no-such-option'."),
     (lambda out: ["--local", LAKEHOUSE, "--output", out, "--azure-cli"],
-     "--tenant, --client-id, and the identity options apply to --workspace only."),
+     "--tenant, --client-id, and the identity options apply to --workspace and --adls only."),
     (lambda out: ["--local", LAKEHOUSE, "--output", out, "--tenant", TENANT],
-     "--tenant, --client-id, and the identity options apply to --workspace only."),
+     "--tenant, --client-id, and the identity options apply to --workspace and --adls only."),
     (lambda out: ["--local", LAKEHOUSE, "--output", out, "--access-token-env", "PQAX_TOKEN"],
-     "--tenant, --client-id, and the identity options apply to --workspace only."),
+     "--tenant, --client-id, and the identity options apply to --workspace and --adls only."),
     (lambda out: workspace(out, "--device-code", "--browser"), "--device-code and --browser are two identities; give one."),
     (lambda out: workspace(out, "--azure-cli", "--managed-identity"), "--azure-cli and --managed-identity are two identities; give one."),
     (lambda out: workspace(out, "--access-token-env", "PQAX_TOKEN", "--env-credential"),
@@ -119,7 +119,7 @@ def test_a_wrong_command_line_exits_with_2_and_the_message_of_the_check(capsys, 
     (lambda out: ["--mount", LAKEHOUSE, "--output", out, "--endpoint", "http://127.0.0.1:9"],
      "--endpoint applies to --workspace only."),
     (lambda out: ["--mount", LAKEHOUSE, "--output", out, "--browser"],
-     "--tenant, --client-id, and the identity options apply to --workspace only."),
+     "--tenant, --client-id, and the identity options apply to --workspace and --adls only."),
 ], ids=["mount with two items", "endpoint with local", "endpoint with mount", "identity with mount"])
 def test_the_options_of_python_are_checked_too(capsys, tmp_path, arguments, message):
     output = str(tmp_path / "out.pqax")
