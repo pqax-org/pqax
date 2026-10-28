@@ -1,7 +1,7 @@
 // The main entry of the package. It imports nothing from Node, so it runs in browsers too. Node-only helpers are in
 // "pqax/node".
 export type { ByteSource, PqaxInput } from "./bytes.js";
-export { embeddedSource, openEmbedded, openPqax } from "./document.js";
+export { embeddedSource, openEmbedded, openPqax, tryOpenEmbedded } from "./document.js";
 export type { PqaxDocument } from "./document.js";
 export { PqaxError } from "./errors.js";
 export type { PqaxErrorCode, ValidationCode } from "./errors.js";

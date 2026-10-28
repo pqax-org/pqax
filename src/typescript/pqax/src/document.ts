@@ -65,7 +65,22 @@ export async function openPqax(input: PqaxInput): Promise<PqaxDocument> {
  */
 export async function openEmbedded(input: PqaxInput, partName = "Footprint.pqax"): Promise<PqaxDocument> {
   const embedded = await findEmbedded(input, partName);
+  if (embedded === null) {
+    throw partMissing(partName);
+  }
   return openSource(embedded.source, embedded);
+}
+
+/**
+ * Opens the PQAX file that a VPAX package holds as one part, as {@link openEmbedded} does, or returns null when the
+ * package has no part with that name, as most VPAX files of today have none.
+ * @param input The package.
+ * @param partName The name of the part, as for {@link openEmbedded}.
+ * @throws {PqaxError} the errors of {@link openEmbedded}, except `embedded.partMissing`.
+ */
+export async function tryOpenEmbedded(input: PqaxInput, partName = "Footprint.pqax"): Promise<PqaxDocument | null> {
+  const embedded = await findEmbedded(input, partName);
+  return embedded === null ? null : openSource(embedded.source, embedded);
 }
 
 /**
@@ -78,7 +93,11 @@ export async function openEmbedded(input: PqaxInput, partName = "Footprint.pqax"
  * package is not a zip archive, and the errors of an entry that cannot be read.
  */
 export async function embeddedSource(input: PqaxInput, partName = "Footprint.pqax"): Promise<ByteSource> {
-  return (await findEmbedded(input, partName)).source;
+  const embedded = await findEmbedded(input, partName);
+  if (embedded === null) {
+    throw partMissing(partName);
+  }
+  return embedded.source;
 }
 
 /** A PQAX file inside a package. */
@@ -88,19 +107,25 @@ interface EmbeddedPart {
   readonly compression: "stored" | "deflated";
 }
 
-async function findEmbedded(input: PqaxInput, partName: string): Promise<EmbeddedPart> {
+// The part of a package, or null when the package has no part with that name.
+async function findEmbedded(input: PqaxInput, partName: string): Promise<EmbeddedPart | null> {
   const outer = await readZip(toByteSource(input));
   const wanted = partName.replace(/^\/+/, "");
   const lower = wanted.toLowerCase();
   const entry = outer.find(wanted) ?? outer.entries.find((candidate) => candidate.name.toLowerCase() === lower);
   if (entry === undefined) {
-    throw new PqaxError("embedded.partMissing", `The package has no part named ${wanted}`, wanted);
+    return null;
   }
   if (entry.method === 0 && !entry.encrypted && !entry.needsZip64) {
     const start = await entryDataOffset(outer, entry);
     return { source: windowSource(outer.source, start, entry.compressedSize), name: entry.name, compression: "stored" };
   }
   return { source: memorySource(await readEntry(outer, entry)), name: entry.name, compression: "deflated" };
+}
+
+function partMissing(partName: string): PqaxError {
+  const wanted = partName.replace(/^\/+/, "");
+  return new PqaxError("embedded.partMissing", `The package has no part named ${wanted}`, wanted);
 }
 
 /** A part as the manifest lists it, with the counts that are valid. */
