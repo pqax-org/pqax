@@ -12,6 +12,12 @@ namespace Pqax.Collector;
 /// </summary>
 internal static class StatisticsText
 {
+    /// <summary>The longest unscaled value of a decimal bound that is written: 32 bytes, the largest decimal of Arrow.</summary>
+    public const int MaxDecimalBytes = 32;
+
+    /// <summary>The largest scale of a decimal bound that is written: 76, the most digits of a decimal of 32 bytes.</summary>
+    public const int MaxDecimalScale = 76;
+
     private static readonly DateTime Epoch = new DateTime(1970, 1, 1, 0, 0, 0, DateTimeKind.Utc);
 
     public static string? Format(byte[]? value, ParquetLeafColumn leaf)
@@ -54,7 +60,8 @@ internal static class StatisticsText
                 case "FIXED_LEN_BYTE_ARRAY":
                     if (annotation != null && annotation.StartsWith("DECIMAL(", StringComparison.Ordinal))
                     {
-                        return Decimal(new BigInteger(Reverse(value)), Scale(leaf));
+                        // A longer value is no decimal that a writer bounds, and its text would take quadratic time.
+                        return value.Length <= MaxDecimalBytes ? Decimal(new BigInteger(Reverse(value)), Scale(leaf)) : null;
                     }
 
                     if (IsText(annotation) || (annotation == null && leaf.PhysicalType == "BYTE_ARRAY" && IsValidUtf8(value)))
@@ -73,7 +80,7 @@ internal static class StatisticsText
         }
     }
 
-    private static string FormatInteger(long value, string? annotation, ParquetLeafColumn leaf)
+    private static string? FormatInteger(long value, string? annotation, ParquetLeafColumn leaf)
     {
         if (annotation == null)
         {
@@ -143,11 +150,17 @@ internal static class StatisticsText
         return leaf.Scale ?? 0;
     }
 
-    private static string Decimal(BigInteger unscaled, int scale)
+    private static string? Decimal(BigInteger unscaled, int scale)
     {
         if (scale <= 0)
         {
             return unscaled.ToString(CultureInfo.InvariantCulture);
+        }
+
+        if (scale > MaxDecimalScale)
+        {
+            // The text would hold as many zeros as the scale says, which a damaged footer sets to any integer.
+            return null;
         }
 
         bool negative = unscaled.Sign < 0;

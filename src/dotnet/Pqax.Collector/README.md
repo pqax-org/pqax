@@ -157,7 +157,7 @@ The collector fills every field of the object model that a Delta table and its f
 | Table | The `TableLocation` for the location, then `metaData`, `protocol`, the domains, the listings, the history, and totals over the files, the footers, and the row groups. `fileSizes`, `rowGroupRowCounts`, and `partitionSizes` are distributions with quartiles taken by position in the sorted values. `nonLiveOldestRemovedAt` and `nonLiveNewestRemovedAt` are the earliest and the latest `remove.deletionTimestamp` of the files that `nonLiveFileCount` counts. |
 | Column | `schemaString`: name, type as Spark writes it in DDL, nullability, field id and physical name of column mapping, comment. Totals over the column chunks of the footers read, or at level 1 the null count of the statistics of the log, when every file has one. |
 | Partition spec and partitions | `partitionColumns` and `add.partitionValues`, by physical name with column mapping. `lastModifiedAt` of a partition is the latest `add.modificationTime` of its files, and `null` when one of them has none, as for the table. |
-| Physical schema and physical column | The schemas of the footers. A leaf maps to a column by the field id of its top-level field when the table has field ids, and otherwise by the physical name, or the name. |
+| Physical schema and physical column | The schemas of the footers. Every leaf is a physical column, a nested one too: its path holds the names from the root to the leaf, with the levels of lists and maps as the file names them, such as `items`, `list`, `element`, `sku`, and its type, annotation, repetition, and field id are its own. A leaf maps to its top-level column by the field id of its top-level field when the table has field ids, and otherwise by the physical name, or the name, of the first name of its path. The totals of a column are over the column chunks of all its leaves: a structure of three fields has three chunks in a row group, and the values of its three leaves. |
 | Writer | `created_by`, and V-Order from the `VORDER` tag of the file or the footer keys |
 | Operation and commit | `commitInfo` of the commits read: time, operation, engine, blind append, metrics. Never a user name, a notebook, or a cluster. |
 | File, row group, column chunk | The log and the footers, from the depth that keeps them. The encodings of a column chunk are sorted. |
@@ -225,7 +225,7 @@ A table of the format `Parquet` has no log, so the footprint holds what the file
 | Field | Value |
 |---|---|
 | Files | The Parquet files directly in the folder, by name, with the size and the modification time of the listing. `fileCount`, `fileSize`, `fileSizes`, and `lastModifiedAt` come from them. |
-| Columns | The top-level fields of the footer of the most recent file, by modification time and then by name, as the object model says. The type is written with the names of the Delta schema, such as `long`, `string`, `decimal(18,2)`, `timestamp`, `array<string>`, so that it compares with a Delta table. A column is nullable when its field is optional. |
+| Columns | The top-level fields of the footer of the most recent file, by modification time and then by name, as the object model says. The type is written with the names of the Delta schema, such as `long`, `string`, `decimal(18,2)`, `timestamp`, `array<string>`, `map<string,long>`, `struct<x:double,label:string>`, so that it compares with a Delta table, with the rules of Spark for the lists of two levels and the legacy maps, at any depth that the parser reads. A column is nullable when its field is optional. |
 | Rows | From the footers, at level 2. At level 1 the row count is unknown. |
 | Level 1 | Reads the footer of the most recent file for the columns only: `footerCount` is 0 and the depth is at most `Files` |
 | Level 2 | Reads every footer, or `MaxFootersPerTable` of them: the sample of the limit, where the most recent file takes the place of the last file when the sample leaves it out |
@@ -250,7 +250,7 @@ A table of the format `Parquet` has no log, so the footprint holds what the file
 | `FooterNotRead` | The read of a footer failed for another reason than a denied access, or the log gives no size |
 | `FooterEncrypted` | The footer is encrypted: the file ends with `PARE` |
 | `FooterInvalid` | Not a valid Parquet footer, or the file is shorter than the log says |
-| `FooterTooLarge` | The footer is larger than 64 MB |
+| `FooterTooLarge` | The footer is larger than 64 MB, has a list or a map of more than 1,000,000 elements, or more than 4,194,304 column chunks or sorting columns in all |
 | `FooterColumnsEncrypted` | Column chunks have no metadata because their columns are encrypted; the footer counts as not read |
 | `IssuesTruncated` | The table had more than 100 issues |
 
@@ -280,7 +280,11 @@ The parser reads the Thrift compact protocol: field headers with short and long 
 | The keys of the key-value metadata, with the value for keys that contain `vorder`, the key `org.apache.spark.version`, and keys that end with `string_prefix_length`, up to 200 characters | The values of other keys, which can hold data values: Fabric copies the statistics of the log into the footer |
 | The schema, once | `path_in_schema` of every column chunk, column-level key-value metadata, the level histograms, geospatial statistics, column orders, and the encryption details |
 
-It refuses an encrypted footer (`PARE`), a file that does not end with `PAR1`, a footer length that does not fit the file, a footer over 64 MB, a required field that is missing, a row group whose column chunks do not match the leaves of the schema, and any length or count that goes beyond the bytes left. It never throws anything but `ParquetFooterException` on bad bytes.
+It refuses as `FooterInvalid` a file that does not end with `PAR1`, a footer length that does not fit the file, a required field that is missing, a row group whose column chunks do not match the leaves of the schema, any length or count that goes beyond the bytes left, values nested more than 64 levels deep, where every structure, list, set, and map counts a level, read or skipped, and a schema more than 256 levels deep. It refuses as `FooterTooLarge` a footer over 64 MB, a list or a map of more than 1,000,000 elements, the limit of a Thrift container in Arrow C++ (`FooterReader.MaxListLength`), and a footer of more than 4,194,304 column chunks, or as many sorting columns, in all (`FooterReader.MaxColumnChunks`), so that a footer of empty structures, one byte each, cannot exhaust the memory. An encrypted footer, which ends with `PARE`, is `FooterEncrypted`.
+
+A field that appears twice takes its last value, and a structure that appears twice, such as the metadata or the statistics of a column chunk, replaces the first whole. An empty list may give any type to its elements, as fastparquet writes the row groups of a file without rows. A field header of type 0 ends its structure, whatever its delta, as in the Thrift libraries of C++, Java, and Rust. The keys of the allow-list and of V-Order are compared with `OrdinalIgnoreCase`. With data values, a decimal bound whose unscaled value takes more than 32 bytes, or whose scale is above 76, has no text.
+
+It never throws anything but `ParquetFooterException` on bad bytes. The conformance kit reads the Parquet files of pyarrow from 8 to 26, DuckDB from 0.8 to 2.0, polars from 0.18 to 2.1, fastparquet, datafusion, delta-rs, and Parquet.Net with it and with the Python parser, compares the two with each other and with the metadata of pyarrow, and does the same on some 84,000 footers mutated from them: [conformance/README.md](https://github.com/pqax-org/pqax/blob/main/conformance/README.md#footers-of-other-writers).
 
 ## Limits
 

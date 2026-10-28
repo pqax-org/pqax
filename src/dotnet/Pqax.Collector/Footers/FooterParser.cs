@@ -6,8 +6,9 @@ namespace Pqax.Collector;
 
 /// <summary>
 /// Decodes a <c>FileMetaData</c> of <c>parquet.thrift</c> from the compact protocol. A field that this version does not
-/// know is skipped, whatever its type, and so is a known field with an unexpected wire type. A required field that is
-/// missing makes the footer invalid.
+/// know is skipped, whatever its type, and so is a known field with an unexpected wire type. A field that appears twice
+/// takes the last value. A required field that is missing makes the footer invalid. An empty list may give any type to
+/// its elements, as fastparquet writes the row groups of a file without rows.
 /// </summary>
 internal static class FooterParser
 {
@@ -21,6 +22,7 @@ internal static class FooterParser
         List<RawRowGroup>? rowGroups = null;
         List<ParquetKeyValue>? keyValues = null;
         bool encryption = false;
+        var counts = new Counts();
 
         reader.EnterStruct();
         short lastId = 0;
@@ -38,7 +40,7 @@ internal static class FooterParser
                     numRows = reader.ReadInteger(type);
                     break;
                 case 4 when type == ThriftCompactReader.List:
-                    rowGroups = ReadRowGroups(reader, includeDataValues);
+                    rowGroups = ReadRowGroups(reader, includeDataValues, counts);
                     break;
                 case 5 when type == ThriftCompactReader.List:
                     keyValues = ReadKeyValues(reader);
@@ -114,8 +116,8 @@ internal static class FooterParser
 
     private static List<ParquetSchemaElement> ReadSchema(ThriftCompactReader reader)
     {
-        int size = reader.ReadListHeader(out byte elementType);
-        if (elementType != ThriftCompactReader.Struct)
+        int size = reader.EnterList(out byte elementType);
+        if (size > 0 && elementType != ThriftCompactReader.Struct)
         {
             throw ThriftCompactReader.Invalid("The schema of the footer is not a list of structures.");
         }
@@ -126,6 +128,7 @@ internal static class FooterParser
             elements.Add(ReadSchemaElement(reader));
         }
 
+        reader.ExitList();
         return elements;
     }
 
@@ -436,10 +439,10 @@ internal static class FooterParser
         return member;
     }
 
-    private static List<RawRowGroup> ReadRowGroups(ThriftCompactReader reader, bool includeDataValues)
+    private static List<RawRowGroup> ReadRowGroups(ThriftCompactReader reader, bool includeDataValues, Counts counts)
     {
-        int size = reader.ReadListHeader(out byte elementType);
-        if (elementType != ThriftCompactReader.Struct)
+        int size = reader.EnterList(out byte elementType);
+        if (size > 0 && elementType != ThriftCompactReader.Struct)
         {
             throw ThriftCompactReader.Invalid("The row groups of the footer are not a list of structures.");
         }
@@ -447,13 +450,14 @@ internal static class FooterParser
         var groups = new List<RawRowGroup>(size);
         for (int i = 0; i < size; i++)
         {
-            groups.Add(ReadRowGroup(reader, includeDataValues));
+            groups.Add(ReadRowGroup(reader, includeDataValues, counts));
         }
 
+        reader.ExitList();
         return groups;
     }
 
-    private static RawRowGroup ReadRowGroup(ThriftCompactReader reader, bool includeDataValues)
+    private static RawRowGroup ReadRowGroup(ThriftCompactReader reader, bool includeDataValues, Counts counts)
     {
         var group = new RawRowGroup();
         bool hasColumns = false;
@@ -467,18 +471,30 @@ internal static class FooterParser
             {
                 case 1 when type == ThriftCompactReader.List:
                 {
-                    int size = reader.ReadListHeader(out byte elementType);
-                    if (elementType != ThriftCompactReader.Struct)
+                    int size = reader.EnterList(out byte elementType);
+                    if (size > 0 && elementType != ThriftCompactReader.Struct)
                     {
                         throw ThriftCompactReader.Invalid("The column chunks of a row group are not a list of structures.");
                     }
 
+                    // Every chunk read counts, a list that a second one replaces included: the limit bounds the memory.
+                    counts.ColumnChunks += size;
+                    if (counts.ColumnChunks > FooterReader.MaxColumnChunks)
+                    {
+                        throw new ParquetFooterException(
+                            IssueCodes.FooterTooLarge,
+                            "The row groups of the footer hold more column chunks than the limit of " + FooterReader.MaxColumnChunks.ToString(CultureInfo.InvariantCulture) + ".");
+                    }
+
+                    // A second list of column chunks replaces the first, as every other field that appears twice.
+                    group.Columns.Clear();
                     group.Columns.Capacity = size;
                     for (int i = 0; i < size; i++)
                     {
                         group.Columns.Add(ReadColumnChunk(reader, includeDataValues));
                     }
 
+                    reader.ExitList();
                     hasColumns = true;
                     break;
                 }
@@ -492,7 +508,7 @@ internal static class FooterParser
                     hasRows = true;
                     break;
                 case 4 when type == ThriftCompactReader.List:
-                    group.SortingColumns = ReadSortingColumns(reader);
+                    group.SortingColumns = ReadSortingColumns(reader, counts);
                     break;
                 case 5 when IsInteger(type):
                     group.FileOffset = reader.ReadInteger(type);
@@ -518,13 +534,23 @@ internal static class FooterParser
         return group;
     }
 
-    private static List<ParquetSortingColumn>? ReadSortingColumns(ThriftCompactReader reader)
+    private static List<ParquetSortingColumn>? ReadSortingColumns(ThriftCompactReader reader, Counts counts)
     {
-        int size = reader.ReadListHeader(out byte elementType);
-        if (elementType != ThriftCompactReader.Struct)
+        int size = reader.EnterList(out byte elementType);
+        if (size > 0 && elementType != ThriftCompactReader.Struct)
         {
             SkipElements(reader, elementType, size);
+            reader.ExitList();
             return null;
+        }
+
+        // An empty sorting column takes one byte, as an empty column chunk does: the same limit, over all the row groups.
+        counts.SortingColumns += size;
+        if (counts.SortingColumns > FooterReader.MaxColumnChunks)
+        {
+            throw new ParquetFooterException(
+                IssueCodes.FooterTooLarge,
+                "The row groups of the footer hold more sorting columns than the limit of " + FooterReader.MaxColumnChunks.ToString(CultureInfo.InvariantCulture) + ".");
         }
 
         var columns = new List<ParquetSortingColumn>(size);
@@ -559,6 +585,7 @@ internal static class FooterParser
             columns.Add(new ParquetSortingColumn(index, descending, nullsFirst));
         }
 
+        reader.ExitList();
         return columns;
     }
 
@@ -611,6 +638,23 @@ internal static class FooterParser
     private static void ReadColumnMetaData(ThriftCompactReader reader, RawColumnChunk raw, bool includeDataValues)
     {
         ParquetColumnChunk chunk = raw.Chunk;
+
+        // A meta_data that appears twice replaces the first whole, as any field that appears twice.
+        chunk.PhysicalType = null;
+        chunk.Encodings = new string[0];
+        chunk.Codec = null;
+        chunk.NumValues = 0;
+        chunk.TotalUncompressedSize = 0;
+        chunk.TotalCompressedSize = 0;
+        chunk.DataPageOffset = 0;
+        chunk.IndexPageOffset = null;
+        chunk.DictionaryPageOffset = null;
+        ResetStatistics(raw);
+        chunk.HasStatistics = false;
+        chunk.EncodingStats = null;
+        chunk.BloomFilterOffset = null;
+        chunk.BloomFilterLength = null;
+        chunk.UnencodedByteArrayDataBytes = null;
         int seen = 0;
         reader.EnterStruct();
         short lastId = 0;
@@ -682,10 +726,11 @@ internal static class FooterParser
 
     private static IReadOnlyList<string> ReadEncodings(ThriftCompactReader reader)
     {
-        int size = reader.ReadListHeader(out byte elementType);
-        if (elementType != ThriftCompactReader.I32)
+        int size = reader.EnterList(out byte elementType);
+        if (size > 0 && elementType != ThriftCompactReader.I32)
         {
             SkipElements(reader, elementType, size);
+            reader.ExitList();
             return new string[0];
         }
 
@@ -695,12 +740,24 @@ internal static class FooterParser
             values[i] = reader.ReadI32();
         }
 
+        reader.ExitList();
         return ParquetNames.Encodings(values, size);
+    }
+
+    /// <summary>Forgets the statistics of a chunk, so that a statistics that appears twice replaces the first whole.</summary>
+    private static void ResetStatistics(RawColumnChunk raw)
+    {
+        raw.Chunk.NullCount = null;
+        raw.Chunk.DistinctCount = null;
+        raw.Chunk.HasMinMax = false;
+        raw.Min = null;
+        raw.Max = null;
     }
 
     private static void ReadStatistics(ThriftCompactReader reader, RawColumnChunk raw, bool includeDataValues)
     {
         ParquetColumnChunk chunk = raw.Chunk;
+        ResetStatistics(raw);
         byte[]? legacyMax = null;
         byte[]? legacyMin = null;
         reader.EnterStruct();
@@ -754,10 +811,11 @@ internal static class FooterParser
 
     private static List<ParquetPageEncodingStats>? ReadEncodingStats(ThriftCompactReader reader)
     {
-        int size = reader.ReadListHeader(out byte elementType);
-        if (elementType != ThriftCompactReader.Struct)
+        int size = reader.EnterList(out byte elementType);
+        if (size > 0 && elementType != ThriftCompactReader.Struct)
         {
             SkipElements(reader, elementType, size);
+            reader.ExitList();
             return null;
         }
 
@@ -796,6 +854,7 @@ internal static class FooterParser
             }
         }
 
+        reader.ExitList();
         return stats;
     }
 
@@ -823,11 +882,12 @@ internal static class FooterParser
 
     private static List<ParquetKeyValue> ReadKeyValues(ThriftCompactReader reader)
     {
-        int size = reader.ReadListHeader(out byte elementType);
+        int size = reader.EnterList(out byte elementType);
         var result = new List<ParquetKeyValue>();
-        if (elementType != ThriftCompactReader.Struct)
+        if (size > 0 && elementType != ThriftCompactReader.Struct)
         {
             SkipElements(reader, elementType, size);
+            reader.ExitList();
             return result;
         }
 
@@ -873,6 +933,7 @@ internal static class FooterParser
             }
         }
 
+        reader.ExitList();
         return result;
     }
 
@@ -941,6 +1002,14 @@ internal static class FooterParser
     }
 
     private static string Text(int? value) => value == null ? "?" : value.Value.ToString(CultureInfo.InvariantCulture);
+
+    /// <summary>The column chunks and the sorting columns read so far, over all the row groups of a footer.</summary>
+    private sealed class Counts
+    {
+        public int ColumnChunks { get; set; }
+
+        public int SortingColumns { get; set; }
+    }
 
     /// <summary>A row group while it is read.</summary>
     private sealed class RawRowGroup

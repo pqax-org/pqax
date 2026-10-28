@@ -1,5 +1,6 @@
 using System;
 using System.Buffers.Binary;
+using System.Globalization;
 using System.Text;
 
 namespace Pqax.Collector;
@@ -8,7 +9,8 @@ namespace Pqax.Collector;
 /// Reads the Thrift compact protocol from a buffer, the encoding of a Parquet footer. It reads field headers with short
 /// and long deltas, booleans in the header, zigzag varints, doubles, binaries, lists, sets, maps, and structs, and it
 /// skips a value of any type without allocating. Every length is checked against the bytes left, so a damaged footer
-/// fails with an exception instead of a large allocation.
+/// fails with an exception instead of a large allocation. Structs, lists, sets, and maps nested in one another count
+/// as one depth, so a damaged footer cannot recurse deeper than 64 levels.
 /// </summary>
 internal sealed class ThriftCompactReader
 {
@@ -48,17 +50,29 @@ internal sealed class ThriftCompactReader
     /// <summary>Whether a wire type is a boolean, which a field header carries with no payload.</summary>
     public static bool IsBoolean(byte type) => type == BooleanTrue || type == BooleanFalse;
 
-    /// <summary>Starts a struct: checks the nesting depth.</summary>
+    /// <summary>Starts a struct, a list, a set, or a map: checks the nesting depth.</summary>
     public void EnterStruct()
     {
         if (++depth > MaxDepth)
         {
-            throw Invalid("The footer nests structures more than " + MaxDepth + " levels deep.");
+            throw Invalid("The footer nests values more than " + MaxDepth + " levels deep.");
         }
     }
 
-    /// <summary>Ends a struct.</summary>
+    /// <summary>Ends a struct, a list, a set, or a map.</summary>
     public void ExitStruct() => depth--;
+
+    /// <summary>Starts a list or a set that the caller reads: counts its level of nesting, then reads its header.</summary>
+    /// <param name="elementType">The wire type of the elements.</param>
+    /// <returns>The number of elements, checked against the bytes left and the limit of a list.</returns>
+    public int EnterList(out byte elementType)
+    {
+        EnterStruct();
+        return ReadListHeader(out elementType);
+    }
+
+    /// <summary>Ends a list or a set that <see cref="EnterList"/> started.</summary>
+    public void ExitList() => ExitStruct();
 
     /// <summary>Reads the header of the next field of a struct.</summary>
     /// <param name="lastId">The id of the previous field of the struct, updated.</param>
@@ -68,14 +82,15 @@ internal sealed class ThriftCompactReader
     public bool ReadFieldHeader(ref short lastId, out short id, out byte type)
     {
         byte header = ReadRawByte();
-        if (header == Stop)
+        type = (byte)(header & 0x0F);
+        if (type == Stop)
         {
+            // A header whose type is stop ends the struct whatever its delta, as in the Thrift libraries of C++, Java,
+            // and Rust, which write the footers.
             id = 0;
-            type = Stop;
             return false;
         }
 
-        type = (byte)(header & 0x0F);
         int delta = header >> 4;
         id = delta == 0 ? ReadI16() : (short)(lastId + delta);
         lastId = id;
@@ -255,6 +270,12 @@ internal sealed class ThriftCompactReader
             throw Truncated();
         }
 
+        if (size > FooterReader.MaxListLength)
+        {
+            throw TooLarge("A list of the footer has " + size.ToString(CultureInfo.InvariantCulture) + " elements, more than the limit of "
+                + FooterReader.MaxListLength.ToString(CultureInfo.InvariantCulture) + ".");
+        }
+
         return size;
     }
 
@@ -287,37 +308,45 @@ internal sealed class ThriftCompactReader
             case List:
             case Set:
             {
-                int size = ReadListHeader(out byte elementType);
+                // A list counts as a level of nesting, as a struct does: lists of lists cannot exhaust the stack.
+                int size = EnterList(out byte elementType);
                 for (int i = 0; i < size; i++)
                 {
                     SkipElement(elementType);
                 }
 
+                ExitList();
                 return;
             }
 
             case Map:
             {
+                EnterStruct();
                 uint size = ReadVarint32();
-                if (size == 0)
+                if (size != 0)
                 {
-                    return;
+                    if (size > (uint)Remaining)
+                    {
+                        throw Truncated();
+                    }
+
+                    if (size > FooterReader.MaxListLength)
+                    {
+                        throw TooLarge("A map of the footer has " + size.ToString(CultureInfo.InvariantCulture) + " entries, more than the limit of "
+                            + FooterReader.MaxListLength.ToString(CultureInfo.InvariantCulture) + ".");
+                    }
+
+                    byte types = ReadRawByte();
+                    byte keyType = (byte)(types >> 4);
+                    byte valueType = (byte)(types & 0x0F);
+                    for (uint i = 0; i < size; i++)
+                    {
+                        SkipElement(keyType);
+                        SkipElement(valueType);
+                    }
                 }
 
-                if (size > (uint)Remaining)
-                {
-                    throw Truncated();
-                }
-
-                byte types = ReadRawByte();
-                byte keyType = (byte)(types >> 4);
-                byte valueType = (byte)(types & 0x0F);
-                for (uint i = 0; i < size; i++)
-                {
-                    SkipElement(keyType);
-                    SkipElement(valueType);
-                }
-
+                ExitStruct();
                 return;
             }
 
@@ -362,6 +391,9 @@ internal sealed class ThriftCompactReader
 
     private static ParquetFooterException Truncated() =>
         new ParquetFooterException(IssueCodes.FooterInvalid, "The footer ends in the middle of a value.");
+
+    /// <summary>An exception for a footer that holds more than the parser keeps in memory.</summary>
+    private static ParquetFooterException TooLarge(string message) => new ParquetFooterException(IssueCodes.FooterTooLarge, message);
 
     private void Advance(int count)
     {

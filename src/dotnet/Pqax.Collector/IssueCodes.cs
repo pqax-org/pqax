@@ -62,7 +62,10 @@ public static class IssueCodes
     /// <summary>The footer of a data file is not a valid Parquet footer, or the file is shorter than the table format says.</summary>
     public const string FooterInvalid = "FooterInvalid";
 
-    /// <summary>The footer of a data file is larger than <see cref="FooterReader.MaxFooterLength"/>.</summary>
+    /// <summary>
+    /// The footer of a data file is larger than <see cref="FooterReader.MaxFooterLength"/>, has a list longer than
+    /// <see cref="FooterReader.MaxListLength"/>, or holds more column chunks or sorting columns than <see cref="FooterReader.MaxColumnChunks"/>.
+    /// </summary>
     public const string FooterTooLarge = "FooterTooLarge";
 
     /// <summary>Columns of a data file are encrypted, so their column chunks have no sizes.</summary>
