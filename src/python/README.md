@@ -362,7 +362,7 @@ Errors:
 | `UnknownVersionError` | The first number of `formatVersion` is not 0 |
 | `JsonError` | A part that is read is not valid JSON |
 | `PartMissingError` | A detail part that the manifest lists is not in the archive, when its table is read (`manifest.partMissing`), or the embedded part is not in the package (`embedded.partMissing`) |
-| `ContainerError` | The file is not a zip archive, or an entry cannot be read: encrypted (`container.encrypted`), compressed with another method, or corrupt |
+| `ContainerError` | The file is not a zip archive (`container.manifestMissing`), or an entry cannot be read: encrypted (`container.encrypted`), compressed with another method, or corrupt |
 | `WriteError` | `Builder.write` finds a footprint that breaks a rule that it checks. Its `code` is the code of the rule, as in Write a file. |
 
 All derive from `PqaxError`, whose `code` is the validation code that the error matches, when there is one. A reader refuses a file for the first four, when it opens it, and `open_embedded` also for a missing embedded part, where `try_open_embedded` returns `None`. Opening also fails when the manifest or the summary cannot be read from the zip, for example because the entry is encrypted. A `summary.json` that the manifest lists and the archive does not have gives empty summary tables, and `validate` reports it. A detail part that is broken fails only the read of its tables.

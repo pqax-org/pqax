@@ -45,7 +45,7 @@ def open_archive(source: Any) -> Tuple[zipfile.ZipFile, IO[bytes], bool]:
     except _ZIP_ERRORS + (OSError, NotImplementedError, RuntimeError) as error:
         if owned:
             fp.close()
-        raise ContainerError(f"The file is not a zip archive ({error}).") from error
+        raise ContainerError(f"The file is not a zip archive ({error}).", code="container.manifestMissing") from error
     except BaseException:
         if owned:
             fp.close()
