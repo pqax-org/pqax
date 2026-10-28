@@ -578,18 +578,19 @@ def nested_groups(levels):
     return field
 
 
-def test_a_schema_nested_64_levels_has_its_type_and_one_more_level_fails_the_table(tmp_path):
+def test_a_schema_nested_256_levels_has_its_type_and_one_more_level_is_an_invalid_footer(tmp_path):
+    # The types of the columns take every schema that the parser reads, 256 levels below the root at most.
     lake = Container(tmp_path / "deep")
-    lake.write("data/deep/ok/part-0001.parquet", parquet_file(schema_footer([nested_groups(65 - 1)])))
-    lake.write("data/deep/too/part-0001.parquet", parquet_file(schema_footer([nested_groups(65)])))
+    lake.write("data/deep/ok/part-0001.parquet", parquet_file(schema_footer([nested_groups(256 - 1)])))
+    lake.write("data/deep/too/part-0001.parquet", parquet_file(schema_footer([nested_groups(256)])))
     doc, table = collect_one_folder(lake, "data/deep/ok")
     [(name, data_type, _)] = columns_of(doc, table)
-    assert name == "g0" and data_type.count("struct<") == 64 and data_type.endswith("bottom:integer" + ">" * 64)
+    assert name == "g0" and data_type.count("struct<") == 255 and data_type.endswith("bottom:integer" + ">" * 255)
+    assert of_table(doc, "issues", table["id"]) == []
     doc, table = collect_one_folder(lake, "data/deep/too")
     [issue] = of_table(doc, "issues", table["id"])
-    assert issue["code"] == IssueCodes.TABLE_NOT_READ
-    assert issue["message"].startswith("The table could not be collected: ") and "nested too deep" in issue["message"]
-    assert (table["detailDepth"], columns_of(doc, table), of_table(doc, "files", table["id"])) == ("Summary", [], [])
+    assert (issue["code"], issue["message"]) == (IssueCodes.FOOTER_INVALID, "The schema of the footer is nested too deep.")
+    assert columns_of(doc, table) == []
 
 
 @pytest.mark.skipif(not HAS_PYARROW, reason="pyarrow writes the files of the test, pqax[collect]")

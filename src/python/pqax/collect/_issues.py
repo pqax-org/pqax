@@ -37,7 +37,8 @@ class IssueCodes:
     FOOTER_ENCRYPTED = "FooterEncrypted"
     #: The footer is not a valid Parquet footer, or the file is shorter than the table format says.
     FOOTER_INVALID = "FooterInvalid"
-    #: The footer is larger than 64 MB.
+    #: The footer is larger than 64 MB, has a list of more than 1,000,000 elements, or more than 4,194,304 column
+    #: chunks or sorting columns.
     FOOTER_TOO_LARGE = "FooterTooLarge"
     #: Columns of a data file are encrypted, so their column chunks have no sizes.
     FOOTER_COLUMNS_ENCRYPTED = "FooterColumnsEncrypted"

@@ -17,11 +17,13 @@ from typing import List, Optional, Tuple
 from ._issues import IssueCodes
 from ._statistics import format_bound
 from ._thrift import (
-    BINARY, I32, INTEGERS, LIST, STOP, STRUCT, BOOLEAN_TRUE, FooterError, Reader, invalid, is_boolean,
+    BINARY, I32, INTEGERS, LIST, MAX_LIST_LENGTH, STOP, STRUCT, BOOLEAN_TRUE, FooterError, Reader, invalid, is_boolean,
+    too_large,
 )
 
 __all__ = [
-    "DEFAULT_TAIL_BYTES", "MAX_FOOTER_LENGTH", "MAX_KEPT_VALUE_LENGTH", "FooterError", "FooterReader",
+    "DEFAULT_TAIL_BYTES", "MAX_COLUMN_CHUNKS", "MAX_FOOTER_LENGTH", "MAX_KEPT_VALUE_LENGTH", "MAX_LIST_LENGTH",
+    "FooterError", "FooterReader",
     "FooterTailPlanner", "ParquetColumnChunk", "ParquetFooter", "ParquetKeyValue", "ParquetLeafColumn",
     "ParquetPageEncodingStats", "ParquetRowGroup", "ParquetSchemaElement", "ParquetSortingColumn", "is_kept_key",
     "parse_footer",
@@ -31,6 +33,10 @@ __all__ = [
 DEFAULT_TAIL_BYTES = 32768
 #: The longest footer that the reader accepts: 64 MB.
 MAX_FOOTER_LENGTH = 64 * 1024 * 1024
+#: The most column chunks of a footer, over all its row groups, and the most sorting columns: 4,194,304. A footer of
+#: 64 MB from a writer holds fewer, about 40 bytes each; the limit bounds the memory of a footer of empty chunks or
+#: empty sorting columns, one byte each on the wire.
+MAX_COLUMN_CHUNKS = 4_194_304
 #: The longest value of a footer key that is kept, in UTF-16 code units as in C#.
 MAX_KEPT_VALUE_LENGTH = 200
 
@@ -52,12 +58,27 @@ _EDGE_ALGORITHMS = ("SPHERICAL", "VINCENTY", "THOMAS", "ANDOYER", "KARNEY")
 _INT32 = struct.Struct("<i")
 
 
+#: The most lists of encodings, and names of unknown values, that the caches keep, for all the footers of a process.
+_MAX_CACHED = 4096
+#: The name of a value that this version does not know is its number, one string for each number.
+_NUMBERS: dict = {}
+
+
+def _number(value: int) -> str:
+    name = _NUMBERS.get(value)
+    if name is None:
+        name = str(value)
+        if len(_NUMBERS) < _MAX_CACHED:
+            name = _NUMBERS.setdefault(value, name)
+    return name
+
+
 def _name(names: Tuple[str, ...], value: int) -> str:
-    return names[value] if 0 <= value < len(names) else str(value)
+    return names[value] if 0 <= value < len(names) else _number(value)
 
 
 def _time_unit(member: int) -> str:
-    return _TIME_UNITS[member] if 0 < member < len(_TIME_UNITS) else str(member)
+    return _TIME_UNITS[member] if 0 < member < len(_TIME_UNITS) else _number(member)
 
 
 def _utf16_length(text: str) -> int:
@@ -65,11 +86,24 @@ def _utf16_length(text: str) -> int:
     return len(text) + sum(1 for c in text if ord(c) > 0xFFFF)
 
 
+def fold_case(text: str) -> str:
+    """A string for a comparison that ignores case as C# OrdinalIgnoreCase does: each character by its upper case, when
+    that is one character, except that a character outside ASCII never folds into ASCII, as the long s and the dotless
+    i would."""
+    return "".join(_fold_character(c) for c in text)
+
+
+def _fold_character(c: str) -> str:
+    upper = c.upper()
+    return upper if len(upper) == 1 and (c < "\x80" or upper >= "\x80") else c
+
+
 def is_kept_key(key: str) -> bool:
     """Whether the value of a footer key is kept: keys that contain vorder, org.apache.spark.version, and keys that end
-    with string_prefix_length, in any case. Other values can hold data values, as the statistics that Fabric copies."""
-    lower = key.lower()
-    return "vorder" in lower or lower == "org.apache.spark.version" or lower.endswith("string_prefix_length")
+    with string_prefix_length, in any case as C# compares them. Other values can hold data values, as the statistics
+    that Fabric copies."""
+    folded = fold_case(key)
+    return "VORDER" in folded or folded == "ORG.APACHE.SPARK.VERSION" or folded.endswith("STRING_PREFIX_LENGTH")
 
 
 @dataclasses.dataclass(frozen=True)
@@ -265,7 +299,9 @@ class _RawGroup:
 def parse_footer(data: bytes, include_data_values: bool = False, offset: int = 0, count: int = -1) -> ParquetFooter:
     """Decodes a FileMetaData from the compact protocol: the bytes of the footer, without the length and the magic
     bytes that follow it. A field that this version does not know is skipped, whatever its type, and so is a known
-    field with an unexpected wire type. A required field that is missing makes the footer invalid."""
+    field with an unexpected wire type. A field that appears twice takes the last value. A required field that is
+    missing makes the footer invalid. An empty list may give any type to its elements, as fastparquet writes the row
+    groups of a file without rows."""
     if count < 0:
         count = len(data) - offset
     if offset < 0 or offset > len(data) - count:
@@ -284,6 +320,9 @@ def _parse(reader: Reader, include_data_values: bool) -> ParquetFooter:
     groups: Optional[List[_RawGroup]] = None
     key_values: Optional[List[ParquetKeyValue]] = None
     encryption = False
+    # The column chunks and the sorting columns read so far, a list that a second one replaces included: the limits
+    # bound the memory.
+    counts = [0, 0]
     reader.enter_struct()
     last = 0
     while True:
@@ -297,7 +336,7 @@ def _parse(reader: Reader, include_data_values: bool) -> ParquetFooter:
         elif last == 3 and kind in INTEGERS:
             num_rows = reader.integer(kind)
         elif last == 4 and kind == LIST:
-            groups = _row_groups(reader, include_data_values)
+            groups = _row_groups(reader, include_data_values, counts)
         elif last == 5 and kind == LIST:
             key_values = _key_values(reader)
         elif last == 6 and kind == BINARY:
@@ -329,10 +368,12 @@ def _parse(reader: Reader, include_data_values: bool) -> ParquetFooter:
 
 
 def _schema(reader: Reader) -> List[ParquetSchemaElement]:
-    size, element = reader.list_header()
-    if element != STRUCT:
+    size, element = reader.enter_list()
+    if size > 0 and element != STRUCT:
         raise invalid("The schema of the footer is not a list of structures.")
-    return [_schema_element(reader) for _ in range(size)]
+    elements = [_schema_element(reader) for _ in range(size)]
+    reader.exit_list()
+    return elements
 
 
 def _schema_element(reader: Reader) -> ParquetSchemaElement:
@@ -506,22 +547,29 @@ def _geo(reader: Reader, name: str) -> str:
     return f"{name}({', '.join(parameters)})" if parameters else name
 
 
-def _row_groups(reader: Reader, include_data_values: bool) -> List[_RawGroup]:
-    size, element = reader.list_header()
-    if element != STRUCT:
+def _row_groups(reader: Reader, include_data_values: bool, counts: List[int]) -> List[_RawGroup]:
+    size, element = reader.enter_list()
+    if size > 0 and element != STRUCT:
         raise invalid("The row groups of the footer are not a list of structures.")
-    return [_row_group(reader, include_data_values) for _ in range(size)]
+    groups = [_row_group(reader, include_data_values, counts) for _ in range(size)]
+    reader.exit_list()
+    return groups
 
 
-def _row_group(reader: Reader, include_data_values: bool) -> _RawGroup:
+def _row_group(reader: Reader, include_data_values: bool, counts: List[int]) -> _RawGroup:
     group = _RawGroup()
     has_columns = has_rows = has_byte_size = False
     for field, kind in _fields(reader):
         if field == 1 and kind == LIST:
-            size, element = reader.list_header()
-            if element != STRUCT:
+            size, element = reader.enter_list()
+            if size > 0 and element != STRUCT:
                 raise invalid("The column chunks of a row group are not a list of structures.")
+            counts[0] += size
+            if counts[0] > MAX_COLUMN_CHUNKS:
+                raise too_large(f"The row groups of the footer hold more column chunks than the limit of "
+                                f"{MAX_COLUMN_CHUNKS}.")
             group.columns = [_column_chunk(reader, include_data_values) for _ in range(size)]
+            reader.exit_list()
             has_columns = True
         elif field == 2 and kind in INTEGERS:
             group.total_byte_size = reader.integer(kind)
@@ -530,7 +578,7 @@ def _row_group(reader: Reader, include_data_values: bool) -> _RawGroup:
             group.num_rows = reader.integer(kind)
             has_rows = True
         elif field == 4 and kind == LIST:
-            group.sorting_columns = _sorting_columns(reader)
+            group.sorting_columns = _sorting_columns(reader, counts)
         elif field == 5 and kind in INTEGERS:
             group.file_offset = reader.integer(kind)
         elif field == 6 and kind in INTEGERS:
@@ -555,11 +603,16 @@ def _skip_elements(reader: Reader, element: int, size: int) -> None:
         reader.skip_element(element)
 
 
-def _sorting_columns(reader: Reader) -> Optional[Tuple[ParquetSortingColumn, ...]]:
-    size, element = reader.list_header()
-    if element != STRUCT:
+def _sorting_columns(reader: Reader, counts: List[int]) -> Optional[Tuple[ParquetSortingColumn, ...]]:
+    size, element = reader.enter_list()
+    if size > 0 and element != STRUCT:
         _skip_elements(reader, element, size)
+        reader.exit_list()
         return None
+    # An empty sorting column takes one byte, as an empty column chunk does: the same limit, over all the row groups.
+    counts[1] += size
+    if counts[1] > MAX_COLUMN_CHUNKS:
+        raise too_large(f"The row groups of the footer hold more sorting columns than the limit of {MAX_COLUMN_CHUNKS}.")
     columns = []
     for _ in range(size):
         index, descending, nulls_first = -1, False, False
@@ -573,6 +626,7 @@ def _sorting_columns(reader: Reader) -> Optional[Tuple[ParquetSortingColumn, ...
             else:
                 reader.skip(kind)
         columns.append(ParquetSortingColumn(index, descending, nulls_first))
+    reader.exit_list()
     return tuple(columns)
 
 
@@ -605,6 +659,16 @@ def _column_chunk(reader: Reader, include_data_values: bool) -> _RawChunk:
 
 def _column_metadata(reader: Reader, raw: _RawChunk, include_data_values: bool) -> None:
     chunk = raw.chunk
+    # A meta_data that appears twice replaces the first whole, as any field that appears twice.
+    chunk.physical_type = None
+    chunk.encodings = ()
+    chunk.codec = None
+    chunk.num_values = chunk.total_uncompressed_size = chunk.total_compressed_size = chunk.data_page_offset = 0
+    chunk.index_page_offset = chunk.dictionary_page_offset = None
+    _reset_statistics(raw)
+    chunk.has_statistics = False
+    chunk.encoding_stats = None
+    chunk.bloom_filter_offset = chunk.bloom_filter_length = chunk.unencoded_byte_array_data_bytes = None
     seen = 0
     for field, kind in _fields(reader):
         if field == 1 and kind == I32:
@@ -653,22 +717,33 @@ _ENCODING_LOCK = threading.Lock()
 
 
 def _encodings(reader: Reader) -> Tuple[str, ...]:
-    size, element = reader.list_header()
-    if element != I32:
+    size, element = reader.enter_list()
+    if size > 0 and element != I32:
         _skip_elements(reader, element, size)
+        reader.exit_list()
         return ()
     values = tuple(reader.i32() for _ in range(size))
+    reader.exit_list()
     shared = _ENCODING_LISTS.get(values)  # a million column chunks use a handful of distinct lists
     if shared is None:
         shared = tuple(_name(_ENCODINGS, value) for value in values)
-        with _ENCODING_LOCK:
-            if len(_ENCODING_LISTS) < 4096:
-                shared = _ENCODING_LISTS.setdefault(values, shared)
+        if size <= 15:  # as in C#: a long list is no list of a writer, and it would stay in the cache
+            with _ENCODING_LOCK:
+                if len(_ENCODING_LISTS) < _MAX_CACHED:
+                    shared = _ENCODING_LISTS.setdefault(values, shared)
     return shared
+
+
+def _reset_statistics(raw: _RawChunk) -> None:
+    """Forgets the statistics of a chunk, so that a statistics that appears twice replaces the first whole."""
+    raw.chunk.null_count = raw.chunk.distinct_count = None
+    raw.chunk.has_min_max = False
+    raw.min = raw.max = None
 
 
 def _statistics(reader: Reader, raw: _RawChunk, include_data_values: bool) -> None:
     chunk = raw.chunk
+    _reset_statistics(raw)
     legacy_max: Optional[bytes] = None
     legacy_min: Optional[bytes] = None
     for field, kind in _fields(reader):
@@ -697,9 +772,10 @@ def _statistics(reader: Reader, raw: _RawChunk, include_data_values: bool) -> No
 
 
 def _encoding_stats(reader: Reader) -> Optional[Tuple[ParquetPageEncodingStats, ...]]:
-    size, element = reader.list_header()
-    if element != STRUCT:
+    size, element = reader.enter_list()
+    if size > 0 and element != STRUCT:
         _skip_elements(reader, element, size)
+        reader.exit_list()
         return None
     stats = []
     for _ in range(size):
@@ -715,6 +791,7 @@ def _encoding_stats(reader: Reader) -> Optional[Tuple[ParquetPageEncodingStats, 
                 reader.skip(kind)
         if page_type is not None and encoding is not None and count is not None:
             stats.append(ParquetPageEncodingStats(_name(_PAGE_TYPES, page_type), _name(_ENCODINGS, encoding), count))
+    reader.exit_list()
     return tuple(stats)
 
 
@@ -729,10 +806,11 @@ def _size_statistics(reader: Reader) -> Optional[int]:
 
 
 def _key_values(reader: Reader) -> List[ParquetKeyValue]:
-    size, element = reader.list_header()
+    size, element = reader.enter_list()
     result: List[ParquetKeyValue] = []
-    if element != STRUCT:
+    if size > 0 and element != STRUCT:
         _skip_elements(reader, element, size)
+        reader.exit_list()
         return result
     for _ in range(size):
         key: Optional[str] = None
@@ -755,6 +833,7 @@ def _key_values(reader: Reader) -> List[ParquetKeyValue]:
                 reader.skip(kind)
         if key is not None:
             result.append(ParquetKeyValue(key, value_length, value))
+    reader.exit_list()
     return result
 
 
@@ -795,7 +874,7 @@ def top_level_fields(footer: ParquetFooter) -> List[Tuple[str, str, bool]]:
     """The top-level fields of the schema of a footer, as (name, type, nullable): the type that Spark gives the field
     when it reads the file, in the names of the Delta schema, such as long, decimal(18,2), or array<string>, so that the
     columns of a folder of Parquet files compare with those of a Delta table. A field is nullable when it is optional.
-    Raises FooterError for a schema nested more than 64 levels deep."""
+    Every schema that parse_footer returns is typed: the parser refuses a schema of more than 256 levels."""
     schema = footer.schema
     fields: List[Tuple[str, str, bool]] = []
     if not schema:
@@ -825,7 +904,7 @@ def _append_field(schema, index: int, text: List[str], depth: int) -> int:
 
 def _append_type(schema, index: int, text: List[str], depth: int) -> int:
     """Appends the type of the element at an index, ignoring its repetition, and returns the index after its subtree."""
-    if depth > 64:
+    if depth > 256:  # the parser refuses a schema of more than 256 levels, so a footer it returns never reaches this
         raise FooterError(IssueCodes.FOOTER_INVALID, "The schema is nested too deep.")
     element = schema[index]
     if element.num_children is None:
