@@ -13,9 +13,10 @@ Output, which replaces everything in these folders:
 It also writes samples/diff-before.pqax and samples/diff-after.pqax, the two footprints of the comparison test, and
 their expected results, with make_diff.py and the writer of the Python package. make_diff.py writes their expected diff.
 
-The script uses the Python standard library and one module outside conformance/: build_pqax.py, the builder of
-the prototype in research/prototype. That is an exception to the rule that the kit depends on nothing
-outside conformance/, src/, and tests/. The builder will be replaced by the writer of the Python package.
+The script uses the Python standard library and the Python package in src/python. probe_footprint.py maps the probe
+dump to the tables of the format and adds their rows to pqax.Builder, the writer of the package, from which the script
+takes each table and lays out the parts of each sample itself. The mapping comes from build_pqax.py, the builder of the
+prototype in research/prototype, which the script used to import.
 
 The output is deterministic. Every zip entry has the same date and attributes, and the entries are written in a
 fixed order, so two runs with the same Python write the same bytes. Another zlib can compress differently, which
@@ -36,18 +37,17 @@ import sys
 import zipfile
 
 KIT = os.path.dirname(os.path.abspath(__file__))
-PROTOTYPE = os.path.normpath(os.path.join(KIT, "..", "research", "prototype"))
-sys.dont_write_bytecode = True          # no __pycache__ in the prototype folder
-sys.path.insert(0, PROTOTYPE)
-import build_pqax  # noqa: E402
+sys.path.insert(0, os.path.normpath(os.path.join(KIT, "..", "src", "python")))
+import pqax  # noqa: E402
+import probe_footprint  # noqa: E402
 
-FORMAT_VERSION = build_pqax.FORMAT_VERSION
-ROWS_PER_PART = 250_000
+FORMAT_VERSION = pqax.FORMAT_VERSION
+ROWS_PER_PART = pqax.ROWS_PER_PART
 ZIP_DATE = (2026, 10, 7, 0, 0, 0)
 STORED, DEFLATED, BZIP2 = zipfile.ZIP_STORED, zipfile.ZIP_DEFLATED, zipfile.ZIP_BZIP2
 BOM = b"\xef\xbb\xbf"
-SUMMARY_TABLES = build_pqax.SUMMARY_TABLES
-DETAIL_TABLES = build_pqax.DETAIL_TABLES
+SUMMARY_TABLES = pqax.SUMMARY_TABLES
+DETAIL_TABLES = pqax.DETAIL_TABLES
 CONTENT_TYPES = (b'<?xml version="1.0" encoding="utf-8"?>'
                  b'<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'
                  b'<Default Extension="json" ContentType="application/json" />'
@@ -57,7 +57,7 @@ CONTENT_TYPES = (b'<?xml version="1.0" encoding="utf-8"?>'
 # ---- input ----
 
 def load_input():
-    """The tables of the probe dump, sorted by their id as build_pqax does, and the collection of the manifest."""
+    """The tables of the probe dump, sorted by their id, which numbers them, and the collection of the manifest."""
     folder = os.path.join(KIT, "fixtures", "probe-dump")
     dumps = {}
     for path in glob.glob(os.path.join(folder, "[LW]*.json")):
@@ -204,24 +204,36 @@ def same_entries(crafted, original, password=None):
 
 
 def footprint(depth, rows_per_part=None, version=FORMAT_VERSION):
-    """The entries of a PQAX file at a depth of build_pqax, with the parts of section 7.2 of the serialization.
+    """The entries of a PQAX file at a depth of probe_footprint, with the parts of section 7.2 of the serialization.
 
-    rows_per_part maps a detail table to a limit lower than 250,000, to split it in several parts. version is the
-    format version that the file is written in: 0.1 leaves out the fields that 0.2 added."""
-    tables = build_pqax.build(copy.deepcopy(DUMPS), depth, False, 1, version)
-    parts = [("summary.json", {name: tables[name].rows for name in SUMMARY_TABLES if tables[name].rows})]
+    The tables come from the pqax.Builder that probe_footprint fills from the probe dump, after the checks of its
+    writer. rows_per_part maps a detail table to a limit lower than 250,000, to split it in several parts. version is
+    the format version that the file is written in: 0.1 leaves out the fields that 0.2 added."""
+    collection = dict(COLLECTION, collectorAppVersion=version)
+    builder = probe_footprint.footprint(copy.deepcopy(DUMPS), depth, collection, version, pqax.Builder)
+    builder.write(io.BytesIO())  # raises pqax.WriteError for an id, a required field, or an integer that is wrong
+    counts = {name: builder.row_count(name) for name in SUMMARY_TABLES + DETAIL_TABLES}
+    tables = {name: builder.table(name) for name in counts}
+    parts = [("summary.json", [(name, 0, counts[name]) for name in SUMMARY_TABLES if counts[name]])]
     for name in DETAIL_TABLES:
-        rows = tables[name].rows
         limit = (rows_per_part or {}).get(name, ROWS_PER_PART)
-        for start in range(0, len(rows), limit):
-            part = f"{name}.json" if len(rows) <= limit else f"{name}.{start // limit + 1}.json"
-            parts.append((part, {name: rows[start:start + limit]}))
-    manifest = {"format": "pqax", "formatVersion": version, "collection": dict(COLLECTION, collectorAppVersion=version),
-                "parts": [{"name": part, "tables": {name: len(rows) for name, rows in content.items()}} for part, content in parts]}
+        for start in range(0, counts[name], limit):
+            part = f"{name}.json" if counts[name] <= limit else f"{name}.{start // limit + 1}.json"
+            parts.append((part, [(name, start, min(counts[name], start + limit))]))
+    manifest = {"format": "pqax", "formatVersion": version, "collection": collection,
+                "parts": [{"name": part, "tables": {name: end - start for name, start, end in content}}
+                          for part, content in parts]}
     entries = [["manifest.json", manifest, DEFLATED]]
     for part, content in parts:
-        entries.append([part, {name: build_pqax.Table.encode(rows, "columnar", False) for name, rows in content.items()}, DEFLATED])
+        entries.append([part, {name: columnar(tables[name], start, end) for name, start, end in content}, DEFLATED])
     return entries
+
+
+def columnar(table, start, end):
+    """The rows of a table from start to end, as a table of the format: one array for each field that has a value in
+    those rows, in the order of the fields of the table."""
+    return {field: values[start:end] for field, values in table.items()
+            if any(value is not None for value in values[start:end])}
 
 
 def entry(entries, name):
@@ -698,7 +710,7 @@ def main():
     for folder in (samples_folder, invalid_folder, expected_folder):
         clear(folder)
 
-    bases = {depth: footprint(depth) for depth in build_pqax.DEPTHS}
+    bases = {depth: footprint(depth) for depth in probe_footprint.DEPTHS}
     for name, data in valid_samples(bases).items():
         with open(os.path.join(samples_folder, name), "wb") as handle:
             handle.write(data)

@@ -22,6 +22,7 @@ Everything in the kit is synthetic. No name in it comes from a real lakehouse.
 | `fixtures/lakehouse` | A synthetic lakehouse and warehouse in the OneLake layout: Delta logs and Parquet files written by DuckDB, and one data file that no commit references |
 | `fixtures/probe-dump` | The output of the probe that preceded the collector on the fixture. It is the input of `make_kit.py`, and the oracle of the collector tests. The section on the probe dump describes every field. |
 | `make_kit.py` | Rebuilds `samples/` and `expected/` from `fixtures/probe-dump` |
+| `probe_footprint.py` | Maps the probe dump to the tables of the format, in a `pqax.Builder`, for `make_kit.py` |
 | `make_measures.py` | Rebuilds `expected/measures/` with the view model of `@pqax/views` |
 | `make_diff.py` | Rebuilds the two samples of the comparison test with `pqax.Builder`, and `expected/diff/` |
 | `check_schema.py` | Validates the samples against the schema |
@@ -279,7 +280,7 @@ python conformance/check_schema.py
 
 `make_kit.py` deletes the files in `samples/`, `samples/invalid/`, and `expected/`, and writes them again. Do not edit them by hand: change the script.
 
-It reads `fixtures/probe-dump` and builds the tables with `build_pqax.py`, the builder of the [prototype](../research/prototype/README.md). It writes the zip archives with the `zipfile` module, and crafts the three samples of `container.encrypted` and `container.zip64` byte by byte, as the section on the invalid samples says. It builds `format-0.1.pqax` with the format version 0.1 of the builder, which leaves out the fields that 0.2 added. That import is the one exception to the rule that the kit depends on nothing outside `conformance/`, `src/`, and `tests/`. The Python package now has a writer, `pqax.Builder`, and the [backlog](../docs/backlog.md) has the item that makes the script use it.
+It reads `fixtures/probe-dump`, and `probe_footprint.py` maps it to the tables of the format, as the section on the probe dump describes, and adds their rows to `pqax.Builder`, the writer of the Python package in `src/python`, whose checks run on them. The script takes each table from the builder and lays out the parts of each sample itself, since a sample such as `multipart.pqax` splits two tables at different rows. It writes the zip archives with the `zipfile` module, and crafts the three samples of `container.encrypted` and `container.zip64` byte by byte, as the section on the invalid samples says. It builds `format-0.1.pqax` with the format version 0.1 of the mapping, which leaves out the fields that 0.2 added. The mapping comes from `build_pqax.py`, the builder of the [prototype](../research/prototype/README.md), which the script imported until 28 October 2026; the samples that it writes now have the same bytes. The kit depends on nothing outside `conformance/`, `src/`, and `tests/`.
 
 The output is deterministic: every zip entry has the date 2026-10-07 00:00 and the same attributes, and the entries are written in a fixed order. Two runs with the same Python give the same bytes. Another zlib can compress differently: the samples in the repository were written by Python 3.14 on Windows, whose zlib is zlib-ng 1.3.1. The content and the expected results do not depend on it.
 
@@ -310,7 +311,7 @@ python conformance/make_diff.py --check          # writes nothing; exit code 1 w
 
 The dump has two roles:
 
-- It is the input of `make_kit.py`. The script takes the collection of the manifest from `index.json`, and `build_pqax.py` builds every table of the samples from the table files.
+- It is the input of `make_kit.py`. The script takes the collection of the manifest from `index.json`, and `probe_footprint.py` builds every table of the samples from the table files.
 - It is the oracle of the collector tests. They collect `fixtures/lakehouse` through `LocalStorage` and compare the result with the samples, every table and field at every depth, and with the dump itself. They also compare the footer parser, the checkpoint reader, and the listing of a Delta log with the dump. A test finds the dump of a data file by its size, so the data files of the fixture must keep sizes that differ.
 
 Conventions of the probe:
@@ -449,7 +450,7 @@ In the table, `rowGroups[]` is short for `files[].footer.rowGroups[]`. In a row 
 
 The kit fills the other fields of the samples without a field of the dump: `tables.format` is `Delta`, `tables.detailDepth` is the depth of the sample, `tables.collectedLevel` is 2 when a footer was read and 1 otherwise, `tables.footerCount` counts the files with a footer, `tables.columnTotalsSource` is `Footers`, and `columns.fileCountWithoutColumn` counts, for a column that is not a partition column, the files whose schema has no leaf for it.
 
-`build_pqax.py` also reads fields that the fixture does not have: `files[].clusteringProvider`, for `files.clusteringProvider`; `logical`, `typeLength`, and `fieldId` of a leaf in `schemas[].columns[]`, for `physicalColumns.logicalType`, which takes `logical` before `converted`, `physicalColumns.typeLength`, and `physicalColumns.fieldId`; and the keys `delta.columnMapping.id`, `delta.columnMapping.physicalName`, and `comment` in the metadata of a field of `schemaString`, for `columns.fieldId`, `columns.physicalName`, and `columns.description`.
+`probe_footprint.py` also reads fields that the fixture does not have: `files[].clusteringProvider`, for `files.clusteringProvider`; `logical`, `typeLength`, and `fieldId` of a leaf in `schemas[].columns[]`, for `physicalColumns.logicalType`, which takes `logical` before `converted`, `physicalColumns.typeLength`, and `physicalColumns.fieldId`; and the keys `delta.columnMapping.id`, `delta.columnMapping.physicalName`, and `comment` in the metadata of a field of `schemaString`, for `columns.fieldId`, `columns.physicalName`, and `columns.description`.
 
 ## Cross-implementation check
 
