@@ -15,8 +15,11 @@ public sealed class PartitionRow : IEquatable<PartitionRow>
     /// <summary>The <c>id</c> of the spec that produced the values.</summary>
     public long? PartitionSpec { get; set; }
 
-    /// <summary>One value for each field of the spec, present only when the collection includes partition values. An element is null for a null partition value.</summary>
-    public IReadOnlyList<string>? Values { get; set; }
+    /// <summary>
+    /// One value for each field of the spec, present only when the collection includes partition values. An element is
+    /// null for a null partition value: this is the one list of the format whose elements can be null.
+    /// </summary>
+    public IReadOnlyList<string?>? Values { get; set; }
 
     /// <summary>The files of the partition.</summary>
     public long? FileCount { get; set; }

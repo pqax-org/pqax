@@ -245,7 +245,7 @@ internal static class Schemas
         .Id(x => x.Id, (x, v) => x.Id = v)
         .Reference("table", "tables", x => x.Table, (x, v) => x.Table = v, required: true)
         .Reference("partitionSpec", "partitionSpecs", x => x.PartitionSpec, (x, v) => x.PartitionSpec = v)
-        .StringList("values", x => x.Values, (x, v) => x.Values = v)
+        .NullableStringList("values", x => x.Values, (x, v) => x.Values = v)
         .Integer("fileCount", x => x.FileCount, (x, v) => x.FileCount = v)
         .Integer("fileSize", x => x.FileSize, (x, v) => x.FileSize = v)
         .Integer("rowCount", x => x.RowCount, (x, v) => x.RowCount = v)

@@ -4,14 +4,17 @@ using System.Text.Json;
 
 namespace Pqax;
 
-/// <summary>A list of strings. An element is null when the file has null there.</summary>
+/// <summary>
+/// A list of strings. An element is null when the file has null there, which the format allows only in
+/// <c>partitions.values</c>; the property of a row says which lists can hold one.
+/// </summary>
 internal sealed class StringListAccessor<T> : FieldAccessor<T>
     where T : class
 {
-    private readonly Func<T, IReadOnlyList<string>?> get;
-    private readonly Action<T, IReadOnlyList<string>?> set;
+    private readonly Func<T, IReadOnlyList<string?>?> get;
+    private readonly Action<T, IReadOnlyList<string?>?> set;
 
-    public StringListAccessor(FieldInfo info, Func<T, IReadOnlyList<string>?> get, Action<T, IReadOnlyList<string>?> set)
+    public StringListAccessor(FieldInfo info, Func<T, IReadOnlyList<string?>?> get, Action<T, IReadOnlyList<string?>?> set)
         : base(info)
     {
         this.get = get;
@@ -24,7 +27,7 @@ internal sealed class StringListAccessor<T> : FieldAccessor<T>
 
     public override void Write(Utf8JsonWriter writer, T target)
     {
-        IReadOnlyList<string>? value = get(target);
+        IReadOnlyList<string?>? value = get(target);
         if (value == null)
         {
             writer.WriteNullValue();
