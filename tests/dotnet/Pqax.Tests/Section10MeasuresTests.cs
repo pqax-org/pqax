@@ -27,7 +27,11 @@ public class Section10MeasuresTests
             MetadataSize = metadataSize,
         });
 
-    /// <summary>A footprint written by <see cref="FootprintBuilder"/> with one source and the tables given, opened by the reader.</summary>
+    /// <summary>
+    /// A footprint written by <see cref="FootprintBuilder"/> with one source and the tables given, opened by the reader.
+    /// A table without the format or the depth, which the format requires and these measures do not read, gets Delta
+    /// and Summary, so that the builder writes it.
+    /// </summary>
     private static PqaxDocument Footprint(CollectionInfo collection, params TableRow[] tables)
     {
         var builder = new FootprintBuilder(collection);
@@ -35,6 +39,8 @@ public class Section10MeasuresTests
         foreach (TableRow table in tables)
         {
             table.Source = 1;
+            table.Format ??= "Delta";
+            table.DetailDepth ??= "Summary";
             table.Id = builder.AddTable(table);
         }
 

@@ -27,8 +27,11 @@ namespace Pqax;
 /// </para>
 /// <para>
 /// The builder keeps the row instances that the Add methods receive, so a property set after Add, such as the
-/// clustering columns of a table once its columns have ids, is written. Write refuses a table with a repeated id or an
-/// id that is not positive. Apart from the ids, the builder does not validate what it writes: <see cref="PqaxValidator"/> does.
+/// clustering columns of a table once its columns have ids, is written. Write refuses, with
+/// <see cref="PqaxWriteException"/> and the code of the rule, a footprint that breaks a rule of the format that it
+/// can check: a collection without a level, an id that is not positive or that two rows share, a required field of a
+/// table of the format without a value, and an integer of the format beyond 2^53 - 1 in absolute value. The other
+/// rules are left to <see cref="PqaxValidator"/>, and what a producer adds is written as it is.
 /// </para>
 /// <para>
 /// The Add methods and the Write methods are safe to call from several threads, and they are serialized on one lock.
@@ -302,7 +305,12 @@ public sealed class FootprintBuilder
     /// <param name="stream">A writable stream.</param>
     /// <exception cref="ArgumentNullException"><paramref name="stream"/> is null.</exception>
     /// <exception cref="ArgumentException">The stream cannot write.</exception>
-    /// <exception cref="InvalidOperationException">A table has the same id in two rows, or an id that is not positive. The message names the table and the id. Nothing is written.</exception>
+    /// <exception cref="PqaxWriteException">
+    /// The footprint breaks a rule that the builder checks, which <see cref="PqaxWriteException.Code"/> names: the
+    /// collection has no level, a table has the same id in two rows or an id that is not positive, a row has no value in
+    /// a required field, or an integer is beyond 2^53 - 1 in absolute value. Nothing is written. It is an
+    /// <see cref="InvalidOperationException"/>.
+    /// </exception>
     /// <exception cref="IOException">The stream cannot be written.</exception>
     public void Write(Stream stream)
     {
@@ -313,7 +321,7 @@ public sealed class FootprintBuilder
 
         lock (sync)
         {
-            CheckIds();
+            Check();
             WriteArchive(stream);
         }
     }
@@ -324,7 +332,9 @@ public sealed class FootprintBuilder
     /// </summary>
     /// <param name="path">The path of the file.</param>
     /// <exception cref="ArgumentNullException"><paramref name="path"/> is null.</exception>
-    /// <exception cref="InvalidOperationException">A table has the same id in two rows, or an id that is not positive. The message names the table and the id. No file is created.</exception>
+    /// <exception cref="PqaxWriteException">
+    /// The footprint breaks a rule that the builder checks, as for <see cref="Write(Stream)"/>. No file is created.
+    /// </exception>
     /// <exception cref="IOException">The file cannot be created or written, such as <see cref="DirectoryNotFoundException"/> when its folder does not exist.</exception>
     /// <exception cref="UnauthorizedAccessException">The caller may not write the file.</exception>
     public void Write(string path)
@@ -336,8 +346,8 @@ public sealed class FootprintBuilder
 
         lock (sync)
         {
-            // The ids are checked before the file is created, so that a footprint that is refused leaves no file behind.
-            CheckIds();
+            // The rules are checked before the file is created, so that a footprint that is refused leaves no file behind.
+            Check();
             using var stream = new FileStream(path, FileMode.Create, FileAccess.ReadWrite, FileShare.None);
             WriteArchive(stream);
         }
@@ -377,17 +387,30 @@ public sealed class FootprintBuilder
         writer.Flush();
     }
 
-    /// <summary>Refuses a table with a repeated id, or an id that is not positive, before anything is written.</summary>
-    private void CheckIds()
+    /// <summary>Refuses, before anything is written, a footprint that breaks a rule that the builder checks.</summary>
+    private void Check()
     {
+        foreach (FieldAccessor<CollectionInfo> field in Schemas.CollectionSchema.Fields)
+        {
+            if (field.Info.Required && !field.HasValue(Collection))
+            {
+                throw new PqaxWriteException("manifest.required", $"The collection has no {field.Name}, which the format requires.", null, "collection." + field.Name);
+            }
+
+            if (field.IntegerOutOfRange(Collection) is long far)
+            {
+                throw new PqaxWriteException("json.integerRange", $"The {field.Name} of the collection is {far}, beyond 2^53 - 1 in absolute value.", null, "collection." + field.Name);
+            }
+        }
+
         foreach (ITableWriter table in SummaryTables())
         {
-            table.CheckIds();
+            table.Check();
         }
 
         foreach (ITableWriter table in DetailTables())
         {
-            table.CheckIds();
+            table.Check();
         }
     }
 

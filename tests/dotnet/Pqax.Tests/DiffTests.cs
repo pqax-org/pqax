@@ -603,6 +603,22 @@ public class DiffTests
         return stream.ToArray();
     }
 
+    /// <summary>
+    /// A footprint with one value set to null after the builder wrote it: what the builder refuses, such as a required
+    /// field without a value, and a reader still reads.
+    /// </summary>
+    private static byte[] Without(byte[] data, string part, string table, string field, int row) => Kit.Rewrite(data, (name, content) =>
+    {
+        if (name != part)
+        {
+            return content;
+        }
+
+        JsonNode json = Kit.Json(content);
+        json[table]![field]![row] = null;
+        return Kit.Bytes(json);
+    });
+
     /// <summary>A footprint with a source and one table "t", TableId "1", with the rows that <paramref name="add"/> adds to it.</summary>
     private static byte[] OneTable(Action<FootprintBuilder, long> add, TableRow? table = null) => Footprint(b =>
     {
@@ -771,8 +787,8 @@ public class DiffTests
     {
         byte[] older = OneTable((b, t) =>
         {
-            b.AddColumn(new ColumnRow { Table = t, Name = "a" });
-            b.AddColumn(new ColumnRow { Table = t, Name = "b" });
+            b.AddColumn(new ColumnRow { Table = t, Name = "a", DataType = "string" });
+            b.AddColumn(new ColumnRow { Table = t, Name = "b", DataType = "string" });
         }, T("t", "1", ns: ["raw"], snapshotId: "3", depth: "Files"));
         KeptTable kept = Assert.Single(Compare(older, Footprint(T("t", "1", ns: ["raw"], snapshotId: "3", depth: "Files"))).Kept);
         TableSide side = kept.Older;
@@ -1040,7 +1056,12 @@ public class DiffTests
     public void The_files_are_not_compared_when_a_side_does_not_keep_them(string? olderDepth, string? newerDepth)
     {
         FileRow[] Files(string? depth) => depth == "Summary" ? [] : [F("p1", 100)];
-        KeptTable kept = Assert.Single(Compare(WithFiles(olderDepth, Files(olderDepth)), WithFiles(newerDepth, Files(newerDepth))).Kept);
+
+        // The builder refuses a table without a detailDepth, which is required, so that side loses it after the write.
+        byte[] Side(string? depth) => depth == null
+            ? Without(WithFiles("Files", Files(depth)), "summary.json", "tables", "detailDepth", 0)
+            : WithFiles(depth, Files(depth));
+        KeptTable kept = Assert.Single(Compare(Side(olderDepth), Side(newerDepth)).Kept);
         Assert.Null(kept.Files);
     }
 
@@ -1193,7 +1214,9 @@ public class DiffTests
     [Fact]
     public void The_commits_are_not_compared_with_a_commit_without_id_or_a_footprint_without_commits()
     {
-        Assert.Null(Assert.Single(Compare(WithCommits("1", null), WithCommits("1")).Kept).Commits);
+        // The builder refuses a commit without a commitId, which is required, so the second commit loses it after the write.
+        byte[] withoutId = Without(WithCommits("1", "2"), "commits.json", "commits", "commitId", 1);
+        Assert.Null(Assert.Single(Compare(withoutId, WithCommits("1")).Kept).Commits);
         Assert.Null(Assert.Single(Compare(WithCommits("1"), Footprint(T("t", "1"))).Kept).Commits);
     }
 

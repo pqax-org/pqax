@@ -27,7 +27,7 @@ internal sealed class BuilderTable<T> : ITableWriter
     /// <summary>
     /// Adds a row and returns its id, or for a table without ids, the position of the row from 0. A row that brings an
     /// id keeps it. A row whose id is 0 gets the next free id, one more than the largest id so far, so that it never
-    /// takes an id that a row already has. <see cref="CheckIds"/> refuses a repeated id or one below 0 when the file is written.
+    /// takes an id that a row already has. <see cref="Check"/> refuses a repeated id or one below 0 when the file is written.
     /// </summary>
     public long Add(T row)
     {
@@ -55,7 +55,32 @@ internal sealed class BuilderTable<T> : ITableWriter
         return value;
     }
 
-    public void CheckIds()
+    public void Check()
+    {
+        CheckIds();
+        IdAccessor<T>? id = schema.Id;
+        for (int i = 0; i < rows.Count; i++)
+        {
+            T row = rows[i];
+            foreach (FieldAccessor<T> field in schema.Fields)
+            {
+                if (field.Info.Required && !field.HasValue(row))
+                {
+                    throw new PqaxWriteException("table.required", $"{Name}.{field.Name} is required, and {RowName(i)} has no value.", Name, field.Name);
+                }
+
+                if (field.IntegerOutOfRange(row) is long far)
+                {
+                    throw new PqaxWriteException("json.integerRange", $"{Name}.{field.Name} of {RowName(i)} holds {far}, beyond 2^53 - 1 in absolute value.", Name, field.Name);
+                }
+            }
+        }
+
+        string RowName(int position) => id == null ? $"row {position}" : $"the row with the id {id.Get(rows[position])}";
+    }
+
+    /// <summary>Refuses an id that is not positive or that two rows share: <c>table.idUnique</c>.</summary>
+    private void CheckIds()
     {
         IdAccessor<T>? id = schema.Id;
         if (id == null)
@@ -71,7 +96,7 @@ internal sealed class BuilderTable<T> : ITableWriter
             long value = id.Get(row);
             if (value <= 0)
             {
-                throw new InvalidOperationException($"The table {Name} has a row with the id {value}. An id is a positive integer.");
+                throw new PqaxWriteException("table.idUnique", $"The table {Name} has a row with the id {value}. An id is a positive integer.", Name, "id");
             }
 
             increasing &= value > previous;
@@ -89,7 +114,7 @@ internal sealed class BuilderTable<T> : ITableWriter
             long value = id.Get(row);
             if (!seen.Add(value))
             {
-                throw new InvalidOperationException($"The table {Name} has the id {value} in more than one row. Each row of a table has its own id.");
+                throw new PqaxWriteException("table.idUnique", $"The table {Name} has the id {value} in more than one row. Each row of a table has its own id.", Name, "id");
             }
         }
     }

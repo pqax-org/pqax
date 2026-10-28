@@ -41,4 +41,6 @@ internal sealed class IntegerAccessor<T> : FieldAccessor<T>
     public override int ValueHash(T target) => get(target)?.GetHashCode() ?? 0;
 
     public override void Copy(T source, T target) => set(target, get(source));
+
+    public override long? IntegerOutOfRange(T target) => get(target) is long value && IsOutOfRange(value) ? value : null;
 }

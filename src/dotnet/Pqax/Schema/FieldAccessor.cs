@@ -31,4 +31,14 @@ internal abstract class FieldAccessor<T>
 
     /// <summary>Copies the value, with a copy of a nested object.</summary>
     public abstract void Copy(T source, T target);
+
+    /// <summary>
+    /// The first integer of the value that is beyond 2^53 - 1 in absolute value, which <c>json.integerRange</c>
+    /// forbids, or null when there is none. Only the integers of the format count: an id, an integer, a reference, an
+    /// element of a list of references, and the integer members of a nested object.
+    /// </summary>
+    public virtual long? IntegerOutOfRange(T target) => null;
+
+    /// <summary>Whether an integer is beyond 2^53 - 1 in absolute value.</summary>
+    protected static bool IsOutOfRange(long value) => value > JsonRead.MaxSafeInteger || value < -JsonRead.MaxSafeInteger;
 }

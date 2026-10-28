@@ -56,4 +56,6 @@ internal sealed class ObjectAccessor<T, TValue> : FieldAccessor<T>
         TValue? value = get(source);
         set(target, value == null ? null : schema.Clone(value));
     }
+
+    public override long? IntegerOutOfRange(T target) => get(target) is TValue value ? schema.IntegerOutOfRange(value) : null;
 }
