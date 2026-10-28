@@ -61,7 +61,7 @@ def compression_name(method: int) -> str:
 def read_entry(archive: zipfile.ZipFile, info: zipfile.ZipInfo, limit: Optional[int] = MAX_PART_SIZE) -> bytes:
     """The content of an entry, inflated when it is deflated."""
     if info.flag_bits & 0x1:
-        raise ContainerError(f"The entry {info.filename} is encrypted.")
+        raise ContainerError(f"The entry {info.filename} is encrypted.", code="container.encrypted")
     if limit is not None and info.file_size > limit:
         raise ContainerError(f"The entry {info.filename} holds {info.file_size:,} bytes, more than the limit of "
                              f"{limit:,} that this package reads.")
