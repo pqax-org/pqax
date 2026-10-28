@@ -14,7 +14,9 @@ and the two collections must hold the same values in every table and field, and 
 except the members that name the collector and the times: collectorApp, collectorAppVersion, collectorLib,
 collectorLibVersion, startedAt, and completedAt. When both run, they also collect a synthetic container of Azure Data
 Lake Storage Gen2 with --adls, through a fake DFS endpoint on 127.0.0.1, which must give the same footprints in the
-same way, and the same lines and the same errors: see container_check.py.
+same way, and the same lines and the same errors: see container_check.py. They also read the Parquet files of samples/footers with
+their footer parsers, which must give the same footer or the same error, the one of samples/footers/expected.json,
+and collect them, which must give the same footprints: see footer_check.py.
 
 Validators: python -m pqax check, the C# command line (pqax check, or the C# library when the command line does not
 build), and validate() of the TypeScript package through node. Readers: pqax.open in Python, PqaxDocument in C#, and
@@ -52,6 +54,7 @@ from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import container_check
+import footer_check
 import make_measures
 
 KIT = Path(__file__).resolve().parent
@@ -965,6 +968,28 @@ def check_container(work: Path, implementations: List[Any]) -> List[str]:
         return [f"container: {type(error).__name__}: {error}"]
 
 
+def check_footers(work: Path, implementations: List[Any]) -> List[str]:
+    """The footer parsers of both collectors on samples/footers, and their collections of the samples, when both
+    collectors can run. Returns the failures."""
+    python = next((implementation for implementation in implementations if implementation.name == "python"), None)
+    dotnet = next((implementation for implementation in implementations if implementation.name == "dotnet"), None)
+    reason = None
+    if python is None or dotnet is None or not dotnet.dotnet:
+        reason = "it needs the Python and the C# collectors"
+    else:
+        try:
+            import pyarrow  # noqa: F401 - the Python collector starts its checkpoint reader with it
+        except ImportError:
+            reason = "pyarrow is not installed (pip install \"pqax[collect]\")"
+    if reason is not None:
+        print(f"  footers skipped: {reason}")
+        return []
+    try:
+        return footer_check.check_kit(work / "footer-check", python.env, dotnet.dotnet, compare_collections)
+    except Exception as error:  # noqa: BLE001 - a check that cannot run is a result
+        return [f"footers: {type(error).__name__}: {error}"]
+
+
 def check_diff(implementations: List[Any]) -> List[str]:
     """The diff of the two samples of the comparison test by each command line, against the expected diff and against
     each other. Returns the failures and prints one line for each command line."""
@@ -1136,6 +1161,7 @@ def check(work: Path, skip: set, build: bool, expected: Dict[str, Dict[str, Any]
     print()
     failures += check_collections(files)
     failures += check_container(work, implementations)
+    failures += check_footers(work, implementations)
     failures += check_diff(implementations)
     print()
     if failures:
@@ -1146,7 +1172,8 @@ def check(work: Path, skip: set, build: bool, expected: Dict[str, Dict[str, Any]
     print(f"Every check passed: {len(files)} files, each checked by the validators and the readers of "
           f"{', '.join(names)}, and the measures of {len(measured_paths)} of them against expected/measures; the "
           f"collections of the fixture by {len(collectors)} collectors compared with each other, and those of the "
-          f"synthetic container when both collectors ran; and the diff of the comparison test against expected/diff.")
+          f"synthetic container and the footer samples when both collectors ran; and the diff of the comparison test "
+          f"against expected/diff.")
     return 0
 
 
