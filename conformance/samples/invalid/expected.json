@@ -3,11 +3,23 @@
     "codes": ["container.caseCollision"],
     "change": "An entry Summary.json, a copy of summary.json that the manifest does not list, differs from summary.json only in case."
   },
+  "container.encrypted.pqax": {
+    "codes": ["container.encrypted"],
+    "change": "commits.json is encrypted with the traditional PKWARE encryption, with the password pqax: bit 0 of its flags is set, and its data is the 12-byte encryption header followed by the encrypted deflated data."
+  },
   "container.manifestMissing.pqax": {"codes": ["container.manifestMissing"], "change": "The archive has no manifest.json entry."},
   "container.method.pqax": {"codes": ["container.method"], "change": "commits.json is compressed with bzip2, method 12."},
   "container.partName.pqax": {
     "codes": ["container.partName"],
     "change": "The part commits.json is named commits 1.json, in the archive and in the manifest. A space is not allowed."
+  },
+  "container.zip64.extraField.pqax": {
+    "codes": ["container.zip64"],
+    "change": "The central directory gives commits.json a ZIP64 extra field, header 0x0001, with no data, since its sizes and offset fit in 32 bits."
+  },
+  "container.zip64.pqax": {
+    "codes": ["container.zip64"],
+    "change": "A ZIP64 end of central directory record and its locator precede the end record, which keeps the real counts, size, and offset, so the archive can be read without ZIP64."
   },
   "depth.columnChunks.pqax": {
     "codes": ["depth.columnChunks"],

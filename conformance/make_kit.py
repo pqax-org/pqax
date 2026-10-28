@@ -20,6 +20,9 @@ outside conformance/, src/, and tests/. The builder will be replaced by the writ
 The output is deterministic. Every zip entry has the same date and attributes, and the entries are written in a
 fixed order, so two runs with the same Python write the same bytes. Another zlib can compress differently, which
 changes the bytes of a sample but not its content or its expected results.
+
+zipfile cannot write an encrypted entry or ZIP64 records in a small archive, so the samples of container.encrypted and
+container.zip64 are crafted byte by byte from sample.pqax, and zipfile then reads them back to check them.
 """
 import collections
 import copy
@@ -28,6 +31,7 @@ import io
 import json
 import os
 import re
+import struct
 import sys
 import zipfile
 
@@ -93,6 +97,112 @@ def zip_bytes(entries):
     return buffer.getvalue()
 
 
+# ---- archives crafted byte by byte ----
+# zipfile cannot write an encrypted entry, or ZIP64 records in a small archive. These functions read an archive that
+# zip_bytes wrote, which has no comment, no data descriptor, and no ZIP64, and write it again record by record, so that
+# a sample can differ from it in one structure of the container. write_records(zip_records(data)) gives data back.
+
+LOCAL_HEADER = struct.Struct("<IHHHHHIIIHH")
+CENTRAL_HEADER = struct.Struct("<IHHHHHHIIIHHHHHII")
+END_RECORD = struct.Struct("<IHHHHIIH")
+ZIP64_END_RECORD = struct.Struct("<IQHHIIQQQQ")
+ZIP64_LOCATOR = struct.Struct("<IIQI")
+ZIP64_EXTRA_FIELD = 0x0001
+
+
+def zip_records(data):
+    """The entries of an archive, in the order of its central directory: the fields of the central directory record of
+    each, its name, its extra fields in the directory and in the local header, and its data as stored."""
+    signature, _, _, entries, count, size, offset, comment = END_RECORD.unpack_from(data, len(data) - END_RECORD.size)
+    assert signature == 0x06054B50 and entries == count and comment == 0 and offset + size == len(data) - END_RECORD.size
+    records = []
+    position = offset
+    for _ in range(count):
+        (signature, made_by, needed, flags, method, time, date, crc, compressed, size, name_length, extra_length,
+         comment_length, _, internal, external, local) = CENTRAL_HEADER.unpack_from(data, position)
+        assert signature == 0x02014B50 and comment_length == 0
+        start = position + CENTRAL_HEADER.size
+        header = LOCAL_HEADER.unpack_from(data, local)
+        assert header[0] == 0x04034B50 and not flags & 0x8
+        data_start = local + LOCAL_HEADER.size + header[9] + header[10]
+        records.append({"madeBy": made_by, "needed": needed, "flags": flags, "method": method, "time": time,
+                        "date": date, "crc": crc, "size": size, "name": data[start:start + name_length],
+                        "extra": data[start + name_length:start + name_length + extra_length],
+                        "localExtra": data[local + LOCAL_HEADER.size + header[9]:data_start],
+                        "internal": internal, "external": external,
+                        "data": data[data_start:data_start + compressed]})
+        position = start + name_length + extra_length
+    return records
+
+
+def write_records(records, zip64_end=False):
+    """An archive of the records: the local headers and the data, the central directory, and the end record, which
+    zip64_end precedes with a ZIP64 end of central directory record and its locator. The end record keeps the real
+    counts, size, and offset, so the archive can still be read without ZIP64."""
+    out = bytearray()
+    offsets = []
+    for record in records:
+        offsets.append(len(out))
+        out += LOCAL_HEADER.pack(0x04034B50, record["needed"], record["flags"], record["method"], record["time"],
+                                 record["date"], record["crc"], len(record["data"]), record["size"], len(record["name"]),
+                                 len(record["localExtra"]))
+        out += record["name"] + record["localExtra"] + record["data"]
+    directory = len(out)
+    for record, offset in zip(records, offsets):
+        out += CENTRAL_HEADER.pack(0x02014B50, record["madeBy"], record["needed"], record["flags"], record["method"],
+                                   record["time"], record["date"], record["crc"], len(record["data"]), record["size"],
+                                   len(record["name"]), len(record["extra"]), 0, 0, record["internal"],
+                                   record["external"], offset)
+        out += record["name"] + record["extra"]
+    size = len(out) - directory
+    if zip64_end:
+        end64 = len(out)
+        out += ZIP64_END_RECORD.pack(0x06064B50, ZIP64_END_RECORD.size - 12, 3 << 8 | 45, 45, 0, 0, len(records),
+                                     len(records), size, directory)
+        out += ZIP64_LOCATOR.pack(0x07064B50, 0, end64, 1)
+    out += END_RECORD.pack(0x06054B50, 0, 0, len(records), len(records), size, directory, 0)
+    return bytes(out)
+
+
+def record_of(records, name):
+    return next(record for record in records if record["name"] == name.encode("ascii"))
+
+
+def zip_crypto(data, password, crc):
+    """data encrypted with the traditional PKWARE encryption of section 6.1 of the zip specification, APPNOTE.TXT,
+    after its 12-byte encryption header. The last byte of the header is the high byte of the CRC-32 of the entry, which
+    a reader compares to check the password; the 11 others are random in a real archive, and fixed here, so that the
+    sample is the same at every run."""
+    table = []
+    for byte in range(256):
+        value = byte
+        for _ in range(8):
+            value = (value >> 1) ^ 0xEDB88320 if value & 1 else value >> 1
+        table.append(value)
+    keys = [0x12345678, 0x23456789, 0x34567890]
+
+    def update(byte):
+        keys[0] = table[(keys[0] ^ byte) & 0xFF] ^ (keys[0] >> 8)
+        keys[1] = ((keys[1] + (keys[0] & 0xFF)) * 134775813 + 1) & 0xFFFFFFFF
+        keys[2] = table[(keys[2] ^ (keys[1] >> 24)) & 0xFF] ^ (keys[2] >> 8)
+
+    for byte in password:
+        update(byte)
+    out = bytearray()
+    for byte in b"pqax-kit-v1" + bytes([crc >> 24]) + data:
+        key = keys[2] | 2
+        out.append(byte ^ (((key * (key ^ 1)) >> 8) & 0xFF))
+        update(byte)
+    return bytes(out)
+
+
+def same_entries(crafted, original, password=None):
+    """Whether zipfile reads every entry of a crafted archive as the entry of the archive it comes from."""
+    with zipfile.ZipFile(io.BytesIO(crafted)) as left, zipfile.ZipFile(io.BytesIO(original)) as right:
+        return left.namelist() == right.namelist() and all(
+            left.read(name, pwd=password) == right.read(name) for name in right.namelist())
+
+
 def footprint(depth, rows_per_part=None, version=FORMAT_VERSION):
     """The entries of a PQAX file at a depth of build_pqax, with the parts of section 7.2 of the serialization.
 
@@ -148,7 +258,8 @@ def extensions(entries):
     manifest = doc(entries, "manifest.json")
     summary = doc(entries, "summary.json")
     manifest["acme_build"] = {"tool": "acme-writer", "number": 7}                  # a member of the manifest
-    descriptor(entries, "files.json")["acme_checksum"] = "5f0c"                     # a member of a part in the manifest
+    descriptor(entries, "summary.json")["acme_checksum"] = "c3a1"                   # members of parts in the manifest
+    descriptor(entries, "files.json")["acme_checksum"] = "5f0c"
     summary["acme_reviews"] = {"table": [1, 2], "note": ["checked", "checked"], "score": [4, 3]}    # a table of a producer
     descriptor(entries, "summary.json")["tables"]["acme_reviews"] = 2
     summary["tables"]["acme_score"] = [7, 9]                                        # a field of a producer, in the summary
@@ -164,7 +275,7 @@ def extensions(entries):
     chunks["encodings"] = {"dictionary": lists, "indexes": [lists.index(value) for value in chunks["encodings"]]}
     summary["tables"]["fileSizes"][0]["ninetiethPercentile"] = summary["tables"]["fileSizes"][0]["maximum"]   # in a Distribution
     entries.append(["acme_extra.json", {"acme_details": {"table": [1, 1, 2], "label": ["a", "b", "c"]}}, DEFLATED])  # a part
-    doc(entries, "manifest.json")["parts"].append({"name": "acme_extra.json", "tables": {"acme_details": 3}})
+    doc(entries, "manifest.json")["parts"].append({"name": "acme_extra.json", "tables": {"acme_details": 3}, "acme_version": 2})
     entries.append(["acme_readme.txt", b"Added by a producer. A reader ignores an entry that the manifest does not list.\n", DEFLATED])
     return entries
 
@@ -207,7 +318,8 @@ def valid_samples(bases):
 # ---- invalid samples ----
 
 def invalid_samples(bases):
-    """Each case: the file name, the codes that a validator must report at least, the change, and the entries."""
+    """Each case: the file name, the codes that a validator must report at least, the change, and the entries, or the
+    bytes of an archive crafted byte by byte."""
     cases = []
 
     def case(name, codes, change, base="columnChunks"):
@@ -218,9 +330,49 @@ def invalid_samples(bases):
             return mutate
         return register
 
+    def crafted(name, codes, change):
+        """A case whose change is in the bytes of the container, which zipfile cannot write: craft gets the bytes of
+        sample.pqax and returns those of the sample."""
+        def register(craft):
+            original = zip_bytes(bases["columnChunks"])
+            assert write_records(zip_records(original)) == original
+            cases.append((name, codes, change, craft(original)))
+            return craft
+        return register
+
     @case("container.method.pqax", ["container.method"], "commits.json is compressed with bzip2, method 12.")
     def _(e):
         entry(e, "commits.json")[2] = BZIP2
+
+    @crafted("container.encrypted.pqax", ["container.encrypted"],
+             "commits.json is encrypted with the traditional PKWARE encryption, with the password pqax: bit 0 of its "
+             "flags is set, and its data is the 12-byte encryption header followed by the encrypted deflated data.")
+    def _(original):
+        records = zip_records(original)
+        commits = record_of(records, "commits.json")
+        commits["flags"] |= 0x1
+        commits["data"] = zip_crypto(commits["data"], b"pqax", commits["crc"])
+        data = write_records(records)
+        assert same_entries(data, original, password=b"pqax")
+        return data
+
+    @crafted("container.zip64.pqax", ["container.zip64"],
+             "A ZIP64 end of central directory record and its locator precede the end record, which keeps the real "
+             "counts, size, and offset, so the archive can be read without ZIP64.")
+    def _(original):
+        data = write_records(zip_records(original), zip64_end=True)
+        assert same_entries(data, original)
+        return data
+
+    @crafted("container.zip64.extraField.pqax", ["container.zip64"],
+             "The central directory gives commits.json a ZIP64 extra field, header 0x0001, with no data, since its "
+             "sizes and offset fit in 32 bits.")
+    def _(original):
+        records = zip_records(original)
+        record_of(records, "commits.json")["extra"] = struct.pack("<HH", ZIP64_EXTRA_FIELD, 0)
+        data = write_records(records)
+        assert same_entries(data, original)
+        return data
 
     @case("container.caseCollision.pqax", ["container.caseCollision"],
           "An entry Summary.json, a copy of summary.json that the manifest does not list, differs from summary.json only in case.")
@@ -556,7 +708,7 @@ def main():
 
     expected_codes = {}
     for name, codes, change, entries in invalid_samples(bases):
-        data = zip_bytes(entries)
+        data = entries if isinstance(entries, bytes) else zip_bytes(entries)
         with open(os.path.join(invalid_folder, name), "wb") as handle:
             handle.write(data)
         expected_codes[name] = {"codes": codes, "change": change}
