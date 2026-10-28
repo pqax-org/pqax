@@ -25,6 +25,7 @@ __version__ = "0.2.2"
 
 from ._errors import (
     ContainerError, FormatError, JsonError, ManifestMissingError, PartMissingError, PqaxError, UnknownVersionError,
+    WriteError,
 )
 from ._json import format_timestamp, parse_timestamp
 from ._schema import DETAIL_TABLES, FIELDS, FORMAT_VERSION, REFERENCES, REQUIRED, ROWS_PER_PART, SUMMARY_TABLES, TABLES
@@ -37,7 +38,7 @@ from .validator import Issue, ValidationResult, validate, validate_embedded
 __all__ = [
     "Builder", "BuilderOptions", "ContainerError", "DETAIL_TABLES", "FIELDS", "FORMAT_VERSION", "FormatError",
     "Issue", "JsonError", "ManifestMissingError", "PartMissingError", "PqaxDocument", "PqaxError", "REFERENCES",
-    "REQUIRED", "ROWS_PER_PART", "SUMMARY_TABLES", "TABLES", "UnknownVersionError", "ValidationResult",
+    "REQUIRED", "ROWS_PER_PART", "SUMMARY_TABLES", "TABLES", "UnknownVersionError", "ValidationResult", "WriteError",
     "format_timestamp", "measures", "open", "open_embedded", "parse_timestamp", "to_dataframe", "try_open_embedded",
     "validate", "validate_embedded",
 ]

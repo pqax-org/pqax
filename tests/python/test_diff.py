@@ -386,6 +386,21 @@ def footprint(*tables, sources=(SOURCE,), collection=None):
     return buffer.getvalue()
 
 
+def without(data, part, table, field, row):
+    """The bytes of a PQAX file with one value set to null after the builder wrote it: what the builder refuses, such
+    as a required field without a value, and a reader still reads."""
+    target = io.BytesIO()
+    with zipfile.ZipFile(io.BytesIO(data)) as source, zipfile.ZipFile(target, "w", zipfile.ZIP_DEFLATED) as copy:
+        for info in source.infolist():
+            content = source.read(info)
+            if info.filename == part:
+                document = json.loads(content)
+                document[table][field][row] = None
+                content = json.dumps(document).encode("utf-8")
+            copy.writestr(info.filename, content)
+    return target.getvalue()
+
+
 def compare(older, newer, **options):
     with pqax.open(io.BytesIO(older)) as a, pqax.open(io.BytesIO(newer)) as b:
         return diff.compare(a, b, **options)
@@ -512,7 +527,8 @@ def test_each_older_table_takes_the_first_unpaired_newer_table_in_the_order_of_t
 
 def test_the_side_of_a_table():
     result = compare(footprint(table("t", "1", namespace=["raw"], snapshotId="3", detailDepth="Files",
-                                     columns=[{"name": "a"}, {"name": "b"}])),
+                                     columns=[{"name": "a", "dataType": "string"},
+                                              {"name": "b", "dataType": "string"}])),
                      footprint(table("t", "1", namespace=["raw"], snapshotId="3", detailDepth="Files")))
     item = only(result)
     assert item["older"] == {"id": 1, "label": "raw.t", "name": "t", "namespace": ["raw"], "tableId": "1",
@@ -541,16 +557,16 @@ def test_columns_pair_by_field_id_then_by_name():
 
 
 def test_the_first_pass_of_the_columns_pairs_the_same_field_id_and_the_same_name():
-    older = [{"name": "a", "fieldId": 1}, {"name": "b", "fieldId": 1}]
-    newer = [{"name": "b", "fieldId": 1}, {"name": "a", "fieldId": 1}]
+    older = [{"name": "a", "fieldId": 1, "dataType": "int"}, {"name": "b", "fieldId": 1, "dataType": "int"}]
+    newer = [{"name": "b", "fieldId": 1, "dataType": "int"}, {"name": "a", "fieldId": 1, "dataType": "int"}]
     item = only(compare(footprint(table("t", "1", columns=older)), footprint(table("t", "1", columns=newer))))
     assert column_pairs(item) == [("b", "b", "fieldId"), ("a", "a", "fieldId")]
     assert item["status"] == "unchanged"
 
 
 def test_a_column_renamed_without_field_id_is_removed_and_added():
-    item = only(compare(footprint(table("t", "1", columns=[{"name": "a"}])),
-                        footprint(table("t", "1", columns=[{"name": "b"}]))))
+    item = only(compare(footprint(table("t", "1", columns=[{"name": "a", "dataType": "int"}])),
+                        footprint(table("t", "1", columns=[{"name": "b", "dataType": "int"}]))))
     assert item["columns"]["kept"] == []
     assert [c["name"] for c in item["columns"]["added"]] == ["b"]
     assert [c["name"] for c in item["columns"]["removed"]] == ["a"]
@@ -676,9 +692,15 @@ def test_what_changes_a_file(change, changed):
 @pytest.mark.parametrize("older_depth, newer_depth", [("Files", "Summary"), ("Summary", "Files"), ("Files", None)])
 def test_the_files_are_not_compared_when_a_side_does_not_keep_them(older_depth, newer_depth):
     files = [{"path": "p1", "fileSize": 100}]
-    older = files_table(files if older_depth != "Summary" else (), detailDepth=older_depth)
-    newer = files_table(files if newer_depth != "Summary" else (), detailDepth=newer_depth)
-    assert only(compare(footprint(older), footprint(newer)))["files"] is None
+
+    def side(depth):
+        # The builder refuses a table without a detailDepth, which is required, so that side loses it after the write.
+        if depth is None:
+            written = footprint(files_table(files, detailDepth="Files"))
+            return without(written, "summary.json", "tables", "detailDepth", 0)
+        return footprint(files_table(files if depth != "Summary" else (), detailDepth=depth))
+
+    assert only(compare(side(older_depth), side(newer_depth)))["files"] is None
 
 
 def test_the_files_are_not_compared_when_a_file_has_no_path():
@@ -772,8 +794,11 @@ def test_the_same_commits_leave_a_table_unchanged():
 
 
 def test_the_commits_are_not_compared_with_a_commit_without_id_or_a_footprint_without_commits():
-    with_null = commits("1") + [{"timestamp": "2026-10-09T00:00:00.000Z"}]
-    item = only(compare(footprint(table("t", "1", commits=with_null)), footprint(table("t", "1", commits=commits("1")))))
+    # The builder refuses a commit without a commitId, which is required, so the second commit loses it after the write.
+    second = {"commitId": "2", "timestamp": "2026-10-09T00:00:00.000Z"}
+    with_null = without(footprint(table("t", "1", commits=commits("1") + [second])), "commits.json", "commits",
+                        "commitId", 1)
+    item = only(compare(with_null, footprint(table("t", "1", commits=commits("1")))))
     assert item["commits"] is None
     item = only(compare(footprint(table("t", "1", commits=commits("1"))), footprint(table("t", "1"))))
     assert item["commits"] is None

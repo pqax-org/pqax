@@ -8,15 +8,69 @@ import os
 import zipfile
 from typing import Any, Dict, List, Mapping, Optional, Sequence, Set, Tuple
 
-from ._errors import PqaxError
+from ._errors import PqaxError, WriteError
 from ._json import dumps, format_timestamp
 from ._schema import (
-    COLLECTION_TIMESTAMPS, DETAIL_TABLES, FIELDS, FORMAT, FORMAT_VERSION, ID_TABLES, MANIFEST_MEMBERS, MANIFEST_PART,
-    PART_NAME, ROWS_PER_PART, SUMMARY_PART, SUMMARY_TABLES, TABLES, TIMESTAMPS,
+    COLLECTION_INTEGERS, COLLECTION_TIMESTAMPS, DETAIL_TABLES, FIELDS, FORMAT, FORMAT_VERSION, ID_TABLES, INTEGER_LISTS,
+    INTEGERS, MANIFEST_MEMBERS, MANIFEST_PART, MAX_INTEGER, NESTED_INTEGERS, PART_NAME, REQUIRED, ROWS_PER_PART,
+    SUMMARY_PART, SUMMARY_TABLES, TABLES, TIMESTAMPS,
 )
 
 _FIELD_SETS = {table: frozenset(fields) for table, fields in FIELDS.items()}
 _ENTRY_TIME = (1980, 1, 1, 0, 0, 0)  # a fixed time, so that the same footprint gives the same bytes
+_NONE = type(None)
+_DESCRIPTOR = ("name", "tables")  # the members of a part descriptor that the format defines
+
+# A part of the document that from_document copied: its name, the rows it states for each table, and the members of
+# its descriptor that the format does not define.
+_SourcePart = Tuple[str, Dict[str, int], Dict[str, Any]]
+
+
+def _source_parts(manifest: Mapping[str, Any]) -> List[_SourcePart]:
+    """The parts of a manifest, each name once, in order, as the reader lists them."""
+    parts: List[_SourcePart] = []
+    seen: Set[str] = set()
+    items = manifest.get("parts")
+    for item in items if isinstance(items, list) else ():
+        if not isinstance(item, dict) or not isinstance(item.get("name"), str) or item["name"] in seen:
+            continue
+        seen.add(item["name"])
+        tables = item.get("tables")
+        counts = {table: count for table, count in tables.items()
+                  if type(count) is int and count >= 0} if isinstance(tables, dict) else {}
+        members = {member: copy.deepcopy(value) for member, value in item.items() if member not in _DESCRIPTOR}
+        parts.append((item["name"], counts, members))
+    return parts
+
+
+def _unique(stem: str, suffix: str, used: Set[str]) -> str:
+    """stem + suffix, or with _2, _3, and so on before the suffix when a part has that name in another case."""
+    name, number = stem + suffix, 2
+    while name.lower() in used:
+        name, number = f"{stem}_{number}{suffix}", number + 1
+    used.add(name.lower())
+    return name
+
+
+def _integer_problem(values: Sequence[Any], lists: bool) -> Optional[Tuple[str, Any]]:
+    """The code and the value of the first integer of the format among values, or among the elements of each value when
+    lists, that json.integer or json.integerRange refuses: a float, or an int beyond 2^53 - 1 in absolute value. A value
+    of another type has no code here."""
+    if not lists:
+        kinds = set(map(type, values))
+        if kinds <= {int, _NONE}:
+            present = values if _NONE not in kinds else [value for value in values if value is not None]
+            if not present or (-MAX_INTEGER <= min(present) and max(present) <= MAX_INTEGER):
+                return None
+        elif float not in kinds and int not in kinds:
+            return None
+    for value in values:
+        for item in (value if lists and type(value) is list else (value,)):
+            if type(item) is float:
+                return "json.integer", item
+            if type(item) is int and not -MAX_INTEGER <= item <= MAX_INTEGER:
+                return "json.integerRange", item
+    return None
 
 
 def _value(value: Any) -> Any:
@@ -85,6 +139,11 @@ class Builder:
 
     The add methods accept the fields of the object model and the fields of a producer, whose names have a prefix and
     an underscore, as in ``acme_note``. Builder.add accepts any table and any field.
+
+    write() refuses, with WriteError and the code of the rule, a footprint that breaks a rule of the format that it can
+    check: a collection without a level, an id that two rows share, a required field of a table of the format without a
+    value, and an integer of the format that is a float or is beyond 2^53 - 1 in absolute value. The other rules are
+    left to validate(), and what a producer adds is written as it is.
     """
 
     def __init__(self, collection: Mapping[str, Any], *, rows_per_part: int = ROWS_PER_PART,
@@ -102,6 +161,10 @@ class Builder:
         self.manifest_extensions: Dict[str, Any] = {}
         self._tables: Dict[str, _Columns] = {}
         self._detail: Dict[str, bool] = {}  # where a table that this version does not define goes
+        # The parts of the document that from_document copied, and the rows that each detail table had then: write()
+        # keeps the parts of a table when they still hold its rows.
+        self._source_parts: List[_SourcePart] = []
+        self._copied: Dict[str, int] = {}
 
     # ---- options ----
 
@@ -375,44 +438,131 @@ class Builder:
         names.extend(name for name in self._tables if name not in TABLES and self._detail.get(name, False) == detail)
         return names
 
-    def _plan(self) -> List[Tuple[str, List[Tuple[str, int, int]]]]:
-        """The parts: each with its name and, for each table, the rows from start to end."""
+    def _check(self) -> None:
+        """Refuses, before anything is written, a footprint that breaks a rule that the builder checks."""
+        collection = self.collection
+        if collection.get("level") is None:
+            raise WriteError("The collection has no level, which the format requires.", code="manifest.required",
+                             field="collection.level")
+        for name in COLLECTION_INTEGERS:
+            problem = _integer_problem([collection.get(name)], False)
+            if problem is not None:
+                code, value = problem
+                raise WriteError(f"The {name} of the collection is {value!r}, which is not an integer of the format.",
+                                 code=code, field=f"collection.{name}")
+        for table in TABLES:
+            columns = self._tables.get(table)
+            if columns is None or not columns.rows:
+                continue
+            fields = columns.fields
+            ids = fields.get("id", ())
+            if table in ID_TABLES and len(set(ids)) != len(ids):
+                seen: Set[Any] = set()
+                for value in ids:
+                    if value in seen:
+                        raise WriteError(f"The table {table} has the id {value!r} in more than one row. An id is "
+                                         f"unique in its table.", code="table.idUnique", table=table, field="id")
+                    seen.add(value)
+            for field in REQUIRED[table]:
+                values = fields.get(field)
+                if values is None or None in values:
+                    row = 0 if values is None else values.index(None)
+                    raise WriteError(f"{table}.{field} is required, and {self._row_name(table, row)} has no value.",
+                                     code="table.required", table=table, field=field)
+            for field in INTEGERS[table]:
+                values = fields.get(field)
+                if values is not None:
+                    self._check_integers(table, field, values, (table, field) in INTEGER_LISTS)
+            for (owner, field), members in NESTED_INTEGERS.items():
+                values = fields.get(field) if owner == table else None
+                if values is not None:
+                    objects = [value for value in values if type(value) is dict]
+                    for member in members:
+                        self._check_integers(table, field, [value.get(member) for value in objects], False, member)
+
+    def _check_integers(self, table: str, field: str, values: Sequence[Any], lists: bool,
+                        member: Optional[str] = None) -> None:
+        problem = _integer_problem(values, lists)
+        if problem is not None:
+            code, value = problem
+            what = f"{table}.{field}" + (f".{member}" if member else "")
+            raise WriteError(f"{what} holds {value!r}, which is not an integer of the format: "
+                             + ("it is not whole." if code == "json.integer" else "beyond 2^53 - 1 in absolute value."),
+                             code=code, table=table, field=field)
+
+    def _row_name(self, table: str, row: int) -> str:
+        ids = self._tables[table].fields.get("id")
+        return f"the row with the id {ids[row]}" if table in ID_TABLES and ids else f"row {row}"
+
+    def _keeping(self, per: int) -> Set[str]:
+        """The detail tables that keep the parts that they were read from: each part lists this table alone, with a name
+        that a part may have and that no other part has in another case, and holds at most per rows, and the parts
+        hold the rows that the table had when from_document copied it."""
+        if not self._source_parts:
+            return set()
+        names = {MANIFEST_PART, SUMMARY_PART}
+        clashing: Set[str] = set()
+        for name, _, _ in self._source_parts:
+            if name != SUMMARY_PART:
+                if name.lower() in names:
+                    clashing.add(name)
+                names.add(name.lower())
+        keeping: Set[str] = set()
+        for table in self._names(True):
+            copied = self._copied.get(table, 0)
+            if not copied:
+                continue
+            stated, keep = 0, True
+            for name, counts, _ in self._source_parts:
+                if table in counts:
+                    rows = counts[table]
+                    keep = (keep and name != SUMMARY_PART and len(counts) == 1 and PART_NAME.fullmatch(name) is not None
+                            and name not in clashing and 0 < rows <= per)
+                    stated += rows
+            if keep and stated == copied and self._tables[table].rows >= copied:
+                keeping.add(table)
+        return keeping
+
+    def _plan(self) -> List[Tuple[str, List[Tuple[str, int, int]], Dict[str, Any]]]:
+        """The parts: each with its name, for each table the rows from start to end, and the members of its descriptor
+        that a producer added. summary.json comes first, then the parts that the detail tables keep from the document
+        of from_document, in its order, then the rows that no kept part holds."""
         per = self.options.rows_per_part
         if type(per) is not int or not 1 <= per <= ROWS_PER_PART:
             raise ValueError(f"rows_per_part is an integer from 1 to {ROWS_PER_PART:,}, the most rows that the format "
                              f"allows in a detail part.")
-        for name in sorted(ID_TABLES & self._tables.keys()):
-            ids = self._tables[name].fields.get("id", ())
-            if len(set(ids)) == len(ids):
-                continue
-            seen: Set[Any] = set()
-            for value in ids:
-                if value in seen:
-                    raise ValueError(f"The table {name} has the id {value!r} in more than one row. An id is unique "
-                                     f"in its table.")
-                seen.add(value)
+        summary_members = next((members for name, _, members in self._source_parts if name == SUMMARY_PART), {})
         plan = [(SUMMARY_PART, [(name, 0, self._tables[name].rows) for name in self._names(False)
-                                if self._tables[name].rows])]
+                                if self._tables[name].rows], summary_members)]
+        used = {MANIFEST_PART, SUMMARY_PART}
+        keeping = self._keeping(per)
+        kept_rows: Dict[str, int] = {}
+        kept_parts: Dict[str, int] = {}
+        for name, counts, members in self._source_parts:
+            table = next(iter(counts)) if len(counts) == 1 else None
+            if name == SUMMARY_PART or table not in keeping:
+                continue
+            start = kept_rows.get(table, 0)
+            plan.append((name, [(table, start, start + counts[table])], members))
+            used.add(name.lower())
+            kept_rows[table] = start + counts[table]
+            kept_parts[table] = kept_parts.get(table, 0) + 1
         for name in self._names(True):
             rows = self._tables[name].rows
-            if not rows:
+            first, kept = kept_rows.get(name, 0), kept_parts.get(name, 0)
+            if rows <= first:
                 continue
             if not PART_NAME.fullmatch(name):
                 raise ValueError(f"The table {name!r} cannot name a part: a part name has ASCII letters, digits, "
                                  f"'.', '-', and '_'.")
-            if rows <= per:
-                plan.append((f"{name}.json", [(name, 0, rows)]))
-            else:
-                for number, start in enumerate(range(0, rows, per), 1):
-                    plan.append((f"{name}.{number}.json", [(name, start, min(rows, start + per))]))
-        seen: Set[str] = {MANIFEST_PART}
-        for part, _ in plan:
-            if part.lower() in seen:
-                raise ValueError(f"Two parts would have the name {part}, or names that differ only in case.")
-            seen.add(part.lower())
+            starts = range(first, rows, per)
+            for number, start in enumerate(starts, kept + 1):
+                # A table that keeps parts numbers its new parts after them; another is numbered only when it has several.
+                stem = name if kept == 0 and len(starts) == 1 else f"{name}.{number}"
+                plan.append((_unique(stem, ".json", used), [(name, start, min(rows, start + per))], {}))
         return plan
 
-    def _manifest(self, plan: List[Tuple[str, List[Tuple[str, int, int]]]]) -> Dict[str, Any]:
+    def _manifest(self, plan: List[Tuple[str, List[Tuple[str, int, int]], Dict[str, Any]]]) -> Dict[str, Any]:
         collection = {name: _value(value) if name in COLLECTION_TIMESTAMPS else value
                       for name, value in self.collection.items()}
         manifest: Dict[str, Any] = {"format": FORMAT, "formatVersion": FORMAT_VERSION, "collection": collection}
@@ -421,8 +571,8 @@ class Builder:
                               ("obfuscatorLibVersion", self.obfuscator_lib_version)):
             if value is not None:
                 manifest[member] = value
-        manifest["parts"] = [{"name": part, "tables": {name: end - start for name, start, end in content}}
-                             for part, content in plan]
+        manifest["parts"] = [{"name": part, "tables": {name: end - start for name, start, end in content}, **members}
+                             for part, content, members in plan]
         for member, value in self.manifest_extensions.items():
             if member in MANIFEST_MEMBERS:
                 raise ValueError(f"{member} is a member that the format defines, not an extension of the manifest.")
@@ -441,12 +591,12 @@ class Builder:
             result[name] = table
         return result
 
-    def _write_to(self, target: Any, plan: List[Tuple[str, List[Tuple[str, int, int]]]],
+    def _write_to(self, target: Any, plan: List[Tuple[str, List[Tuple[str, int, int]], Dict[str, Any]]],
                   manifest: Dict[str, Any]) -> None:
         level = self.options.compression_level
         with zipfile.ZipFile(target, "w", zipfile.ZIP_DEFLATED, allowZip64=False, compresslevel=level) as archive:
             _write_entry(archive, MANIFEST_PART, manifest, level)
-            for part, content in plan:
+            for part, content, _ in plan:
                 _write_entry(archive, part, self._content(content), level)
 
     def write(self, path_or_file: Any) -> None:
@@ -456,7 +606,18 @@ class Builder:
         and numbered when the table needs several, as in columnChunks.1.json. A field with no value in any row of a
         part is left out of that part, and so is a table with no rows. summary.json is always written. A path is
         written through a temporary file, so that a failure leaves no partial file.
+
+        A builder made by from_document keeps the parts of the document: a detail table is written in the parts that it
+        was read from, with their names, their rows, and the members that a producer added to their descriptors, when
+        each of them lists this table alone, has a name that a part may have and that no other part has in another
+        case, and holds at most rows_per_part rows, and when they hold the rows that the table had then. Rows added
+        since go to new parts after them, numbered after them, as in files.2.json. The descriptor of summary.json keeps
+        its members too. A table that keeps no parts is laid out as above, after the kept parts.
+
+        It raises WriteError, before it writes anything, when the footprint breaks a rule that the builder checks: see
+        the class.
         """
+        self._check()
         plan = self._plan()
         manifest = self._manifest(plan)
         try:
@@ -483,8 +644,9 @@ class Builder:
         """A builder with every table of an open document, the fields that this version does not know included.
 
         The ids stay as they are, so the references still hold. The collection, the obfuscation fields, and the other
-        members of the manifest are copied. What the reader does not keep is lost: entries that the manifest does not
-        list, members of a table that are not arrays, and members of a part of the manifest other than name and tables.
+        members of the manifest are copied, and so are the parts, with their names and the members of their
+        descriptors other than name and tables, which write() keeps as it says. What the reader does not keep is lost:
+        entries that the manifest does not list, and members of a table that are not arrays.
         """
         manifest = document.manifest
         collection = manifest.get("collection")
@@ -498,6 +660,8 @@ class Builder:
         for name in document.table_names:
             detail = None if name in TABLES else name not in document.summary
             builder.extend(name, document.table(name), detail=detail)
+        builder._source_parts = _source_parts(manifest)
+        builder._copied = {name: builder.row_count(name) for name in builder._names(True)}
         return builder
 
     def __repr__(self) -> str:
