@@ -26,7 +26,8 @@ from .discovery import (
     DEFAULT_FOLDER_DEPTH, SourceKinds, TableFormats, TableLocation, discover, discover_folder, list_items,
 )
 from .footer import (
-    DEFAULT_TAIL_BYTES, MAX_FOOTER_LENGTH, FooterError, FooterReader, FooterTailPlanner, ParquetColumnChunk,
+    DEFAULT_TAIL_BYTES, MAX_COLUMN_CHUNKS, MAX_FOOTER_LENGTH, MAX_LIST_LENGTH, FooterError, FooterReader,
+    FooterTailPlanner, ParquetColumnChunk,
     ParquetFooter, ParquetKeyValue, ParquetLeafColumn, ParquetPageEncodingStats, ParquetRowGroup,
     ParquetSchemaElement, ParquetSortingColumn, parse_footer,
 )
@@ -37,7 +38,8 @@ __all__ = [
     "AddAction", "ArrowCheckpointReader", "CheckpointMetadataAction", "CollectionProgress", "CollectorOptions",
     "CommitInfoAction", "DEFAULT_ENDPOINT", "DEFAULT_FOLDER_DEPTH", "DEFAULT_TAIL_BYTES", "DeletionVector",
     "DetailDepth", "DomainMetadataAction", "FooterError", "FooterReader", "FooterTailPlanner", "ISSUE_CODES", "Issue",
-    "IssueCodes", "LIBRARY_NAME", "LocalStorage", "MAX_FOOTER_LENGTH", "MetadataAction", "OneLakeStorage",
+    "IssueCodes", "LIBRARY_NAME", "LocalStorage", "MAX_COLUMN_CHUNKS", "MAX_FOOTER_LENGTH", "MAX_LIST_LENGTH",
+    "MetadataAction", "OneLakeStorage",
     "ParquetColumnChunk", "ParquetFooter", "ParquetKeyValue", "ParquetLeafColumn", "ParquetPageEncodingStats",
     "ParquetRowGroup", "ParquetSchemaElement", "ParquetSortingColumn", "ProtocolAction", "RemoveAction", "SCOPE",
     "SidecarAction", "SourceKinds", "StorageEntry", "StorageError", "TableFormats", "TableLocation", "collect",

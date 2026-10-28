@@ -330,12 +330,8 @@ def test_a_varint_without_an_end_is_invalid():
 def test_nesting_deeper_than_64_levels_is_invalid_and_shallow_nesting_is_skipped(nest):
     shallow = footer(extra={"file": lambda w: nest(w, 300, 20)})
     assert summary(parse_footer(shallow)) == summary(parse_footer(BASELINE))
-    if nest is nested_structures:
-        invalid(footer(extra={"file": lambda w: nest(w, 300, 200)}))
-    else:
-        # The C# reader limits the depth of structures only, so 200 nested lists are skipped as any other value.
-        deep = footer(extra={"file": lambda w: nest(w, 300, 200)})
-        assert summary(parse_footer(deep)) == summary(parse_footer(BASELINE))
+    # Lists count as levels as structures do, in C# as in Python, so neither can exhaust the stack.
+    invalid(footer(extra={"file": lambda w: nest(w, 300, 200)}))
     invalid(footer(extra={"column": lambda w: nest(w, 300, 5000)}))
 
 

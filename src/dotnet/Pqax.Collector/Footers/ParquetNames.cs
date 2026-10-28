@@ -34,8 +34,14 @@ internal static class ParquetNames
 
     private static readonly string[] EdgeAlgorithms = { "SPHERICAL", "VINCENTY", "THOMAS", "ANDOYER", "KARNEY" };
 
+    // The most lists of encodings, and names of unknown values, that the caches keep, for all the footers of a process.
+    private const int MaxCached = 4096;
+
     // Equal lists of encodings share one array: a million column chunks use a handful of distinct lists.
     private static readonly ConcurrentDictionary<long, IReadOnlyList<string>> EncodingLists = new ConcurrentDictionary<long, IReadOnlyList<string>>();
+
+    // The name of a value that this version does not know is its number, one string for each number.
+    private static readonly ConcurrentDictionary<int, string> Numbers = new ConcurrentDictionary<int, string>();
 
     public static string Type(int value) => Name(Types, value);
 
@@ -82,7 +88,7 @@ internal static class ParquetNames
             names[i] = Encoding(values[i]);
         }
 
-        if (packable)
+        if (packable && EncodingLists.Count < MaxCached)
         {
             return EncodingLists.GetOrAdd(key, names);
         }
@@ -92,5 +98,14 @@ internal static class ParquetNames
 
     private static string Name(string[] names, int value) => value >= 0 && value < names.Length ? names[value] : Number(value);
 
-    private static string Number(int value) => value.ToString(CultureInfo.InvariantCulture);
+    private static string Number(int value)
+    {
+        if (Numbers.TryGetValue(value, out string? name))
+        {
+            return name;
+        }
+
+        name = value.ToString(CultureInfo.InvariantCulture);
+        return Numbers.Count < MaxCached ? Numbers.GetOrAdd(value, name) : name;
+    }
 }

@@ -71,7 +71,8 @@ internal static class ParquetTypes
     /// <summary>Appends the type of the element at an index, ignoring its repetition, and returns the index after its subtree.</summary>
     private static int AppendType(IReadOnlyList<ParquetSchemaElement> schema, int index, StringBuilder text, int depth)
     {
-        if (depth > 64)
+        // The parser refuses a schema of more than 256 levels, so a footer that it returns never reaches this.
+        if (depth > 256)
         {
             throw new ParquetFooterException(IssueCodes.FooterInvalid, "The schema is nested too deep.");
         }

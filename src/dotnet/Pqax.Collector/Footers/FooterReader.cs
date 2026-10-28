@@ -19,6 +19,20 @@ public sealed class FooterReader
     /// <summary>The longest footer that the reader accepts: 64 MB.</summary>
     public const int MaxFooterLength = 64 * 1024 * 1024;
 
+    /// <summary>
+    /// The most elements of a list or a map of a footer that the parser accepts, such as the schema, the row groups, or
+    /// the key-value metadata: 1,000,000, the limit of a Thrift container in the Parquet reader of Arrow C++, so a file
+    /// that pyarrow reads is never refused for it.
+    /// </summary>
+    public const int MaxListLength = 1_000_000;
+
+    /// <summary>
+    /// The most column chunks of a footer that the parser accepts, over all its row groups, and the most sorting columns:
+    /// 4,194,304. A footer of 64 MB from a writer holds fewer, about 40 bytes each; the limit bounds the memory of a
+    /// footer of empty chunks or empty sorting columns, one byte each on the wire and up to some 300 bytes in memory.
+    /// </summary>
+    public const int MaxColumnChunks = 4_194_304;
+
     private readonly IStorage storage;
 
     /// <summary>Creates a reader.</summary>

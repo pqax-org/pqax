@@ -12,6 +12,11 @@ import math
 import struct
 from typing import Optional, Tuple
 
+#: The longest unscaled value of a decimal bound that is written: 32 bytes, the largest decimal of Arrow. A longer
+#: value is no decimal that a writer bounds, and its text would pass the digits that Python converts.
+MAX_DECIMAL_BYTES = 32
+#: The largest scale of a decimal bound that is written: 76, the most digits of a decimal of 32 bytes.
+MAX_DECIMAL_SCALE = 76
 _EPOCH = datetime.datetime(1970, 1, 1)
 _TICKS_EPOCH = 621355968000000000  # the ticks of 1970-01-01 since 0001-01-01, in units of 100 ns
 _TICKS_MAX = 3155378975999999999  # the ticks of 9999-12-31 23:59:59.9999999
@@ -83,9 +88,11 @@ def format_float(value: float, single: bool = False) -> str:
     return "-" + text if negative else text
 
 
-def _decimal_text(unscaled: int, scale: int) -> str:
+def _decimal_text(unscaled: int, scale: int) -> Optional[str]:
     if scale <= 0:
         return str(unscaled)
+    if scale > MAX_DECIMAL_SCALE:
+        return None  # the text would hold as many zeros as the scale says, which a damaged footer sets to any integer
     digits = str(abs(unscaled)).rjust(scale + 1, "0")
     text = digits[:-scale] + "." + digits[-scale:]
     return "-" + text if unscaled < 0 else text
@@ -147,6 +154,8 @@ def format_bound(value: Optional[bytes], leaf) -> Optional[str]:
         return format_float(_DOUBLE.unpack_from(value)[0]) if len(value) >= 8 else None
     if physical in ("BYTE_ARRAY", "FIXED_LEN_BYTE_ARRAY"):
         if annotation is not None and annotation.startswith("DECIMAL("):
+            if len(value) > MAX_DECIMAL_BYTES:
+                return None
             return _decimal_text(int.from_bytes(value, "big", signed=True) if value else 0, _scale(leaf))
         if annotation in ("STRING", "UTF8", "ENUM", "JSON"):
             return value.decode("utf-8", "replace")

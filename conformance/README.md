@@ -26,6 +26,9 @@ Everything in the kit is synthetic. No name in it comes from a real lakehouse.
 | `make_measures.py` | Rebuilds `expected/measures/` with the view model of `@pqax/views` |
 | `make_diff.py` | Rebuilds the two samples of the comparison test with `pqax.Builder`, and `expected/diff/` |
 | `check_schema.py` | Validates the samples against the schema |
+| `samples/footers/*.parquet`, `samples/footers/expected.json` | Parquet files that the footer parsers of the collectors once read wrong, and nested columns of six writers, with the footer or the error that each must give. See [Footers of other writers](#footers-of-other-writers). |
+| `make_footers.py`, `footer_check.py`, `mutate_footers.py`, `make_footer_samples.py` | Write Parquet files with other writers, read them with the footer parsers of both collectors, mutate their footers, and rebuild `samples/footers` |
+| `footers.md` | The rules of the footer parsers of the collectors, and how the leaves of nested columns become physical columns |
 | `.gitattributes` | Keeps git from changing the line ends of the fixtures, whose sizes the probe dump records |
 
 ## Valid samples
@@ -482,12 +485,72 @@ When both collectors run, `container_check.py` also builds a synthetic container
 
 The script needs only the standard library. It skips, with a message, what is not there: `dotnet` or the .NET 10 SDK, `node`, a build of the TypeScript package, which it runs with `npm run build` when `dist/` is older than the sources unless `--no-build` is given. The exit code is 0 when every check passes, 1 when one fails, and 2 when nothing can run.
 
+## Footers of other writers
+
+The footer parsers of the two collectors, `FooterReader` in C# and `pqax.collect.FooterReader` in Python, are checked on the Parquet files of other writers and on footers mutated from them, against the rules of [footers.md](footers.md), which the collector tests of both languages name. The files are written outside the repository, in environments of their own, and only a few of them, with the footers crafted from them, are kept in `samples/footers`.
+
+| Script | What it does |
+|---|---|
+| `make_footers.py --out DIR [--label NAME]` | Writes one Parquet file for each case of each writer that the running Python imports, each in a folder of its own, `DIR/<label>/<writer>/<case>/part-0.parquet`, and `DIR/<label>/index.json` with the writer, its version, the options, and why a case could not be written. pyarrow covers its options (every codec, the dictionary on and off, data pages 1 and 2, the statistics on and off and for some columns, byte stream split, the delta encodings, the page index, the page checksums, bloom filters, sorting columns, INT96 timestamps, decimals as integers, small row groups and pages, 3,000 row groups, 1,500 columns, the legacy names of nested types, field ids, encrypted footers and encrypted columns, a `_metadata` file) and its types (every integer, float16, decimals of 4 to 76 digits, strings, binaries, fixed binaries, dates, times, timestamps of each unit and zone, durations, dictionaries, null, UUID, JSON, lists, large lists, fixed-size lists, maps, a list of structures, a map of lists, structures 60 levels deep, lists 30 levels deep, nulls at every level). DuckDB, polars, fastparquet (with BSON, JSON, and INT96), datafusion (the writer of arrow-rs), and deltalake (delta-rs, a Delta table, with column mapping too) have cases of their own. `--dotnet VERSION` writes the cases of Parquet.Net at that version with the .NET SDK. pyspark is used only when a Java runtime is there. |
+| `footer_check.py DIR [--data-values] [--no-collect]` | Reads every file of `DIR` with both parsers over the same bytes and compares the two in every value of the footer, or in the code and the message of the error; compares each footer with `ParquetFile.metadata` of pyarrow, when pyarrow imports: the rows, the row groups, the path, the types, and the definition and repetition levels of every leaf, and the sizes, offsets, codec, encodings, statistics, page index, and bloom filter of every column chunk; then collects `DIR` with both collectors, where every case is a table, and compares the two footprints in every table and field. |
+| `mutate_footers.py DIR [--seed N] [--flips N]` | Mutates the footers of the files of `DIR` of at most 16 KB, from one seed: truncated files and files shorter than their size, every wrong length before the magic, other magics, sizes below 12 and beyond the file, list headers that claim more elements than the footer can hold, schemas and values nested from 60 to 100,000 levels, each field of the footer, of a schema element, of a row group, of a column chunk, and of its metadata and statistics left out, repeated, shorter, longer, of another wire type, and in reverse order, strings that are not UTF-8, bounds of every type and length with the data values, and 40 random changes, insertions, or removals of bytes in each footer. Both parsers must give the same outcome for every mutation, a footer or `FooterInvalid`, `FooterEncrypted`, or `FooterTooLarge`, without a crash, a hang, or more memory than a fixed multiple of the footer. |
+| `make_footer_samples.py DIR` | Rebuilds `samples/footers` from a folder that `make_footers.py` wrote: copies the files listed in the script, crafts the others from the base file of pyarrow 26, and writes `expected.json` with the Python collector. |
+
+Both runners read a pack of records, the end of a file and the size that the reader is given, so that a mutated file needs no file on disk; the C# runner is a file-based app of the .NET 10 SDK on the projects of `src/dotnet`, and pyarrow reads its metadata in a process of its own, since it aborts on some footers. A runner that dies or stops answering for a minute is started again after the record that it was reading, which counts as a crash or a hang.
+
+The run of 28 October 2026, on Windows 11, in five virtual environments made with `uv`:
+
+| Environment | Python | Writers |
+|---|---|---|
+| `latest` | 3.14.4 | pyarrow 26.0.0, DuckDB 2.0.0, polars 2.1.0, fastparquet 2026.9.0, datafusion 55.0.0, deltalake 1.6.6 |
+| `pa19` | 3.13.14 | pyarrow 19.0.1, DuckDB 1.3.2, polars 1.30.0 |
+| `pa15` | 3.12.13 | pyarrow 15.0.2, DuckDB 1.1.3, polars 1.10.0, datafusion 40.1.0 |
+| `pa12` | 3.11.15 | pyarrow 12.0.1, DuckDB 0.10.3, polars 0.20.31, fastparquet 2023.10.1 |
+| `pa8` | 3.10.20 | pyarrow 8.0.0, DuckDB 0.8.1, polars 0.18.15, fastparquet 2023.2.0 |
+| .NET 10 SDK | | Parquet.Net 5.6.1 and 6.1.0 |
+
+pyspark was not run, since the machine has no Java runtime, nor chdb, which has no wheel for Windows; fastparquet 2024.11.0 did not import beside the numpy of pyarrow 19. The 529 files of 524 cases, besides 66 cases that the version at hand could not write, gave the same footer or the same error in both parsers, with and without the data values, agreed with pyarrow on the 524 files that it reads without the keys of their encryption, and gave two collections equal in 1,601,699 values. The 83,297 mutations of 502 footers gave the same outcome in both, every one a footer or a footer error: 46,732 footers, 36,313 `FooterInvalid`, 126 `FooterEncrypted`, and 126 `FooterTooLarge`, none in more than 80 ms.
+
+```bash
+python conformance/make_footers.py --out DIR              # in each environment that has writers
+python conformance/make_footers.py --out DIR --dotnet 6.1.0
+python conformance/footer_check.py DIR                    # with pyarrow installed, for the comparison with it
+python conformance/footer_check.py DIR --data-values --no-collect
+python conformance/mutate_footers.py DIR
+python conformance/make_footer_samples.py DIR             # rebuilds samples/footers
+```
+
+### The footer samples
+
+`samples/footers/expected.json` has one member for each file:
+
+| Key | Meaning |
+|---|---|
+| `writer`, `what` | Who wrote the file and what it tests, for people |
+| `statedSize` | The size that the reader is given, or `null` for the size of the file |
+| `includeDataValues` | Whether the footer is read with the data values, the bounds of the statistics |
+| `error` | `code` and `message` of the footer error, or `null` |
+| `footer` | `null` for an error, or `numRows`, `rowGroups`, `createdBy`, `leaves` (`path`, `physicalType`, `typeAnnotation`, `repetition` of each leaf), `keyValues` (the key and the kept value of each key of the key-value metadata), `bounds` (the minimum and the maximum of each column chunk of the first row group, when the data values are read), and `columns`: the columns of a folder of Parquet files that holds the file alone, with `name`, `dataType`, `isNullable`, and `leaves`, the ordinals of the leaves whose physical column refers to the column |
+
+| File | What it tests |
+|---|---|
+| `fastparquet-2026.9.0-empty.parquet` | A file without rows, whose row groups fastparquet writes as an empty list with the element type 0, which both parsers refused |
+| `pyarrow-26.0.0-nested.parquet`, `pyarrow-8.0.0-nested.parquet`, `duckdb-2.0.0-nested.parquet`, `polars-2.1.0-nested.parquet`, `parquet.net-6.1.0-nested.parquet`, `datafusion-55.0.0-nested.parquet` | Lists, large and fixed-size lists, maps, lists of structures, maps of lists, and structures nested four levels, with nulls at every level, as each writer names their levels: each leaf a physical column under its top-level column |
+| `stop-with-delta.parquet` | A footer whose last stop is written `0x10`, a field header of type 0, which ends the structure as in the Thrift libraries; C# read a field of an unknown wire type |
+| `nested-lists-100000.parquet`, `nested-lists-63.parquet`, `nested-lists-64.parquet` | Lists nested in an unknown field: 100,000 levels overflowed the stack of C#; 64 levels in all are skipped and 65 are refused, in both |
+| `columns-repeated.parquet`, `columns-repeated-shorter.parquet` | A row group that repeats its list of column chunks: the last list wins; C# appended the second list, or threw `ArgumentOutOfRangeException` when it was shorter |
+| `decimal-bound-1800-bytes.parquet`, `decimal-scale-2147483647.parquet` | Decimal bounds read with the data values, past 32 bytes and with a scale above 76, which have no text; Python raised `ValueError` past 4,300 digits and built a string of 2 GB for the scale |
+| `schema-200-levels.parquet` | A schema 200 levels deep, whose column gets its type; the type stopped at 64 levels, and the table was not read |
+| `keys-folded-case.parquet` | Keys of the allow-list and of V-Order with the Kelvin sign and in upper case, compared as .NET `OrdinalIgnoreCase` does; Python kept the value of the key with the Kelvin sign |
+
+The C# and the Python collector tests read every member of `expected.json`, and `cross_check.py` reads every sample with both parsers, compares the two with each other and with `expected.json`, and collects the samples of a footer with both collectors, each alone in a folder, which must give the same footprint.
+
 ## Limits
 
 The fixture is small, and much of the format is not in it:
 
 - Only Delta tables, written by DuckDB. No Iceberg table, so no `iceberg` details, `specId`, `orderId`, sort orders, or delete files.
-- Only top-level columns of primitive types: one physical column for each column. No nested column, no column mapping, no field ids, and no schema change: one physical schema for each table, and `staleColumnSize` 0.
+- Only top-level columns of primitive types: one physical column for each column. No nested column, no column mapping, no field ids, and no schema change: one physical schema for each table, and `staleColumnSize` 0. The nested columns are in the Parquet files of `samples/footers`, which hold no PQAX file.
 - No issues, no model bindings, and no obfuscation fields.
 - No data values: no `minValue`, `maxValue`, partition values, or commit parameters, and `collection` says so.
 - Every string is ASCII, so no sample tests the decoding of other UTF-8 text.

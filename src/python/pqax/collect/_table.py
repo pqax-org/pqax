@@ -16,7 +16,8 @@ from .delta import (
 )
 from .discovery import TableFormats, TableLocation, is_parquet_file
 from .footer import (
-    FooterError, FooterReader, FooterTailPlanner, ParquetColumnChunk, ParquetFooter, ParquetLeafColumn, top_level_fields,
+    FooterError, FooterReader, FooterTailPlanner, ParquetColumnChunk, ParquetFooter, ParquetLeafColumn, fold_case,
+    top_level_fields,
 )
 from .storage import StorageError, list_files
 
@@ -265,19 +266,14 @@ class PartitionOrdinals:
         return "/".join(segments) if changed else path
 
 
-def _fold(text: str) -> str:
-    """A string for a comparison that ignores case as C# OrdinalIgnoreCase does: one character at a time."""
-    return "".join(c if len(c.upper()) != 1 else c.upper() for c in text)
-
-
 def _find_column(columns: List[CollectedColumn], name: str, by_file_name: bool) -> Optional[int]:
     for i, column in enumerate(columns):
         if (column.file_name if by_file_name else column.name) == name:
             return i
     match = None
-    folded = _fold(name)
+    folded = fold_case(name)
     for i, column in enumerate(columns):
-        if _fold(column.file_name if by_file_name else column.name) == folded:
+        if fold_case(column.file_name if by_file_name else column.name) == folded:
             if match is not None:
                 return None
             match = i
@@ -838,10 +834,10 @@ class _FooterAggregate:
         footer_vorder = False
         level: Optional[str] = None
         for key_value in footer.key_value_metadata:
-            key = key_value.key.lower()
-            if key.endswith("vorder.enabled"):
-                footer_vorder = key_value.value is not None and key_value.value.lower() == "true"
-            elif key.endswith("vorder.level"):
+            key = fold_case(key_value.key)
+            if key.endswith("VORDER.ENABLED"):
+                footer_vorder = key_value.value is not None and fold_case(key_value.value) == "TRUE"
+            elif key.endswith("VORDER.LEVEL"):
                 level = key_value.value
         vordered = file.vorder_tag is True or footer_vorder
         signature = _signature(footer)

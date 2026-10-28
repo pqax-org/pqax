@@ -2,7 +2,8 @@
 
 It reads field headers with short and long deltas, booleans in the header, zigzag varints, doubles, binaries,
 lists, sets, maps, and structs, and it skips a value of any type without keeping it. Every length is checked against
-the bytes left, so a damaged footer fails with a FooterError instead of a large allocation.
+the bytes left, so a damaged footer fails with a FooterError instead of a large allocation. Structs, lists, sets, and
+maps nested in one another count as one depth, so a damaged footer cannot recurse deeper than 64 levels.
 """
 from __future__ import annotations
 
@@ -28,6 +29,9 @@ UUID = 13
 
 INTEGERS = (BYTE, I16, I32, I64)
 _MAX_DEPTH = 64
+#: The most elements of a list or a map of a footer: 1,000,000, the limit of a Thrift container in the Parquet reader
+#: of Arrow C++, so a file that pyarrow reads is never refused for it.
+MAX_LIST_LENGTH = 1_000_000
 _DOUBLE = struct.Struct("<d")
 
 
@@ -46,6 +50,11 @@ def invalid(message: str) -> FooterError:
 
 def _truncated() -> FooterError:
     return FooterError(IssueCodes.FOOTER_INVALID, "The footer ends in the middle of a value.")
+
+
+def too_large(message: str) -> FooterError:
+    """An error for a footer that holds more than the parser keeps in memory."""
+    return FooterError(IssueCodes.FOOTER_TOO_LARGE, message)
 
 
 def is_boolean(kind: int) -> bool:
@@ -70,13 +79,22 @@ class Reader:
         return self.end - self.position
 
     def enter_struct(self) -> None:
-        """Starts a struct: checks the nesting depth."""
+        """Starts a struct, a list, a set, or a map: checks the nesting depth."""
         self.depth += 1
         if self.depth > _MAX_DEPTH:
-            raise invalid(f"The footer nests structures more than {_MAX_DEPTH} levels deep.")
+            raise invalid(f"The footer nests values more than {_MAX_DEPTH} levels deep.")
 
     def exit_struct(self) -> None:
-        """Ends a struct."""
+        """Ends a struct, a list, a set, or a map."""
+        self.depth -= 1
+
+    def enter_list(self) -> Tuple[int, int]:
+        """Starts a list or a set that the caller reads: counts its level of nesting, then reads its header."""
+        self.enter_struct()
+        return self.list_header()
+
+    def exit_list(self) -> None:
+        """Ends a list or a set that enter_list started."""
         self.depth -= 1
 
     def field_header(self, last_id: int) -> Tuple[int, int]:
@@ -203,6 +221,8 @@ class Reader:
                 raise invalid("A list of the footer is too long.")
         if size > self.remaining:  # every element takes at least one byte
             raise _truncated()
+        if size > MAX_LIST_LENGTH:
+            raise too_large(f"A list of the footer has {size} elements, more than the limit of {MAX_LIST_LENGTH}.")
         return size, element
 
     def boolean_element(self) -> bool:
@@ -222,20 +242,25 @@ class Reader:
         elif kind == BINARY:
             self.skip_binary()
         elif kind == LIST or kind == SET:
-            size, element = self.list_header()
+            # A list counts as a level of nesting, as a struct does: lists of lists cannot exhaust the stack.
+            size, element = self.enter_list()
             for _ in range(size):
                 self.skip_element(element)
+            self.exit_list()
         elif kind == MAP:
+            self.enter_struct()
             size = self.varint32()
-            if size == 0:
-                return
-            if size > self.remaining:
-                raise _truncated()
-            types = self.raw_byte()
-            key, value = types >> 4, types & 0x0F
-            for _ in range(size):
-                self.skip_element(key)
-                self.skip_element(value)
+            if size != 0:
+                if size > self.remaining:
+                    raise _truncated()
+                if size > MAX_LIST_LENGTH:
+                    raise too_large(f"A map of the footer has {size} entries, more than the limit of {MAX_LIST_LENGTH}.")
+                types = self.raw_byte()
+                key, value = types >> 4, types & 0x0F
+                for _ in range(size):
+                    self.skip_element(key)
+                    self.skip_element(value)
+            self.exit_struct()
         elif kind == STRUCT:
             self.skip_struct()
         elif kind == UUID:

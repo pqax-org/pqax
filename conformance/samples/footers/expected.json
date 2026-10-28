@@ -1,0 +1,3128 @@
+{
+ "columns-repeated-shorter.parquet": {
+  "writer": "make_footer_samples.py",
+  "what": "The first row group repeats its field 1, the column chunks, with one chunk: the last value wins, and the row group has one chunk for 12 leaves. C# appended the second list to the first, or threw ArgumentOutOfRangeException when the second was shorter.",
+  "statedSize": null,
+  "includeDataValues": false,
+  "error": {
+   "code": "FooterInvalid",
+   "message": "A row group has 1 column chunks for 12 leaf columns."
+  },
+  "footer": null
+ },
+ "columns-repeated.parquet": {
+  "writer": "make_footer_samples.py",
+  "what": "The first row group repeats its field 1, the column chunks, with the same chunks: the last value wins, and the footer is read. C# read twice as many chunks as leaves.",
+  "statedSize": null,
+  "includeDataValues": false,
+  "error": null,
+  "footer": {
+   "numRows": 60,
+   "rowGroups": 1,
+   "createdBy": "parquet-cpp-arrow version 26.0.0",
+   "leaves": [
+    {
+     "path": [
+      "id"
+     ],
+     "physicalType": "INT64",
+     "typeAnnotation": null,
+     "repetition": "OPTIONAL"
+    },
+    {
+     "path": [
+      "flag"
+     ],
+     "physicalType": "BOOLEAN",
+     "typeAnnotation": null,
+     "repetition": "OPTIONAL"
+    },
+    {
+     "path": [
+      "small"
+     ],
+     "physicalType": "INT32",
+     "typeAnnotation": "INTEGER(16, SIGNED)",
+     "repetition": "OPTIONAL"
+    },
+    {
+     "path": [
+      "number"
+     ],
+     "physicalType": "INT32",
+     "typeAnnotation": null,
+     "repetition": "OPTIONAL"
+    },
+    {
+     "path": [
+      "big"
+     ],
+     "physicalType": "INT64",
+     "typeAnnotation": null,
+     "repetition": "OPTIONAL"
+    },
+    {
+     "path": [
+      "ratio"
+     ],
+     "physicalType": "DOUBLE",
+     "typeAnnotation": null,
+     "repetition": "OPTIONAL"
+    },
+    {
+     "path": [
+      "name"
+     ],
+     "physicalType": "BYTE_ARRAY",
+     "typeAnnotation": "STRING",
+     "repetition": "OPTIONAL"
+    },
+    {
+     "path": [
+      "code"
+     ],
+     "physicalType": "BYTE_ARRAY",
+     "typeAnnotation": "STRING",
+     "repetition": "OPTIONAL"
+    },
+    {
+     "path": [
+      "blob"
+     ],
+     "physicalType": "BYTE_ARRAY",
+     "typeAnnotation": null,
+     "repetition": "OPTIONAL"
+    },
+    {
+     "path": [
+      "day"
+     ],
+     "physicalType": "INT32",
+     "typeAnnotation": "DATE",
+     "repetition": "OPTIONAL"
+    },
+    {
+     "path": [
+      "moment"
+     ],
+     "physicalType": "INT64",
+     "typeAnnotation": "TIMESTAMP(MICROS, LOCAL)",
+     "repetition": "OPTIONAL"
+    },
+    {
+     "path": [
+      "amount"
+     ],
+     "physicalType": "FIXED_LEN_BYTE_ARRAY",
+     "typeAnnotation": "DECIMAL(12,2)",
+     "repetition": "OPTIONAL"
+    }
+   ],
+   "keyValues": [
+    [
+     "ARROW:schema",
+     null
+    ]
+   ],
+   "columns": [
+    {
+     "name": "id",
+     "dataType": "long",
+     "isNullable": true,
+     "leaves": [
+      0
+     ]
+    },
+    {
+     "name": "flag",
+     "dataType": "boolean",
+     "isNullable": true,
+     "leaves": [
+      1
+     ]
+    },
+    {
+     "name": "small",
+     "dataType": "short",
+     "isNullable": true,
+     "leaves": [
+      2
+     ]
+    },
+    {
+     "name": "number",
+     "dataType": "integer",
+     "isNullable": true,
+     "leaves": [
+      3
+     ]
+    },
+    {
+     "name": "big",
+     "dataType": "long",
+     "isNullable": true,
+     "leaves": [
+      4
+     ]
+    },
+    {
+     "name": "ratio",
+     "dataType": "double",
+     "isNullable": true,
+     "leaves": [
+      5
+     ]
+    },
+    {
+     "name": "name",
+     "dataType": "string",
+     "isNullable": true,
+     "leaves": [
+      6
+     ]
+    },
+    {
+     "name": "code",
+     "dataType": "string",
+     "isNullable": true,
+     "leaves": [
+      7
+     ]
+    },
+    {
+     "name": "blob",
+     "dataType": "binary",
+     "isNullable": true,
+     "leaves": [
+      8
+     ]
+    },
+    {
+     "name": "day",
+     "dataType": "date",
+     "isNullable": true,
+     "leaves": [
+      9
+     ]
+    },
+    {
+     "name": "moment",
+     "dataType": "timestamp_ntz",
+     "isNullable": true,
+     "leaves": [
+      10
+     ]
+    },
+    {
+     "name": "amount",
+     "dataType": "decimal(12,2)",
+     "isNullable": true,
+     "leaves": [
+      11
+     ]
+    }
+   ]
+  }
+ },
+ "datafusion-55.0.0-nested.parquet": {
+  "writer": "datafusion 55.0.0 (arrow-rs)",
+  "what": "Lists, a map, and structures nested three levels deep, written by arrow-rs.",
+  "statedSize": null,
+  "includeDataValues": false,
+  "error": null,
+  "footer": {
+   "numRows": 60,
+   "rowGroups": 1,
+   "createdBy": "datafusion version 55.2.0",
+   "leaves": [
+    {
+     "path": [
+      "id"
+     ],
+     "physicalType": "INT64",
+     "typeAnnotation": null,
+     "repetition": "REQUIRED"
+    },
+    {
+     "path": [
+      "ints",
+      "list",
+      "item"
+     ],
+     "physicalType": "INT64",
+     "typeAnnotation": null,
+     "repetition": "OPTIONAL"
+    },
+    {
+     "path": [
+      "point",
+      "x"
+     ],
+     "physicalType": "DOUBLE",
+     "typeAnnotation": null,
+     "repetition": "OPTIONAL"
+    },
+    {
+     "path": [
+      "point",
+      "y"
+     ],
+     "physicalType": "INT64",
+     "typeAnnotation": null,
+     "repetition": "OPTIONAL"
+    },
+    {
+     "path": [
+      "point",
+      "inner",
+      "z",
+      "list",
+      "item",
+      "w"
+     ],
+     "physicalType": "INT64",
+     "typeAnnotation": null,
+     "repetition": "OPTIONAL"
+    },
+    {
+     "path": [
+      "point",
+      "inner",
+      "label"
+     ],
+     "physicalType": "BYTE_ARRAY",
+     "typeAnnotation": "STRING",
+     "repetition": "OPTIONAL"
+    },
+    {
+     "path": [
+      "scores",
+      "entries",
+      "key"
+     ],
+     "physicalType": "BYTE_ARRAY",
+     "typeAnnotation": "STRING",
+     "repetition": "REQUIRED"
+    },
+    {
+     "path": [
+      "scores",
+      "entries",
+      "value"
+     ],
+     "physicalType": "INT64",
+     "typeAnnotation": null,
+     "repetition": "OPTIONAL"
+    },
+    {
+     "path": [
+      "matrix",
+      "list",
+      "item",
+      "list",
+      "item"
+     ],
+     "physicalType": "INT64",
+     "typeAnnotation": null,
+     "repetition": "OPTIONAL"
+    }
+   ],
+   "keyValues": [
+    [
+     "ARROW:schema",
+     null
+    ]
+   ],
+   "columns": [
+    {
+     "name": "id",
+     "dataType": "long",
+     "isNullable": false,
+     "leaves": [
+      0
+     ]
+    },
+    {
+     "name": "ints",
+     "dataType": "array<long>",
+     "isNullable": true,
+     "leaves": [
+      1
+     ]
+    },
+    {
+     "name": "point",
+     "dataType": "struct<x:double,y:long,inner:struct<z:array<struct<w:long>>,label:string>>",
+     "isNullable": true,
+     "leaves": [
+      2,
+      3,
+      4,
+      5
+     ]
+    },
+    {
+     "name": "scores",
+     "dataType": "map<string,long>",
+     "isNullable": true,
+     "leaves": [
+      6,
+      7
+     ]
+    },
+    {
+     "name": "matrix",
+     "dataType": "array<array<long>>",
+     "isNullable": true,
+     "leaves": [
+      8
+     ]
+    }
+   ]
+  }
+ },
+ "decimal-bound-1800-bytes.parquet": {
+  "writer": "make_footer_samples.py",
+  "what": "A DECIMAL(38,10) column of BYTE_ARRAY whose maximum takes 1,800 bytes, read with the data values: the bound is longer than 32 bytes and has no text, and the minimum of 16 bytes has one. Python raised ValueError past 4,300 digits.",
+  "statedSize": null,
+  "includeDataValues": true,
+  "error": null,
+  "footer": {
+   "numRows": 1,
+   "rowGroups": 1,
+   "createdBy": "pqax kit",
+   "leaves": [
+    {
+     "path": [
+      "amount"
+     ],
+     "physicalType": "BYTE_ARRAY",
+     "typeAnnotation": "DECIMAL(38,10)",
+     "repetition": "OPTIONAL"
+    }
+   ],
+   "keyValues": [],
+   "bounds": [
+    [
+     "16881197590648355899474463320.0118336782",
+     null
+    ]
+   ],
+   "columns": [
+    {
+     "name": "amount",
+     "dataType": "decimal(38,10)",
+     "isNullable": true,
+     "leaves": [
+      0
+     ]
+    }
+   ]
+  }
+ },
+ "decimal-scale-2147483647.parquet": {
+  "writer": "make_footer_samples.py",
+  "what": "A DECIMAL of INT64 with the scale 2,147,483,647, read with the data values: the scale is above 76 and the bounds have no text. Python built a string of 2 GB, and took seconds.",
+  "statedSize": null,
+  "includeDataValues": true,
+  "error": null,
+  "footer": {
+   "numRows": 1,
+   "rowGroups": 1,
+   "createdBy": "pqax kit",
+   "leaves": [
+    {
+     "path": [
+      "amount"
+     ],
+     "physicalType": "INT64",
+     "typeAnnotation": "DECIMAL(18,2147483647)",
+     "repetition": "OPTIONAL"
+    }
+   ],
+   "keyValues": [],
+   "bounds": [
+    [
+     null,
+     null
+    ]
+   ],
+   "columns": [
+    {
+     "name": "amount",
+     "dataType": "decimal(18,2147483647)",
+     "isNullable": true,
+     "leaves": [
+      0
+     ]
+    }
+   ]
+  }
+ },
+ "duckdb-2.0.0-nested.parquet": {
+  "writer": "DuckDB 2.0.0",
+  "what": "Lists, structures, maps, and an array of DuckDB, nested.",
+  "statedSize": null,
+  "includeDataValues": false,
+  "error": null,
+  "footer": {
+   "numRows": 60,
+   "rowGroups": 1,
+   "createdBy": "DuckDB version v2.0.0 (build d54cbbe3df)",
+   "leaves": [
+    {
+     "path": [
+      "id"
+     ],
+     "physicalType": "INT64",
+     "typeAnnotation": "INT_64",
+     "repetition": "OPTIONAL"
+    },
+    {
+     "path": [
+      "ints",
+      "list",
+      "element"
+     ],
+     "physicalType": "INT64",
+     "typeAnnotation": "INT_64",
+     "repetition": "OPTIONAL"
+    },
+    {
+     "path": [
+      "point",
+      "x"
+     ],
+     "physicalType": "FIXED_LEN_BYTE_ARRAY",
+     "typeAnnotation": "DECIMAL(21,1)",
+     "repetition": "OPTIONAL"
+    },
+    {
+     "path": [
+      "point",
+      "y"
+     ],
+     "physicalType": "INT64",
+     "typeAnnotation": "INT_64",
+     "repetition": "OPTIONAL"
+    },
+    {
+     "path": [
+      "point",
+      "label"
+     ],
+     "physicalType": "BYTE_ARRAY",
+     "typeAnnotation": "UTF8",
+     "repetition": "OPTIONAL"
+    },
+    {
+     "path": [
+      "deep",
+      "level2",
+      "level3",
+      "leaf"
+     ],
+     "physicalType": "INT64",
+     "typeAnnotation": "INT_64",
+     "repetition": "OPTIONAL"
+    },
+    {
+     "path": [
+      "deep",
+      "level2",
+      "level3",
+      "tags",
+      "list",
+      "element"
+     ],
+     "physicalType": "INT64",
+     "typeAnnotation": "INT_64",
+     "repetition": "OPTIONAL"
+    },
+    {
+     "path": [
+      "deep",
+      "level2",
+      "level3",
+      "level4",
+      "value"
+     ],
+     "physicalType": "BYTE_ARRAY",
+     "typeAnnotation": "UTF8",
+     "repetition": "OPTIONAL"
+    },
+    {
+     "path": [
+      "deep",
+      "level2",
+      "flag"
+     ],
+     "physicalType": "BOOLEAN",
+     "typeAnnotation": null,
+     "repetition": "OPTIONAL"
+    },
+    {
+     "path": [
+      "deep",
+      "count"
+     ],
+     "physicalType": "INT64",
+     "typeAnnotation": "INT_64",
+     "repetition": "OPTIONAL"
+    },
+    {
+     "path": [
+      "scores",
+      "key_value",
+      "key"
+     ],
+     "physicalType": "BYTE_ARRAY",
+     "typeAnnotation": "UTF8",
+     "repetition": "REQUIRED"
+    },
+    {
+     "path": [
+      "scores",
+      "key_value",
+      "value"
+     ],
+     "physicalType": "INT64",
+     "typeAnnotation": "INT_64",
+     "repetition": "OPTIONAL"
+    },
+    {
+     "path": [
+      "items",
+      "list",
+      "element",
+      "sku"
+     ],
+     "physicalType": "BYTE_ARRAY",
+     "typeAnnotation": "UTF8",
+     "repetition": "OPTIONAL"
+    },
+    {
+     "path": [
+      "items",
+      "list",
+      "element",
+      "qty"
+     ],
+     "physicalType": "INT32",
+     "typeAnnotation": "INT_32",
+     "repetition": "OPTIONAL"
+    },
+    {
+     "path": [
+      "items",
+      "list",
+      "element",
+      "parts",
+      "list",
+      "element"
+     ],
+     "physicalType": "INT64",
+     "typeAnnotation": "INT_64",
+     "repetition": "OPTIONAL"
+    },
+    {
+     "path": [
+      "lookup",
+      "key_value",
+      "key"
+     ],
+     "physicalType": "BYTE_ARRAY",
+     "typeAnnotation": "UTF8",
+     "repetition": "REQUIRED"
+    },
+    {
+     "path": [
+      "lookup",
+      "key_value",
+      "value",
+      "list",
+      "element"
+     ],
+     "physicalType": "INT64",
+     "typeAnnotation": "INT_64",
+     "repetition": "OPTIONAL"
+    },
+    {
+     "path": [
+      "matrix",
+      "list",
+      "element",
+      "list",
+      "element"
+     ],
+     "physicalType": "INT64",
+     "typeAnnotation": "INT_64",
+     "repetition": "OPTIONAL"
+    },
+    {
+     "path": [
+      "fixed",
+      "list",
+      "element"
+     ],
+     "physicalType": "INT32",
+     "typeAnnotation": "INT_32",
+     "repetition": "OPTIONAL"
+    }
+   ],
+   "keyValues": [],
+   "columns": [
+    {
+     "name": "id",
+     "dataType": "long",
+     "isNullable": true,
+     "leaves": [
+      0
+     ]
+    },
+    {
+     "name": "ints",
+     "dataType": "array<long>",
+     "isNullable": true,
+     "leaves": [
+      1
+     ]
+    },
+    {
+     "name": "point",
+     "dataType": "struct<x:decimal(21,1),y:long,label:string>",
+     "isNullable": true,
+     "leaves": [
+      2,
+      3,
+      4
+     ]
+    },
+    {
+     "name": "deep",
+     "dataType": "struct<level2:struct<level3:struct<leaf:long,tags:array<long>,level4:struct<value:string>>,flag:boolean>,count:long>",
+     "isNullable": false,
+     "leaves": [
+      5,
+      6,
+      7,
+      8,
+      9
+     ]
+    },
+    {
+     "name": "scores",
+     "dataType": "map<string,long>",
+     "isNullable": true,
+     "leaves": [
+      10,
+      11
+     ]
+    },
+    {
+     "name": "items",
+     "dataType": "array<struct<sku:string,qty:integer,parts:array<long>>>",
+     "isNullable": false,
+     "leaves": [
+      12,
+      13,
+      14
+     ]
+    },
+    {
+     "name": "lookup",
+     "dataType": "map<string,array<long>>",
+     "isNullable": true,
+     "leaves": [
+      15,
+      16
+     ]
+    },
+    {
+     "name": "matrix",
+     "dataType": "array<array<long>>",
+     "isNullable": false,
+     "leaves": [
+      17
+     ]
+    },
+    {
+     "name": "fixed",
+     "dataType": "array<integer>",
+     "isNullable": true,
+     "leaves": [
+      18
+     ]
+    }
+   ]
+  }
+ },
+ "fastparquet-2026.9.0-empty.parquet": {
+  "writer": "fastparquet 2026.9.0",
+  "what": "A file without rows, whose row groups fastparquet writes as an empty list with the element type 0. Both parsers refused it as not a list of structures.",
+  "statedSize": null,
+  "includeDataValues": false,
+  "error": null,
+  "footer": {
+   "numRows": 0,
+   "rowGroups": 0,
+   "createdBy": "fastparquet-python version 2026.9.0 (build 0)",
+   "leaves": [
+    {
+     "path": [
+      "id"
+     ],
+     "physicalType": "INT64",
+     "typeAnnotation": null,
+     "repetition": "OPTIONAL"
+    },
+    {
+     "path": [
+      "flag"
+     ],
+     "physicalType": "BOOLEAN",
+     "typeAnnotation": null,
+     "repetition": "OPTIONAL"
+    },
+    {
+     "path": [
+      "small"
+     ],
+     "physicalType": "INT32",
+     "typeAnnotation": "INT_16",
+     "repetition": "OPTIONAL"
+    },
+    {
+     "path": [
+      "number"
+     ],
+     "physicalType": "INT64",
+     "typeAnnotation": null,
+     "repetition": "OPTIONAL"
+    },
+    {
+     "path": [
+      "ratio"
+     ],
+     "physicalType": "DOUBLE",
+     "typeAnnotation": null,
+     "repetition": "OPTIONAL"
+    },
+    {
+     "path": [
+      "name"
+     ],
+     "physicalType": "BYTE_ARRAY",
+     "typeAnnotation": "UTF8",
+     "repetition": "OPTIONAL"
+    },
+    {
+     "path": [
+      "code"
+     ],
+     "physicalType": "BYTE_ARRAY",
+     "typeAnnotation": "UTF8",
+     "repetition": "OPTIONAL"
+    },
+    {
+     "path": [
+      "blob"
+     ],
+     "physicalType": "BYTE_ARRAY",
+     "typeAnnotation": "UTF8",
+     "repetition": "OPTIONAL"
+    },
+    {
+     "path": [
+      "moment"
+     ],
+     "physicalType": "INT64",
+     "typeAnnotation": "TIMESTAMP(MICROS, LOCAL)",
+     "repetition": "OPTIONAL"
+    }
+   ],
+   "keyValues": [
+    [
+     "pandas",
+     null
+    ]
+   ],
+   "columns": [
+    {
+     "name": "id",
+     "dataType": "long",
+     "isNullable": true,
+     "leaves": [
+      0
+     ]
+    },
+    {
+     "name": "flag",
+     "dataType": "boolean",
+     "isNullable": true,
+     "leaves": [
+      1
+     ]
+    },
+    {
+     "name": "small",
+     "dataType": "short",
+     "isNullable": true,
+     "leaves": [
+      2
+     ]
+    },
+    {
+     "name": "number",
+     "dataType": "long",
+     "isNullable": true,
+     "leaves": [
+      3
+     ]
+    },
+    {
+     "name": "ratio",
+     "dataType": "double",
+     "isNullable": true,
+     "leaves": [
+      4
+     ]
+    },
+    {
+     "name": "name",
+     "dataType": "string",
+     "isNullable": true,
+     "leaves": [
+      5
+     ]
+    },
+    {
+     "name": "code",
+     "dataType": "string",
+     "isNullable": true,
+     "leaves": [
+      6
+     ]
+    },
+    {
+     "name": "blob",
+     "dataType": "string",
+     "isNullable": true,
+     "leaves": [
+      7
+     ]
+    },
+    {
+     "name": "moment",
+     "dataType": "timestamp_ntz",
+     "isNullable": true,
+     "leaves": [
+      8
+     ]
+    }
+   ]
+  }
+ },
+ "keys-folded-case.parquet": {
+  "writer": "make_footer_samples.py",
+  "what": "The keys org.apache.sparK.version, with the Kelvin sign for its k, and com.microsoft.parquet.VORDER.enabled = True. Both compare the keys of the allow-list and of V-Order as .NET OrdinalIgnoreCase does, where a character outside ASCII never folds into ASCII: the first value is not kept, and the second is, with V-Order. Python kept the first, since str.lower() makes the Kelvin sign a k.",
+  "statedSize": null,
+  "includeDataValues": false,
+  "error": null,
+  "footer": {
+   "numRows": 60,
+   "rowGroups": 1,
+   "createdBy": "parquet-cpp-arrow version 26.0.0",
+   "leaves": [
+    {
+     "path": [
+      "id"
+     ],
+     "physicalType": "INT64",
+     "typeAnnotation": null,
+     "repetition": "OPTIONAL"
+    },
+    {
+     "path": [
+      "flag"
+     ],
+     "physicalType": "BOOLEAN",
+     "typeAnnotation": null,
+     "repetition": "OPTIONAL"
+    },
+    {
+     "path": [
+      "small"
+     ],
+     "physicalType": "INT32",
+     "typeAnnotation": "INTEGER(16, SIGNED)",
+     "repetition": "OPTIONAL"
+    },
+    {
+     "path": [
+      "number"
+     ],
+     "physicalType": "INT32",
+     "typeAnnotation": null,
+     "repetition": "OPTIONAL"
+    },
+    {
+     "path": [
+      "big"
+     ],
+     "physicalType": "INT64",
+     "typeAnnotation": null,
+     "repetition": "OPTIONAL"
+    },
+    {
+     "path": [
+      "ratio"
+     ],
+     "physicalType": "DOUBLE",
+     "typeAnnotation": null,
+     "repetition": "OPTIONAL"
+    },
+    {
+     "path": [
+      "name"
+     ],
+     "physicalType": "BYTE_ARRAY",
+     "typeAnnotation": "STRING",
+     "repetition": "OPTIONAL"
+    },
+    {
+     "path": [
+      "code"
+     ],
+     "physicalType": "BYTE_ARRAY",
+     "typeAnnotation": "STRING",
+     "repetition": "OPTIONAL"
+    },
+    {
+     "path": [
+      "blob"
+     ],
+     "physicalType": "BYTE_ARRAY",
+     "typeAnnotation": null,
+     "repetition": "OPTIONAL"
+    },
+    {
+     "path": [
+      "day"
+     ],
+     "physicalType": "INT32",
+     "typeAnnotation": "DATE",
+     "repetition": "OPTIONAL"
+    },
+    {
+     "path": [
+      "moment"
+     ],
+     "physicalType": "INT64",
+     "typeAnnotation": "TIMESTAMP(MICROS, LOCAL)",
+     "repetition": "OPTIONAL"
+    },
+    {
+     "path": [
+      "amount"
+     ],
+     "physicalType": "FIXED_LEN_BYTE_ARRAY",
+     "typeAnnotation": "DECIMAL(12,2)",
+     "repetition": "OPTIONAL"
+    }
+   ],
+   "keyValues": [
+    [
+     "org.apache.sparK.version",
+     null
+    ],
+    [
+     "com.microsoft.parquet.VORDER.enabled",
+     "True"
+    ]
+   ],
+   "columns": [
+    {
+     "name": "id",
+     "dataType": "long",
+     "isNullable": true,
+     "leaves": [
+      0
+     ]
+    },
+    {
+     "name": "flag",
+     "dataType": "boolean",
+     "isNullable": true,
+     "leaves": [
+      1
+     ]
+    },
+    {
+     "name": "small",
+     "dataType": "short",
+     "isNullable": true,
+     "leaves": [
+      2
+     ]
+    },
+    {
+     "name": "number",
+     "dataType": "integer",
+     "isNullable": true,
+     "leaves": [
+      3
+     ]
+    },
+    {
+     "name": "big",
+     "dataType": "long",
+     "isNullable": true,
+     "leaves": [
+      4
+     ]
+    },
+    {
+     "name": "ratio",
+     "dataType": "double",
+     "isNullable": true,
+     "leaves": [
+      5
+     ]
+    },
+    {
+     "name": "name",
+     "dataType": "string",
+     "isNullable": true,
+     "leaves": [
+      6
+     ]
+    },
+    {
+     "name": "code",
+     "dataType": "string",
+     "isNullable": true,
+     "leaves": [
+      7
+     ]
+    },
+    {
+     "name": "blob",
+     "dataType": "binary",
+     "isNullable": true,
+     "leaves": [
+      8
+     ]
+    },
+    {
+     "name": "day",
+     "dataType": "date",
+     "isNullable": true,
+     "leaves": [
+      9
+     ]
+    },
+    {
+     "name": "moment",
+     "dataType": "timestamp_ntz",
+     "isNullable": true,
+     "leaves": [
+      10
+     ]
+    },
+    {
+     "name": "amount",
+     "dataType": "decimal(12,2)",
+     "isNullable": true,
+     "leaves": [
+      11
+     ]
+    }
+   ]
+  }
+ },
+ "nested-lists-100000.parquet": {
+  "writer": "make_footer_samples.py",
+  "what": "An unknown field 30 of the footer that holds 100,000 lists nested in one another. C# overflowed its stack and the process ended; Python refused it with another message past about 500 levels.",
+  "statedSize": null,
+  "includeDataValues": false,
+  "error": {
+   "code": "FooterInvalid",
+   "message": "The footer nests values more than 64 levels deep."
+  },
+  "footer": null
+ },
+ "nested-lists-63.parquet": {
+  "writer": "make_footer_samples.py",
+  "what": "63 lists nested in an unknown field of the footer, which is the first level: 64 levels in all, which is skipped.",
+  "statedSize": null,
+  "includeDataValues": false,
+  "error": null,
+  "footer": {
+   "numRows": 60,
+   "rowGroups": 1,
+   "createdBy": "parquet-cpp-arrow version 26.0.0",
+   "leaves": [
+    {
+     "path": [
+      "id"
+     ],
+     "physicalType": "INT64",
+     "typeAnnotation": null,
+     "repetition": "OPTIONAL"
+    },
+    {
+     "path": [
+      "flag"
+     ],
+     "physicalType": "BOOLEAN",
+     "typeAnnotation": null,
+     "repetition": "OPTIONAL"
+    },
+    {
+     "path": [
+      "small"
+     ],
+     "physicalType": "INT32",
+     "typeAnnotation": "INTEGER(16, SIGNED)",
+     "repetition": "OPTIONAL"
+    },
+    {
+     "path": [
+      "number"
+     ],
+     "physicalType": "INT32",
+     "typeAnnotation": null,
+     "repetition": "OPTIONAL"
+    },
+    {
+     "path": [
+      "big"
+     ],
+     "physicalType": "INT64",
+     "typeAnnotation": null,
+     "repetition": "OPTIONAL"
+    },
+    {
+     "path": [
+      "ratio"
+     ],
+     "physicalType": "DOUBLE",
+     "typeAnnotation": null,
+     "repetition": "OPTIONAL"
+    },
+    {
+     "path": [
+      "name"
+     ],
+     "physicalType": "BYTE_ARRAY",
+     "typeAnnotation": "STRING",
+     "repetition": "OPTIONAL"
+    },
+    {
+     "path": [
+      "code"
+     ],
+     "physicalType": "BYTE_ARRAY",
+     "typeAnnotation": "STRING",
+     "repetition": "OPTIONAL"
+    },
+    {
+     "path": [
+      "blob"
+     ],
+     "physicalType": "BYTE_ARRAY",
+     "typeAnnotation": null,
+     "repetition": "OPTIONAL"
+    },
+    {
+     "path": [
+      "day"
+     ],
+     "physicalType": "INT32",
+     "typeAnnotation": "DATE",
+     "repetition": "OPTIONAL"
+    },
+    {
+     "path": [
+      "moment"
+     ],
+     "physicalType": "INT64",
+     "typeAnnotation": "TIMESTAMP(MICROS, LOCAL)",
+     "repetition": "OPTIONAL"
+    },
+    {
+     "path": [
+      "amount"
+     ],
+     "physicalType": "FIXED_LEN_BYTE_ARRAY",
+     "typeAnnotation": "DECIMAL(12,2)",
+     "repetition": "OPTIONAL"
+    }
+   ],
+   "keyValues": [
+    [
+     "ARROW:schema",
+     null
+    ]
+   ],
+   "columns": [
+    {
+     "name": "id",
+     "dataType": "long",
+     "isNullable": true,
+     "leaves": [
+      0
+     ]
+    },
+    {
+     "name": "flag",
+     "dataType": "boolean",
+     "isNullable": true,
+     "leaves": [
+      1
+     ]
+    },
+    {
+     "name": "small",
+     "dataType": "short",
+     "isNullable": true,
+     "leaves": [
+      2
+     ]
+    },
+    {
+     "name": "number",
+     "dataType": "integer",
+     "isNullable": true,
+     "leaves": [
+      3
+     ]
+    },
+    {
+     "name": "big",
+     "dataType": "long",
+     "isNullable": true,
+     "leaves": [
+      4
+     ]
+    },
+    {
+     "name": "ratio",
+     "dataType": "double",
+     "isNullable": true,
+     "leaves": [
+      5
+     ]
+    },
+    {
+     "name": "name",
+     "dataType": "string",
+     "isNullable": true,
+     "leaves": [
+      6
+     ]
+    },
+    {
+     "name": "code",
+     "dataType": "string",
+     "isNullable": true,
+     "leaves": [
+      7
+     ]
+    },
+    {
+     "name": "blob",
+     "dataType": "binary",
+     "isNullable": true,
+     "leaves": [
+      8
+     ]
+    },
+    {
+     "name": "day",
+     "dataType": "date",
+     "isNullable": true,
+     "leaves": [
+      9
+     ]
+    },
+    {
+     "name": "moment",
+     "dataType": "timestamp_ntz",
+     "isNullable": true,
+     "leaves": [
+      10
+     ]
+    },
+    {
+     "name": "amount",
+     "dataType": "decimal(12,2)",
+     "isNullable": true,
+     "leaves": [
+      11
+     ]
+    }
+   ]
+  }
+ },
+ "nested-lists-64.parquet": {
+  "writer": "make_footer_samples.py",
+  "what": "64 lists nested in an unknown field of the footer, which is the first level: 65 levels in all, which is refused.",
+  "statedSize": null,
+  "includeDataValues": false,
+  "error": {
+   "code": "FooterInvalid",
+   "message": "The footer nests values more than 64 levels deep."
+  },
+  "footer": null
+ },
+ "parquet.net-6.1.0-nested.parquet": {
+  "writer": "Parquet.Net 6.1.0",
+  "what": "Lists, dictionaries, and classes of Parquet.Net, nested, with a dictionary of structures.",
+  "statedSize": null,
+  "includeDataValues": false,
+  "error": null,
+  "footer": {
+   "numRows": 60,
+   "rowGroups": 1,
+   "createdBy": "Parquet.Net version 6.1.0 (build c179d97bd2549b5f44a9241e729f869d4947ee59)",
+   "leaves": [
+    {
+     "path": [
+      "Id"
+     ],
+     "physicalType": "INT32",
+     "typeAnnotation": "INTEGER(32, SIGNED)",
+     "repetition": "REQUIRED"
+    },
+    {
+     "path": [
+      "Ints",
+      "list",
+      "element"
+     ],
+     "physicalType": "INT32",
+     "typeAnnotation": "INTEGER(32, SIGNED)",
+     "repetition": "REQUIRED"
+    },
+    {
+     "path": [
+      "Words",
+      "list",
+      "element"
+     ],
+     "physicalType": "BYTE_ARRAY",
+     "typeAnnotation": "STRING",
+     "repetition": "OPTIONAL"
+    },
+    {
+     "path": [
+      "Point",
+      "X"
+     ],
+     "physicalType": "DOUBLE",
+     "typeAnnotation": null,
+     "repetition": "OPTIONAL"
+    },
+    {
+     "path": [
+      "Point",
+      "Y"
+     ],
+     "physicalType": "INT32",
+     "typeAnnotation": "INTEGER(32, SIGNED)",
+     "repetition": "REQUIRED"
+    },
+    {
+     "path": [
+      "Point",
+      "Label"
+     ],
+     "physicalType": "BYTE_ARRAY",
+     "typeAnnotation": "STRING",
+     "repetition": "OPTIONAL"
+    },
+    {
+     "path": [
+      "Point",
+      "Inner",
+      "Leaf"
+     ],
+     "physicalType": "INT64",
+     "typeAnnotation": "INTEGER(64, SIGNED)",
+     "repetition": "REQUIRED"
+    },
+    {
+     "path": [
+      "Point",
+      "Inner",
+      "Tags",
+      "list",
+      "element"
+     ],
+     "physicalType": "INT64",
+     "typeAnnotation": "INTEGER(64, SIGNED)",
+     "repetition": "REQUIRED"
+    },
+    {
+     "path": [
+      "Point",
+      "Inner",
+      "Counts",
+      "key_value",
+      "key"
+     ],
+     "physicalType": "BYTE_ARRAY",
+     "typeAnnotation": "STRING",
+     "repetition": "REQUIRED"
+    },
+    {
+     "path": [
+      "Point",
+      "Inner",
+      "Counts",
+      "key_value",
+      "value"
+     ],
+     "physicalType": "INT32",
+     "typeAnnotation": "INTEGER(32, SIGNED)",
+     "repetition": "REQUIRED"
+    },
+    {
+     "path": [
+      "Scores",
+      "key_value",
+      "key"
+     ],
+     "physicalType": "BYTE_ARRAY",
+     "typeAnnotation": "STRING",
+     "repetition": "REQUIRED"
+    },
+    {
+     "path": [
+      "Scores",
+      "key_value",
+      "value"
+     ],
+     "physicalType": "INT64",
+     "typeAnnotation": "INTEGER(64, SIGNED)",
+     "repetition": "REQUIRED"
+    },
+    {
+     "path": [
+      "Items",
+      "list",
+      "element",
+      "Sku"
+     ],
+     "physicalType": "BYTE_ARRAY",
+     "typeAnnotation": "STRING",
+     "repetition": "OPTIONAL"
+    },
+    {
+     "path": [
+      "Items",
+      "list",
+      "element",
+      "Qty"
+     ],
+     "physicalType": "INT32",
+     "typeAnnotation": "INTEGER(16, SIGNED)",
+     "repetition": "REQUIRED"
+    },
+    {
+     "path": [
+      "Items",
+      "list",
+      "element",
+      "Parts",
+      "list",
+      "element"
+     ],
+     "physicalType": "INT64",
+     "typeAnnotation": "INTEGER(64, SIGNED)",
+     "repetition": "REQUIRED"
+    },
+    {
+     "path": [
+      "Places",
+      "key_value",
+      "key"
+     ],
+     "physicalType": "BYTE_ARRAY",
+     "typeAnnotation": "STRING",
+     "repetition": "REQUIRED"
+    },
+    {
+     "path": [
+      "Places",
+      "key_value",
+      "value",
+      "X"
+     ],
+     "physicalType": "DOUBLE",
+     "typeAnnotation": null,
+     "repetition": "OPTIONAL"
+    },
+    {
+     "path": [
+      "Places",
+      "key_value",
+      "value",
+      "Y"
+     ],
+     "physicalType": "INT32",
+     "typeAnnotation": "INTEGER(32, SIGNED)",
+     "repetition": "REQUIRED"
+    },
+    {
+     "path": [
+      "Places",
+      "key_value",
+      "value",
+      "Label"
+     ],
+     "physicalType": "BYTE_ARRAY",
+     "typeAnnotation": "STRING",
+     "repetition": "OPTIONAL"
+    },
+    {
+     "path": [
+      "Places",
+      "key_value",
+      "value",
+      "Inner",
+      "Leaf"
+     ],
+     "physicalType": "INT64",
+     "typeAnnotation": "INTEGER(64, SIGNED)",
+     "repetition": "REQUIRED"
+    },
+    {
+     "path": [
+      "Places",
+      "key_value",
+      "value",
+      "Inner",
+      "Tags",
+      "list",
+      "element"
+     ],
+     "physicalType": "INT64",
+     "typeAnnotation": "INTEGER(64, SIGNED)",
+     "repetition": "REQUIRED"
+    },
+    {
+     "path": [
+      "Places",
+      "key_value",
+      "value",
+      "Inner",
+      "Counts",
+      "key_value",
+      "key"
+     ],
+     "physicalType": "BYTE_ARRAY",
+     "typeAnnotation": "STRING",
+     "repetition": "REQUIRED"
+    },
+    {
+     "path": [
+      "Places",
+      "key_value",
+      "value",
+      "Inner",
+      "Counts",
+      "key_value",
+      "value"
+     ],
+     "physicalType": "INT32",
+     "typeAnnotation": "INTEGER(32, SIGNED)",
+     "repetition": "REQUIRED"
+    }
+   ],
+   "keyValues": [],
+   "columns": [
+    {
+     "name": "Id",
+     "dataType": "integer",
+     "isNullable": false,
+     "leaves": [
+      0
+     ]
+    },
+    {
+     "name": "Ints",
+     "dataType": "array<integer>",
+     "isNullable": true,
+     "leaves": [
+      1
+     ]
+    },
+    {
+     "name": "Words",
+     "dataType": "array<string>",
+     "isNullable": true,
+     "leaves": [
+      2
+     ]
+    },
+    {
+     "name": "Point",
+     "dataType": "struct<X:double,Y:integer,Label:string,Inner:struct<Leaf:long,Tags:array<long>,Counts:map<string,integer>>>",
+     "isNullable": true,
+     "leaves": [
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9
+     ]
+    },
+    {
+     "name": "Scores",
+     "dataType": "map<string,long>",
+     "isNullable": true,
+     "leaves": [
+      10,
+      11
+     ]
+    },
+    {
+     "name": "Items",
+     "dataType": "array<struct<Sku:string,Qty:short,Parts:array<long>>>",
+     "isNullable": true,
+     "leaves": [
+      12,
+      13,
+      14
+     ]
+    },
+    {
+     "name": "Places",
+     "dataType": "map<string,struct<X:double,Y:integer,Label:string,Inner:struct<Leaf:long,Tags:array<long>,Counts:map<string,integer>>>>",
+     "isNullable": true,
+     "leaves": [
+      15,
+      16,
+      17,
+      18,
+      19,
+      20,
+      21,
+      22
+     ]
+    }
+   ]
+  }
+ },
+ "polars-2.1.0-nested.parquet": {
+  "writer": "polars 2.1.0",
+  "what": "Lists, structures, and a fixed-size array of the native writer of polars, nested.",
+  "statedSize": null,
+  "includeDataValues": false,
+  "error": null,
+  "footer": {
+   "numRows": 60,
+   "rowGroups": 1,
+   "createdBy": "Polars (python) version 2.1.0 (build 7f902bd3ffd27ff82d14278a09a295ff2f7aed92)",
+   "leaves": [
+    {
+     "path": [
+      "id"
+     ],
+     "physicalType": "INT64",
+     "typeAnnotation": null,
+     "repetition": "OPTIONAL"
+    },
+    {
+     "path": [
+      "ints",
+      "list",
+      "element"
+     ],
+     "physicalType": "INT64",
+     "typeAnnotation": null,
+     "repetition": "OPTIONAL"
+    },
+    {
+     "path": [
+      "point",
+      "x"
+     ],
+     "physicalType": "DOUBLE",
+     "typeAnnotation": null,
+     "repetition": "OPTIONAL"
+    },
+    {
+     "path": [
+      "point",
+      "y"
+     ],
+     "physicalType": "INT64",
+     "typeAnnotation": null,
+     "repetition": "OPTIONAL"
+    },
+    {
+     "path": [
+      "point",
+      "label"
+     ],
+     "physicalType": "BYTE_ARRAY",
+     "typeAnnotation": "STRING",
+     "repetition": "OPTIONAL"
+    },
+    {
+     "path": [
+      "deep",
+      "level2",
+      "level3",
+      "leaf"
+     ],
+     "physicalType": "INT64",
+     "typeAnnotation": null,
+     "repetition": "OPTIONAL"
+    },
+    {
+     "path": [
+      "deep",
+      "level2",
+      "level3",
+      "tags",
+      "list",
+      "element"
+     ],
+     "physicalType": "INT64",
+     "typeAnnotation": null,
+     "repetition": "OPTIONAL"
+    },
+    {
+     "path": [
+      "deep",
+      "level2",
+      "level3",
+      "level4",
+      "value"
+     ],
+     "physicalType": "BYTE_ARRAY",
+     "typeAnnotation": "STRING",
+     "repetition": "OPTIONAL"
+    },
+    {
+     "path": [
+      "deep",
+      "level2",
+      "level3",
+      "level4",
+      "n"
+     ],
+     "physicalType": "INT64",
+     "typeAnnotation": null,
+     "repetition": "OPTIONAL"
+    },
+    {
+     "path": [
+      "deep",
+      "level2",
+      "flag"
+     ],
+     "physicalType": "BOOLEAN",
+     "typeAnnotation": null,
+     "repetition": "OPTIONAL"
+    },
+    {
+     "path": [
+      "deep",
+      "count"
+     ],
+     "physicalType": "INT64",
+     "typeAnnotation": null,
+     "repetition": "OPTIONAL"
+    },
+    {
+     "path": [
+      "items",
+      "list",
+      "element",
+      "sku"
+     ],
+     "physicalType": "BYTE_ARRAY",
+     "typeAnnotation": "STRING",
+     "repetition": "OPTIONAL"
+    },
+    {
+     "path": [
+      "items",
+      "list",
+      "element",
+      "qty"
+     ],
+     "physicalType": "INT64",
+     "typeAnnotation": null,
+     "repetition": "OPTIONAL"
+    },
+    {
+     "path": [
+      "items",
+      "list",
+      "element",
+      "parts",
+      "list",
+      "element"
+     ],
+     "physicalType": "INT64",
+     "typeAnnotation": null,
+     "repetition": "OPTIONAL"
+    },
+    {
+     "path": [
+      "matrix",
+      "list",
+      "element",
+      "list",
+      "element"
+     ],
+     "physicalType": "INT64",
+     "typeAnnotation": null,
+     "repetition": "OPTIONAL"
+    },
+    {
+     "path": [
+      "fixed",
+      "list",
+      "element"
+     ],
+     "physicalType": "INT32",
+     "typeAnnotation": null,
+     "repetition": "OPTIONAL"
+    }
+   ],
+   "keyValues": [
+    [
+     "ARROW:schema",
+     null
+    ]
+   ],
+   "columns": [
+    {
+     "name": "id",
+     "dataType": "long",
+     "isNullable": true,
+     "leaves": [
+      0
+     ]
+    },
+    {
+     "name": "ints",
+     "dataType": "array<long>",
+     "isNullable": true,
+     "leaves": [
+      1
+     ]
+    },
+    {
+     "name": "point",
+     "dataType": "struct<x:double,y:long,label:string>",
+     "isNullable": true,
+     "leaves": [
+      2,
+      3,
+      4
+     ]
+    },
+    {
+     "name": "deep",
+     "dataType": "struct<level2:struct<level3:struct<leaf:long,tags:array<long>,level4:struct<value:string,n:long>>,flag:boolean>,count:long>",
+     "isNullable": true,
+     "leaves": [
+      5,
+      6,
+      7,
+      8,
+      9,
+      10
+     ]
+    },
+    {
+     "name": "items",
+     "dataType": "array<struct<sku:string,qty:long,parts:array<long>>>",
+     "isNullable": true,
+     "leaves": [
+      11,
+      12,
+      13
+     ]
+    },
+    {
+     "name": "matrix",
+     "dataType": "array<array<long>>",
+     "isNullable": true,
+     "leaves": [
+      14
+     ]
+    },
+    {
+     "name": "fixed",
+     "dataType": "array<integer>",
+     "isNullable": true,
+     "leaves": [
+      15
+     ]
+    }
+   ]
+  }
+ },
+ "pyarrow-26.0.0-nested.parquet": {
+  "writer": "pyarrow 26.0.0",
+  "what": "Lists, large lists, fixed-size lists, maps, a list of structures, a map of lists, structures four levels deep, with nulls at every level: each leaf under its top-level column.",
+  "statedSize": null,
+  "includeDataValues": false,
+  "error": null,
+  "footer": {
+   "numRows": 60,
+   "rowGroups": 1,
+   "createdBy": "parquet-cpp-arrow version 26.0.0",
+   "leaves": [
+    {
+     "path": [
+      "id"
+     ],
+     "physicalType": "INT64",
+     "typeAnnotation": null,
+     "repetition": "OPTIONAL"
+    },
+    {
+     "path": [
+      "ints",
+      "list",
+      "element"
+     ],
+     "physicalType": "INT64",
+     "typeAnnotation": null,
+     "repetition": "OPTIONAL"
+    },
+    {
+     "path": [
+      "point",
+      "x"
+     ],
+     "physicalType": "DOUBLE",
+     "typeAnnotation": null,
+     "repetition": "OPTIONAL"
+    },
+    {
+     "path": [
+      "point",
+      "y"
+     ],
+     "physicalType": "INT32",
+     "typeAnnotation": null,
+     "repetition": "OPTIONAL"
+    },
+    {
+     "path": [
+      "point",
+      "label"
+     ],
+     "physicalType": "BYTE_ARRAY",
+     "typeAnnotation": "STRING",
+     "repetition": "OPTIONAL"
+    },
+    {
+     "path": [
+      "deep",
+      "level2",
+      "level3",
+      "leaf"
+     ],
+     "physicalType": "INT64",
+     "typeAnnotation": null,
+     "repetition": "OPTIONAL"
+    },
+    {
+     "path": [
+      "deep",
+      "level2",
+      "level3",
+      "tags",
+      "list",
+      "element"
+     ],
+     "physicalType": "INT64",
+     "typeAnnotation": null,
+     "repetition": "OPTIONAL"
+    },
+    {
+     "path": [
+      "deep",
+      "level2",
+      "level3",
+      "level4",
+      "value"
+     ],
+     "physicalType": "BYTE_ARRAY",
+     "typeAnnotation": "STRING",
+     "repetition": "OPTIONAL"
+    },
+    {
+     "path": [
+      "deep",
+      "level2",
+      "level3",
+      "level4",
+      "n"
+     ],
+     "physicalType": "INT32",
+     "typeAnnotation": "INTEGER(8, SIGNED)",
+     "repetition": "OPTIONAL"
+    },
+    {
+     "path": [
+      "deep",
+      "level2",
+      "flag"
+     ],
+     "physicalType": "BOOLEAN",
+     "typeAnnotation": null,
+     "repetition": "OPTIONAL"
+    },
+    {
+     "path": [
+      "deep",
+      "count"
+     ],
+     "physicalType": "INT32",
+     "typeAnnotation": null,
+     "repetition": "OPTIONAL"
+    },
+    {
+     "path": [
+      "scores",
+      "key_value",
+      "key"
+     ],
+     "physicalType": "BYTE_ARRAY",
+     "typeAnnotation": "STRING",
+     "repetition": "REQUIRED"
+    },
+    {
+     "path": [
+      "scores",
+      "key_value",
+      "value"
+     ],
+     "physicalType": "INT64",
+     "typeAnnotation": null,
+     "repetition": "OPTIONAL"
+    },
+    {
+     "path": [
+      "items",
+      "list",
+      "element",
+      "sku"
+     ],
+     "physicalType": "BYTE_ARRAY",
+     "typeAnnotation": "STRING",
+     "repetition": "OPTIONAL"
+    },
+    {
+     "path": [
+      "items",
+      "list",
+      "element",
+      "qty"
+     ],
+     "physicalType": "INT32",
+     "typeAnnotation": "INTEGER(16, SIGNED)",
+     "repetition": "OPTIONAL"
+    },
+    {
+     "path": [
+      "items",
+      "list",
+      "element",
+      "parts",
+      "list",
+      "element"
+     ],
+     "physicalType": "INT64",
+     "typeAnnotation": null,
+     "repetition": "OPTIONAL"
+    },
+    {
+     "path": [
+      "lookup",
+      "key_value",
+      "key"
+     ],
+     "physicalType": "BYTE_ARRAY",
+     "typeAnnotation": "STRING",
+     "repetition": "REQUIRED"
+    },
+    {
+     "path": [
+      "lookup",
+      "key_value",
+      "value",
+      "list",
+      "element"
+     ],
+     "physicalType": "INT64",
+     "typeAnnotation": null,
+     "repetition": "OPTIONAL"
+    },
+    {
+     "path": [
+      "matrix",
+      "list",
+      "element",
+      "list",
+      "element"
+     ],
+     "physicalType": "INT64",
+     "typeAnnotation": null,
+     "repetition": "OPTIONAL"
+    },
+    {
+     "path": [
+      "large",
+      "list",
+      "element"
+     ],
+     "physicalType": "INT64",
+     "typeAnnotation": null,
+     "repetition": "OPTIONAL"
+    },
+    {
+     "path": [
+      "fixed",
+      "list",
+      "element"
+     ],
+     "physicalType": "INT32",
+     "typeAnnotation": null,
+     "repetition": "OPTIONAL"
+    },
+    {
+     "path": [
+      "notnull",
+      "list",
+      "element"
+     ],
+     "physicalType": "INT32",
+     "typeAnnotation": null,
+     "repetition": "REQUIRED"
+    }
+   ],
+   "keyValues": [
+    [
+     "ARROW:schema",
+     null
+    ]
+   ],
+   "columns": [
+    {
+     "name": "id",
+     "dataType": "long",
+     "isNullable": true,
+     "leaves": [
+      0
+     ]
+    },
+    {
+     "name": "ints",
+     "dataType": "array<long>",
+     "isNullable": true,
+     "leaves": [
+      1
+     ]
+    },
+    {
+     "name": "point",
+     "dataType": "struct<x:double,y:integer,label:string>",
+     "isNullable": true,
+     "leaves": [
+      2,
+      3,
+      4
+     ]
+    },
+    {
+     "name": "deep",
+     "dataType": "struct<level2:struct<level3:struct<leaf:long,tags:array<long>,level4:struct<value:string,n:byte>>,flag:boolean>,count:integer>",
+     "isNullable": true,
+     "leaves": [
+      5,
+      6,
+      7,
+      8,
+      9,
+      10
+     ]
+    },
+    {
+     "name": "scores",
+     "dataType": "map<string,long>",
+     "isNullable": true,
+     "leaves": [
+      11,
+      12
+     ]
+    },
+    {
+     "name": "items",
+     "dataType": "array<struct<sku:string,qty:short,parts:array<long>>>",
+     "isNullable": true,
+     "leaves": [
+      13,
+      14,
+      15
+     ]
+    },
+    {
+     "name": "lookup",
+     "dataType": "map<string,array<long>>",
+     "isNullable": true,
+     "leaves": [
+      16,
+      17
+     ]
+    },
+    {
+     "name": "matrix",
+     "dataType": "array<array<long>>",
+     "isNullable": true,
+     "leaves": [
+      18
+     ]
+    },
+    {
+     "name": "large",
+     "dataType": "array<long>",
+     "isNullable": true,
+     "leaves": [
+      19
+     ]
+    },
+    {
+     "name": "fixed",
+     "dataType": "array<integer>",
+     "isNullable": true,
+     "leaves": [
+      20
+     ]
+    },
+    {
+     "name": "notnull",
+     "dataType": "array<integer>",
+     "isNullable": true,
+     "leaves": [
+      21
+     ]
+    }
+   ]
+  }
+ },
+ "pyarrow-8.0.0-nested.parquet": {
+  "writer": "pyarrow 8.0.0",
+  "what": "The same columns, with the names of older pyarrow: list and item for a list.",
+  "statedSize": null,
+  "includeDataValues": false,
+  "error": null,
+  "footer": {
+   "numRows": 60,
+   "rowGroups": 1,
+   "createdBy": "parquet-cpp-arrow version 8.0.0",
+   "leaves": [
+    {
+     "path": [
+      "id"
+     ],
+     "physicalType": "INT64",
+     "typeAnnotation": null,
+     "repetition": "OPTIONAL"
+    },
+    {
+     "path": [
+      "ints",
+      "list",
+      "item"
+     ],
+     "physicalType": "INT64",
+     "typeAnnotation": null,
+     "repetition": "OPTIONAL"
+    },
+    {
+     "path": [
+      "point",
+      "x"
+     ],
+     "physicalType": "DOUBLE",
+     "typeAnnotation": null,
+     "repetition": "OPTIONAL"
+    },
+    {
+     "path": [
+      "point",
+      "y"
+     ],
+     "physicalType": "INT32",
+     "typeAnnotation": null,
+     "repetition": "OPTIONAL"
+    },
+    {
+     "path": [
+      "point",
+      "label"
+     ],
+     "physicalType": "BYTE_ARRAY",
+     "typeAnnotation": "STRING",
+     "repetition": "OPTIONAL"
+    },
+    {
+     "path": [
+      "deep",
+      "level2",
+      "level3",
+      "leaf"
+     ],
+     "physicalType": "INT64",
+     "typeAnnotation": null,
+     "repetition": "OPTIONAL"
+    },
+    {
+     "path": [
+      "deep",
+      "level2",
+      "level3",
+      "tags",
+      "list",
+      "item"
+     ],
+     "physicalType": "INT64",
+     "typeAnnotation": null,
+     "repetition": "OPTIONAL"
+    },
+    {
+     "path": [
+      "deep",
+      "level2",
+      "level3",
+      "level4",
+      "value"
+     ],
+     "physicalType": "BYTE_ARRAY",
+     "typeAnnotation": "STRING",
+     "repetition": "OPTIONAL"
+    },
+    {
+     "path": [
+      "deep",
+      "level2",
+      "level3",
+      "level4",
+      "n"
+     ],
+     "physicalType": "INT32",
+     "typeAnnotation": "INTEGER(8, SIGNED)",
+     "repetition": "OPTIONAL"
+    },
+    {
+     "path": [
+      "deep",
+      "level2",
+      "flag"
+     ],
+     "physicalType": "BOOLEAN",
+     "typeAnnotation": null,
+     "repetition": "OPTIONAL"
+    },
+    {
+     "path": [
+      "deep",
+      "count"
+     ],
+     "physicalType": "INT32",
+     "typeAnnotation": null,
+     "repetition": "OPTIONAL"
+    },
+    {
+     "path": [
+      "scores",
+      "key_value",
+      "key"
+     ],
+     "physicalType": "BYTE_ARRAY",
+     "typeAnnotation": "STRING",
+     "repetition": "REQUIRED"
+    },
+    {
+     "path": [
+      "scores",
+      "key_value",
+      "value"
+     ],
+     "physicalType": "INT64",
+     "typeAnnotation": null,
+     "repetition": "OPTIONAL"
+    },
+    {
+     "path": [
+      "items",
+      "list",
+      "item",
+      "sku"
+     ],
+     "physicalType": "BYTE_ARRAY",
+     "typeAnnotation": "STRING",
+     "repetition": "OPTIONAL"
+    },
+    {
+     "path": [
+      "items",
+      "list",
+      "item",
+      "qty"
+     ],
+     "physicalType": "INT32",
+     "typeAnnotation": "INTEGER(16, SIGNED)",
+     "repetition": "OPTIONAL"
+    },
+    {
+     "path": [
+      "items",
+      "list",
+      "item",
+      "parts",
+      "list",
+      "item"
+     ],
+     "physicalType": "INT64",
+     "typeAnnotation": null,
+     "repetition": "OPTIONAL"
+    },
+    {
+     "path": [
+      "lookup",
+      "key_value",
+      "key"
+     ],
+     "physicalType": "BYTE_ARRAY",
+     "typeAnnotation": "STRING",
+     "repetition": "REQUIRED"
+    },
+    {
+     "path": [
+      "lookup",
+      "key_value",
+      "value",
+      "list",
+      "item"
+     ],
+     "physicalType": "INT64",
+     "typeAnnotation": null,
+     "repetition": "OPTIONAL"
+    },
+    {
+     "path": [
+      "matrix",
+      "list",
+      "item",
+      "list",
+      "item"
+     ],
+     "physicalType": "INT64",
+     "typeAnnotation": null,
+     "repetition": "OPTIONAL"
+    },
+    {
+     "path": [
+      "large",
+      "list",
+      "item"
+     ],
+     "physicalType": "INT64",
+     "typeAnnotation": null,
+     "repetition": "OPTIONAL"
+    },
+    {
+     "path": [
+      "fixed",
+      "list",
+      "item"
+     ],
+     "physicalType": "INT32",
+     "typeAnnotation": null,
+     "repetition": "OPTIONAL"
+    },
+    {
+     "path": [
+      "notnull",
+      "list",
+      "element"
+     ],
+     "physicalType": "INT32",
+     "typeAnnotation": null,
+     "repetition": "REQUIRED"
+    }
+   ],
+   "keyValues": [
+    [
+     "ARROW:schema",
+     null
+    ]
+   ],
+   "columns": [
+    {
+     "name": "id",
+     "dataType": "long",
+     "isNullable": true,
+     "leaves": [
+      0
+     ]
+    },
+    {
+     "name": "ints",
+     "dataType": "array<long>",
+     "isNullable": true,
+     "leaves": [
+      1
+     ]
+    },
+    {
+     "name": "point",
+     "dataType": "struct<x:double,y:integer,label:string>",
+     "isNullable": true,
+     "leaves": [
+      2,
+      3,
+      4
+     ]
+    },
+    {
+     "name": "deep",
+     "dataType": "struct<level2:struct<level3:struct<leaf:long,tags:array<long>,level4:struct<value:string,n:byte>>,flag:boolean>,count:integer>",
+     "isNullable": true,
+     "leaves": [
+      5,
+      6,
+      7,
+      8,
+      9,
+      10
+     ]
+    },
+    {
+     "name": "scores",
+     "dataType": "map<string,long>",
+     "isNullable": true,
+     "leaves": [
+      11,
+      12
+     ]
+    },
+    {
+     "name": "items",
+     "dataType": "array<struct<sku:string,qty:short,parts:array<long>>>",
+     "isNullable": true,
+     "leaves": [
+      13,
+      14,
+      15
+     ]
+    },
+    {
+     "name": "lookup",
+     "dataType": "map<string,array<long>>",
+     "isNullable": true,
+     "leaves": [
+      16,
+      17
+     ]
+    },
+    {
+     "name": "matrix",
+     "dataType": "array<array<long>>",
+     "isNullable": true,
+     "leaves": [
+      18
+     ]
+    },
+    {
+     "name": "large",
+     "dataType": "array<long>",
+     "isNullable": true,
+     "leaves": [
+      19
+     ]
+    },
+    {
+     "name": "fixed",
+     "dataType": "array<integer>",
+     "isNullable": true,
+     "leaves": [
+      20
+     ]
+    },
+    {
+     "name": "notnull",
+     "dataType": "array<integer>",
+     "isNullable": true,
+     "leaves": [
+      21
+     ]
+    }
+   ]
+  }
+ },
+ "schema-200-levels.parquet": {
+  "writer": "make_footer_samples.py",
+  "what": "A schema of 200 levels below its root, which the parser reads: the column of a folder of Parquet files gets its type. The type of the columns stopped at 64 levels, and the table was not read, with an issue message that differed between C# and Python.",
+  "statedSize": null,
+  "includeDataValues": false,
+  "error": null,
+  "footer": {
+   "numRows": 1,
+   "rowGroups": 1,
+   "createdBy": null,
+   "leaves": [
+    {
+     "path": [
+      "g0",
+      "g1",
+      "g2",
+      "g3",
+      "g4",
+      "g5",
+      "g6",
+      "g7",
+      "g8",
+      "g9",
+      "g10",
+      "g11",
+      "g12",
+      "g13",
+      "g14",
+      "g15",
+      "g16",
+      "g17",
+      "g18",
+      "g19",
+      "g20",
+      "g21",
+      "g22",
+      "g23",
+      "g24",
+      "g25",
+      "g26",
+      "g27",
+      "g28",
+      "g29",
+      "g30",
+      "g31",
+      "g32",
+      "g33",
+      "g34",
+      "g35",
+      "g36",
+      "g37",
+      "g38",
+      "g39",
+      "g40",
+      "g41",
+      "g42",
+      "g43",
+      "g44",
+      "g45",
+      "g46",
+      "g47",
+      "g48",
+      "g49",
+      "g50",
+      "g51",
+      "g52",
+      "g53",
+      "g54",
+      "g55",
+      "g56",
+      "g57",
+      "g58",
+      "g59",
+      "g60",
+      "g61",
+      "g62",
+      "g63",
+      "g64",
+      "g65",
+      "g66",
+      "g67",
+      "g68",
+      "g69",
+      "g70",
+      "g71",
+      "g72",
+      "g73",
+      "g74",
+      "g75",
+      "g76",
+      "g77",
+      "g78",
+      "g79",
+      "g80",
+      "g81",
+      "g82",
+      "g83",
+      "g84",
+      "g85",
+      "g86",
+      "g87",
+      "g88",
+      "g89",
+      "g90",
+      "g91",
+      "g92",
+      "g93",
+      "g94",
+      "g95",
+      "g96",
+      "g97",
+      "g98",
+      "g99",
+      "g100",
+      "g101",
+      "g102",
+      "g103",
+      "g104",
+      "g105",
+      "g106",
+      "g107",
+      "g108",
+      "g109",
+      "g110",
+      "g111",
+      "g112",
+      "g113",
+      "g114",
+      "g115",
+      "g116",
+      "g117",
+      "g118",
+      "g119",
+      "g120",
+      "g121",
+      "g122",
+      "g123",
+      "g124",
+      "g125",
+      "g126",
+      "g127",
+      "g128",
+      "g129",
+      "g130",
+      "g131",
+      "g132",
+      "g133",
+      "g134",
+      "g135",
+      "g136",
+      "g137",
+      "g138",
+      "g139",
+      "g140",
+      "g141",
+      "g142",
+      "g143",
+      "g144",
+      "g145",
+      "g146",
+      "g147",
+      "g148",
+      "g149",
+      "g150",
+      "g151",
+      "g152",
+      "g153",
+      "g154",
+      "g155",
+      "g156",
+      "g157",
+      "g158",
+      "g159",
+      "g160",
+      "g161",
+      "g162",
+      "g163",
+      "g164",
+      "g165",
+      "g166",
+      "g167",
+      "g168",
+      "g169",
+      "g170",
+      "g171",
+      "g172",
+      "g173",
+      "g174",
+      "g175",
+      "g176",
+      "g177",
+      "g178",
+      "g179",
+      "g180",
+      "g181",
+      "g182",
+      "g183",
+      "g184",
+      "g185",
+      "g186",
+      "g187",
+      "g188",
+      "g189",
+      "g190",
+      "g191",
+      "g192",
+      "g193",
+      "g194",
+      "g195",
+      "g196",
+      "g197",
+      "g198",
+      "leaf"
+     ],
+     "physicalType": "INT32",
+     "typeAnnotation": null,
+     "repetition": "OPTIONAL"
+    }
+   ],
+   "keyValues": [],
+   "columns": [
+    {
+     "name": "g0",
+     "dataType": "struct<g1:struct<g2:struct<g3:struct<g4:struct<g5:struct<g6:struct<g7:struct<g8:struct<g9:struct<g10:struct<g11:struct<g12:struct<g13:struct<g14:struct<g15:struct<g16:struct<g17:struct<g18:struct<g19:struct<g20:struct<g21:struct<g22:struct<g23:struct<g24:struct<g25:struct<g26:struct<g27:struct<g28:struct<g29:struct<g30:struct<g31:struct<g32:struct<g33:struct<g34:struct<g35:struct<g36:struct<g37:struct<g38:struct<g39:struct<g40:struct<g41:struct<g42:struct<g43:struct<g44:struct<g45:struct<g46:struct<g47:struct<g48:struct<g49:struct<g50:struct<g51:struct<g52:struct<g53:struct<g54:struct<g55:struct<g56:struct<g57:struct<g58:struct<g59:struct<g60:struct<g61:struct<g62:struct<g63:struct<g64:struct<g65:struct<g66:struct<g67:struct<g68:struct<g69:struct<g70:struct<g71:struct<g72:struct<g73:struct<g74:struct<g75:struct<g76:struct<g77:struct<g78:struct<g79:struct<g80:struct<g81:struct<g82:struct<g83:struct<g84:struct<g85:struct<g86:struct<g87:struct<g88:struct<g89:struct<g90:struct<g91:struct<g92:struct<g93:struct<g94:struct<g95:struct<g96:struct<g97:struct<g98:struct<g99:struct<g100:struct<g101:struct<g102:struct<g103:struct<g104:struct<g105:struct<g106:struct<g107:struct<g108:struct<g109:struct<g110:struct<g111:struct<g112:struct<g113:struct<g114:struct<g115:struct<g116:struct<g117:struct<g118:struct<g119:struct<g120:struct<g121:struct<g122:struct<g123:struct<g124:struct<g125:struct<g126:struct<g127:struct<g128:struct<g129:struct<g130:struct<g131:struct<g132:struct<g133:struct<g134:struct<g135:struct<g136:struct<g137:struct<g138:struct<g139:struct<g140:struct<g141:struct<g142:struct<g143:struct<g144:struct<g145:struct<g146:struct<g147:struct<g148:struct<g149:struct<g150:struct<g151:struct<g152:struct<g153:struct<g154:struct<g155:struct<g156:struct<g157:struct<g158:struct<g159:struct<g160:struct<g161:struct<g162:struct<g163:struct<g164:struct<g165:struct<g166:struct<g167:struct<g168:struct<g169:struct<g170:struct<g171:struct<g172:struct<g173:struct<g174:struct<g175:struct<g176:struct<g177:struct<g178:struct<g179:struct<g180:struct<g181:struct<g182:struct<g183:struct<g184:struct<g185:struct<g186:struct<g187:struct<g188:struct<g189:struct<g190:struct<g191:struct<g192:struct<g193:struct<g194:struct<g195:struct<g196:struct<g197:struct<g198:struct<leaf:integer>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>",
+     "isNullable": true,
+     "leaves": [
+      0
+     ]
+    }
+   ]
+  }
+ },
+ "stop-with-delta.parquet": {
+  "writer": "make_footer_samples.py",
+  "what": "The footer of pyarrow-26 base, with its last stop written as 0x10: a field header of type 0 and delta 1, which the Thrift libraries of C++, Java, and Rust read as the end of the structure. C# read a field of an unknown wire type.",
+  "statedSize": null,
+  "includeDataValues": false,
+  "error": null,
+  "footer": {
+   "numRows": 60,
+   "rowGroups": 1,
+   "createdBy": "parquet-cpp-arrow version 26.0.0",
+   "leaves": [
+    {
+     "path": [
+      "id"
+     ],
+     "physicalType": "INT64",
+     "typeAnnotation": null,
+     "repetition": "OPTIONAL"
+    },
+    {
+     "path": [
+      "flag"
+     ],
+     "physicalType": "BOOLEAN",
+     "typeAnnotation": null,
+     "repetition": "OPTIONAL"
+    },
+    {
+     "path": [
+      "small"
+     ],
+     "physicalType": "INT32",
+     "typeAnnotation": "INTEGER(16, SIGNED)",
+     "repetition": "OPTIONAL"
+    },
+    {
+     "path": [
+      "number"
+     ],
+     "physicalType": "INT32",
+     "typeAnnotation": null,
+     "repetition": "OPTIONAL"
+    },
+    {
+     "path": [
+      "big"
+     ],
+     "physicalType": "INT64",
+     "typeAnnotation": null,
+     "repetition": "OPTIONAL"
+    },
+    {
+     "path": [
+      "ratio"
+     ],
+     "physicalType": "DOUBLE",
+     "typeAnnotation": null,
+     "repetition": "OPTIONAL"
+    },
+    {
+     "path": [
+      "name"
+     ],
+     "physicalType": "BYTE_ARRAY",
+     "typeAnnotation": "STRING",
+     "repetition": "OPTIONAL"
+    },
+    {
+     "path": [
+      "code"
+     ],
+     "physicalType": "BYTE_ARRAY",
+     "typeAnnotation": "STRING",
+     "repetition": "OPTIONAL"
+    },
+    {
+     "path": [
+      "blob"
+     ],
+     "physicalType": "BYTE_ARRAY",
+     "typeAnnotation": null,
+     "repetition": "OPTIONAL"
+    },
+    {
+     "path": [
+      "day"
+     ],
+     "physicalType": "INT32",
+     "typeAnnotation": "DATE",
+     "repetition": "OPTIONAL"
+    },
+    {
+     "path": [
+      "moment"
+     ],
+     "physicalType": "INT64",
+     "typeAnnotation": "TIMESTAMP(MICROS, LOCAL)",
+     "repetition": "OPTIONAL"
+    },
+    {
+     "path": [
+      "amount"
+     ],
+     "physicalType": "FIXED_LEN_BYTE_ARRAY",
+     "typeAnnotation": "DECIMAL(12,2)",
+     "repetition": "OPTIONAL"
+    }
+   ],
+   "keyValues": [
+    [
+     "ARROW:schema",
+     null
+    ]
+   ],
+   "columns": [
+    {
+     "name": "id",
+     "dataType": "long",
+     "isNullable": true,
+     "leaves": [
+      0
+     ]
+    },
+    {
+     "name": "flag",
+     "dataType": "boolean",
+     "isNullable": true,
+     "leaves": [
+      1
+     ]
+    },
+    {
+     "name": "small",
+     "dataType": "short",
+     "isNullable": true,
+     "leaves": [
+      2
+     ]
+    },
+    {
+     "name": "number",
+     "dataType": "integer",
+     "isNullable": true,
+     "leaves": [
+      3
+     ]
+    },
+    {
+     "name": "big",
+     "dataType": "long",
+     "isNullable": true,
+     "leaves": [
+      4
+     ]
+    },
+    {
+     "name": "ratio",
+     "dataType": "double",
+     "isNullable": true,
+     "leaves": [
+      5
+     ]
+    },
+    {
+     "name": "name",
+     "dataType": "string",
+     "isNullable": true,
+     "leaves": [
+      6
+     ]
+    },
+    {
+     "name": "code",
+     "dataType": "string",
+     "isNullable": true,
+     "leaves": [
+      7
+     ]
+    },
+    {
+     "name": "blob",
+     "dataType": "binary",
+     "isNullable": true,
+     "leaves": [
+      8
+     ]
+    },
+    {
+     "name": "day",
+     "dataType": "date",
+     "isNullable": true,
+     "leaves": [
+      9
+     ]
+    },
+    {
+     "name": "moment",
+     "dataType": "timestamp_ntz",
+     "isNullable": true,
+     "leaves": [
+      10
+     ]
+    },
+    {
+     "name": "amount",
+     "dataType": "decimal(12,2)",
+     "isNullable": true,
+     "leaves": [
+      11
+     ]
+    }
+   ]
+  }
+ }
+}
