@@ -5,8 +5,10 @@ Usage, from the root of the repository:
     python conformance/cross_check.py [--keep DIR] [--skip python,dotnet,node] [--no-build]
 
 Writers: Python (pqax.Builder) and C# (FootprintBuilder, through a small runner that the .NET 10 SDK runs as a
-file-based app). The TypeScript package has no writer. Each writer rewrites three samples of the kit: sample.pqax,
-sample.pqax again with at most 20 rows in a detail part, and extensions.pqax.
+file-based app). The TypeScript package has no writer. Each writer rewrites four samples of the kit: sample.pqax,
+sample.pqax again with at most 20 rows in a detail part, extensions.pqax, and multipart.pqax. A rewrite with the default
+rows per part keeps the parts of its sample, so every reader must find their names, their rows, and the members that a
+producer added to their descriptors, as the sample has them.
 
 Collectors: python -m pqax collect, when pyarrow is installed (pqax[collect]), and pqax collect in C#, when the C#
 command line builds, collect conformance/fixtures/lakehouse. Each file must give the results of expected/sample.json,
@@ -24,6 +26,11 @@ Every file must pass every validator, and every reader must get the expected row
 table, the length of every table read whole, and tablesFileSize, tablesRowCount, columnChunksCompressedSize, tables,
 and largestColumns of conformance/expected. A written file has format version 0.2. What is not available is skipped
 with a message.
+
+Invalid samples: every validator must report at least the codes of samples/invalid/expected.json for every file of
+samples/invalid, and every reader must read the samples of the container rules as the kit README says:
+container.zip64.pqax and container.zip64.extraField.pqax with the results of expected/sample.json, and
+container.encrypted.pqax up to commits.json, whose read fails with the code container.encrypted.
 
 Measures: pqax.measures in Python, StorageMeasures in C#, and the view model of @pqax/views through node compute the
 derived measures of every file, which must equal conformance/expected/measures/<sample>.json, the measures of the
@@ -47,6 +54,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import zipfile
 from collections import defaultdict
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
@@ -71,9 +79,16 @@ COLLECTION_IDENTITY = ("collectorApp", "collectorAppVersion", "collectorLib", "c
                        "completedAt")
 
 # What a writer writes: the name of the file, the sample it rewrites, its expected file, and the most rows of a part.
+# A rewrite with the default rows per part keeps the parts of the sample, with their names and descriptors.
 JOBS = (("sample", "sample.pqax", "sample", None),
         ("parts20", "sample.pqax", "sample", 20),
-        ("extensions", "extensions.pqax", "extensions", None))
+        ("extensions", "extensions.pqax", "extensions", None),
+        ("multipart", "multipart.pqax", "multipart", None))
+INVALID = SAMPLES / "invalid"
+# The invalid samples of the container rules that every reader reads: the expected file whose results it gets, or the
+# code of the error that it gives when it reads every table.
+CONTAINER_READS = {"container.encrypted.pqax": "container.encrypted", "container.zip64.pqax": "sample",
+                   "container.zip64.extraField.pqax": "sample"}
 # The valid samples that every validator and reader also checks, as a reference. format-0.1.pqax is a file of
 # format 0.1, which a reader of 0.2 opens.
 REFERENCES = (("sample", "sample.pqax"), ("multipart", "multipart.pqax"), ("extensions", "extensions.pqax"),
@@ -145,8 +160,17 @@ def compute_shape(tables: Dict[str, Dict[str, List[Any]]]) -> Dict[str, Any]:
     }
 
 
-def check_read(read: Dict[str, Any], expected: Dict[str, Any], written: bool) -> List[str]:
-    """What differs between a reader's result and the expected file. A written file has its own part names."""
+def source_parts(path: Path) -> List[Dict[str, Any]]:
+    """The descriptors of the parts of a sample, as its manifest lists them."""
+    with zipfile.ZipFile(path) as archive:
+        return json.loads(archive.read("manifest.json"))["parts"]
+
+
+def check_read(read: Dict[str, Any], expected: Dict[str, Any], written: bool,
+               layout: Optional[List[Dict[str, Any]]] = None) -> List[str]:
+    """What differs between a reader's result and the expected file. A written file has the part names of its writer,
+    unless the rewrite kept the parts of its sample: then every descriptor of layout, with the members that a producer
+    added, must be there as it is, in its order."""
     problems = []
     manifest = read.get("manifest", {})
     parts = [part.get("name") for part in manifest.get("parts", [])]
@@ -159,6 +183,9 @@ def check_read(read: Dict[str, Any], expected: Dict[str, Any], written: bool) ->
         problems.append(f"parts {parts}, summary.json is not first")
     if not written and parts != expected["parts"]:
         problems.append(f"parts {parts}, expected {expected['parts']}")
+    if layout is not None and manifest.get("parts") != layout:
+        problems.append(f"the parts {json.dumps(manifest.get('parts'))} are not those of the sample, "
+                        f"{json.dumps(layout)}")
     if read.get("rowCounts") != expected["rows"]:
         problems.append(f"row counts {read.get('rowCounts')}, expected {expected['rows']}")
     if read.get("lengths") != expected["rows"]:
@@ -289,8 +316,12 @@ class Python:
                                            if name in document.table(table)} for table, fields in FIELDS.items()},
                     }
             except Exception as error:  # noqa: BLE001 - a reader error is a result
-                results[path] = {"error": f"{type(error).__name__}: {error}"}
+                results[path] = {"error": f"{type(error).__name__}: {error}", "errorCode": getattr(error, "code", None)}
         return results
+
+    def codes(self, paths: List[Path]) -> Dict[Path, List[str]]:
+        """The codes that pqax.validate reports for each file."""
+        return {path: [issue.code for issue in self.pqax.validate(str(path)).issues] for path in paths}
 
     def diff(self, arguments: List[str]) -> str:
         """The output of python -m pqax diff, which must end with exit code 0."""
@@ -512,6 +543,10 @@ using (var writer = new Utf8JsonWriter(output))
         catch (Exception error)
         {
             writer.WriteString("error", error.GetType().Name + ": " + error.Message);
+            if (error is PqaxFormatException format)
+            {
+                writer.WriteString("errorCode", format.Code);
+            }
         }
         writer.WriteEndObject();
     }
@@ -547,6 +582,11 @@ static byte[] Read(string path)
                 writer.WriteNumber(pair.Key, pair.Value);
             }
             writer.WriteEndObject();
+            foreach (KeyValuePair<string, JsonElement> pair in part.Extensions)
+            {
+                writer.WritePropertyName(pair.Key);
+                pair.Value.WriteTo(writer);
+            }
             writer.WriteEndObject();
         }
         writer.WriteEndArray();
@@ -742,8 +782,14 @@ class DotNet:
 
     def read(self, paths: List[Path]) -> Dict[Path, Dict[str, Any]]:
         self.inspect(paths)
-        return {path: self.inspected[path].get("read") or {"error": self.inspected[path].get("error", "no result")}
+        return {path: self.inspected[path].get("read") or {"error": self.inspected[path].get("error", "no result"),
+                                                           "errorCode": self.inspected[path].get("errorCode")}
                 for path in paths}
+
+    def codes(self, paths: List[Path]) -> Dict[Path, List[str]]:
+        """The codes that PqaxValidator reports for each file."""
+        self.inspect(paths)
+        return {path: self.inspected[path].get("validation", {}).get("codes", []) for path in paths}
 
     def measures(self, paths: List[Path]) -> Dict[Path, Dict[str, Any]]:
         if not paths:
@@ -797,6 +843,7 @@ for (const file of process.argv.slice(2)) {
     entry.read = read;
   } catch (error) {
     entry.error = String(error);
+    if (error instanceof pqax.PqaxError) entry.errorCode = error.code;
   }
   results.push(entry);
 }
@@ -870,8 +917,14 @@ class Node:
 
     def read(self, paths: List[Path]) -> Dict[Path, Dict[str, Any]]:
         self.inspect(paths)
-        return {path: self.inspected[path].get("read") or {"error": self.inspected[path].get("error", "no result")}
+        return {path: self.inspected[path].get("read") or {"error": self.inspected[path].get("error", "no result"),
+                                                           "errorCode": self.inspected[path].get("errorCode")}
                 for path in paths}
+
+    def codes(self, paths: List[Path]) -> Dict[Path, List[str]]:
+        """The codes that validate() of the TypeScript package reports for each file."""
+        self.inspect(paths)
+        return {path: self.inspected[path].get("validation", {}).get("codes", []) for path in paths}
 
     def measures(self, paths: List[Path]) -> Dict[Path, Dict[str, Any]]:
         if self.measures_command is None:
@@ -919,6 +972,49 @@ def compare_collections(first: Path, first_label: str, second: Path, label: str)
             found += [f"{label}: {table}.{field}[{index}] is {y!r}, {first_label} has {x!r}"
                       for index, (x, y) in enumerate(zip(a, b)) if x != y]
     return found, compared
+
+
+def check_invalid(implementations: List[Any], expected: Dict[str, Dict[str, Any]]) -> List[str]:
+    """Every validator reports at least the codes of samples/invalid/expected.json for every invalid sample, and every
+    reader reads the samples of the container rules as CONTAINER_READS says. Returns the failures and prints one line
+    for each validator and each reader."""
+    cases = json.loads((INVALID / "expected.json").read_text(encoding="utf-8"))
+    paths = [INVALID / name for name in cases]
+    failures: List[str] = []
+    for implementation in implementations:
+        try:
+            reported = implementation.codes(paths)
+        except Exception as error:  # noqa: BLE001 - a validator that fails is a result
+            failures.append(f"the {implementation.name} validator on the invalid samples: {type(error).__name__}: {error}")
+            continue
+        missed = {path.name: [code for code in cases[path.name]["codes"] if code not in reported.get(path, [])]
+                  for path in paths}
+        missed = {name: codes for name, codes in missed.items() if codes}
+        failures += [f"invalid/{name}: the {implementation.name} validator does not report {', '.join(codes)}"
+                     for name, codes in missed.items()]
+        print(f"  invalid {implementation.name:<7} {len(paths) - len(missed)} of {len(paths)} invalid samples give "
+              f"their codes")
+    reads = [INVALID / name for name in CONTAINER_READS]
+    for implementation in implementations:
+        try:
+            results = implementation.read(reads)
+        except Exception as error:  # noqa: BLE001 - a reader that fails is a result
+            failures.append(f"the {implementation.name} reader on the container samples: {type(error).__name__}: {error}")
+            continue
+        for path in reads:
+            wanted, read = CONTAINER_READS[path.name], results.get(path, {})
+            if wanted in expected:
+                problems = [read["error"]] if "error" in read else check_read(read, expected[wanted], False)
+                what = f"the results of expected/{wanted}.json"
+            else:
+                code = read.get("errorCode")
+                problems = [] if code == wanted else [f"{read.get('error', 'no error')}, with the code {code!r}"]
+                what = f"an error with the code {wanted}"
+            failures += [f"invalid/{path.name}: the {implementation.name} reader: {problem}, expected {what}"
+                         for problem in problems]
+            print(f"  read    {implementation.name:<7} {'ok' if not problems else 'FAIL'}: invalid/{path.name} gives "
+                  f"{what}")
+    return failures
 
 
 def check_collections(files: List[Tuple[Path, str, str, bool]]) -> List[str]:
@@ -1046,6 +1142,8 @@ def check(work: Path, skip: set, build: bool, expected: Dict[str, Dict[str, Any]
     # (path, label, expected file name, written by a writer)
     files: List[Tuple[Path, str, str, bool]] = [(SAMPLES / sample, f"kit/{sample}", name, False)
                                                 for name, sample in REFERENCES]
+    # The written files that keep the parts of their sample, with the descriptors of those parts.
+    layouts: Dict[Path, List[Dict[str, Any]]] = {}
     failures: List[str] = []
     for writer in implementations:
         if not hasattr(writer, "write"):
@@ -1061,6 +1159,8 @@ def check(work: Path, skip: set, build: bool, expected: Dict[str, Dict[str, Any]
             continue
         files += [(folder / f"{name}.pqax", f"{writer.name}/{name}.pqax", expected_name, True)
                   for name, _, expected_name, _ in JOBS]
+        layouts.update((folder / f"{name}.pqax", source_parts(SAMPLES / sample))
+                       for name, sample, _, rows in JOBS if rows is None)
         if hasattr(writer, "extra"):
             try:
                 files += [(path, label, expected_name, True) for path, label, expected_name in writer.extra(folder)]
@@ -1119,7 +1219,7 @@ def check(work: Path, skip: set, build: bool, expected: Dict[str, Dict[str, Any]
             if "error" in read:
                 problems = [read["error"]]
             else:
-                problems = check_read(read, expected[expected_name], written)
+                problems = check_read(read, expected[expected_name], written, layouts.get(path))
             cells.append(f"{'ok' if not problems else 'FAIL':<15}")
             failures += [f"{label}: the {name} reader: {problem}" for problem in problems]
         for name in names:
@@ -1134,6 +1234,7 @@ def check(work: Path, skip: set, build: bool, expected: Dict[str, Dict[str, Any]
             failures += [f"{label}: the {name} measures: {problem}" for problem in problems]
         print(f"{label:<{width}}  " + "".join(cells))
     print()
+    failures += check_invalid(implementations, expected)
     failures += check_collections(files)
     failures += check_container(work, implementations)
     failures += check_diff(implementations)
