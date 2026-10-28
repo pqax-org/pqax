@@ -1,17 +1,16 @@
 """Rebuilds samples/footers: Parquet files that the footer parsers of the collectors once read wrong, and nested
 columns of several writers, with expected.json.
 
-Usage, from the root of the repository, with a folder that make_footers.py wrote in the environments of its README
-section, and with pyarrow installed:
+Usage, with a folder that make_footers.py wrote in the environments that the README lists, and with pyarrow installed:
 
     python conformance/make_footer_samples.py FILES
 
 The samples are of two kinds. Some are files of FILES, copied under a name that says the writer, its version, and
-the case. The others are crafted here from one of them, byte by byte, with the defect they caught. expected.json has
-one member for each, as section 5 of the contract of the footer work says and samples/footers/README.md... the
-conformance README describes: the size that the reader is given, whether the data values are kept, and the error
-or the facts of the footer and the columns of a folder that holds the file alone. The facts come from the Python
-collector; footer_check.py checks that the C# collector finds the same.
+the case. The others are crafted here from the base file of pyarrow 26, byte by byte, with the defect they caught.
+expected.json has one member for each, as the section The footer samples of the README describes: the size that the
+reader is given, whether the data values are kept, and the error, or the facts of the footer and the columns of a
+folder that holds the file alone. The facts come from the Python collector; cross_check.py checks that the C#
+collector finds the same.
 """
 from __future__ import annotations
 
