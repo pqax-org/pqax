@@ -31,7 +31,7 @@ internal sealed class ReadContext
     }
 
     /// <summary>A list of strings. An element that is not a string is null.</summary>
-    public IReadOnlyList<string>? ReadStringList(ref Utf8JsonReader reader)
+    public IReadOnlyList<string?>? ReadStringList(ref Utf8JsonReader reader)
     {
         if (reader.TokenType != JsonTokenType.StartArray)
         {
@@ -104,7 +104,7 @@ internal sealed class ReadContext
     }
 
     /// <summary>The list in <see cref="scratch"/>, shared with an equal list read before.</summary>
-    private IReadOnlyList<string> PoolList()
+    private IReadOnlyList<string?> PoolList()
     {
         int hash = 17;
         foreach (string? item in scratch)
@@ -124,12 +124,12 @@ internal sealed class ReadContext
 
             if (same)
             {
-                return cached!;
+                return cached;
             }
         }
 
         string?[] list = scratch.ToArray();
         lists[slot] = list;
-        return list!;
+        return list;
     }
 }

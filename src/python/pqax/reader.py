@@ -336,3 +336,17 @@ def open_embedded(path_or_file: Any, part_name: str = EMBEDDED_PART) -> PqaxDocu
     data, entry_name, compression = read_embedded(path_or_file, part_name)
     archive, fp, owned = open_archive(data)
     return PqaxDocument(archive, fp, owned, embedded_part=entry_name, embedded_compression=compression)
+
+
+def try_open_embedded(path_or_file: Any, part_name: str = EMBEDDED_PART) -> Optional[PqaxDocument]:
+    """Opens the PQAX file that a package such as a VPAX holds as a part, as open_embedded does, or returns None when
+    the package has no part of that name, as most VPAX files of today have none. Every other failure raises as in
+    open_embedded."""
+    try:
+        data, entry_name, compression = read_embedded(path_or_file, part_name)
+    except PartMissingError as error:
+        if error.code == "embedded.partMissing":
+            return None
+        raise
+    archive, fp, owned = open_archive(data)
+    return PqaxDocument(archive, fp, owned, embedded_part=entry_name, embedded_compression=compression)

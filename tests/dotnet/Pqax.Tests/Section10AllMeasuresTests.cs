@@ -31,14 +31,34 @@ public class Section10AllMeasuresTests
             MetadataSize = metadataSize,
         });
 
-    /// <summary>A footprint written by <see cref="FootprintBuilder"/> with the rows that <paramref name="add"/> adds, opened by the reader.</summary>
-    private static PqaxDocument Build(Action<FootprintBuilder> add, CollectionInfo? collection = null)
+    /// <summary>
+    /// A footprint written by <see cref="FootprintBuilder"/> with the rows that <paramref name="add"/> adds, opened by
+    /// the reader. <paramref name="summary"/> changes summary.json after the write, for what the builder refuses, such
+    /// as a required field without a value.
+    /// </summary>
+    private static PqaxDocument Build(Action<FootprintBuilder> add, CollectionInfo? collection = null, Action<JsonNode>? summary = null)
     {
         var builder = new FootprintBuilder(collection ?? Collected);
         add(builder);
         using var stream = new MemoryStream();
         builder.Write(stream);
-        return PqaxDocument.Open(new MemoryStream(stream.ToArray()));
+        byte[] data = stream.ToArray();
+        if (summary != null)
+        {
+            data = Kit.Rewrite(data, (name, content) =>
+            {
+                if (name != "summary.json")
+                {
+                    return content;
+                }
+
+                JsonNode json = Kit.Json(content);
+                summary(json);
+                return Kit.Bytes(json);
+            });
+        }
+
+        return PqaxDocument.Open(new MemoryStream(data));
     }
 
     /// <summary>
@@ -289,9 +309,11 @@ public class Section10AllMeasuresTests
                 (5, "VACUUM END", null),
             })
             {
-                b.AddOperation(new OperationRow { Table = table, Name = name, CommitCount = 1, LastAt = lastAt });
+                b.AddOperation(new OperationRow { Table = table, Name = name ?? "unnamed", CommitCount = 1, LastAt = lastAt });
             }
-        });
+        },
+        // The builder refuses an operation without a name, which is required, so the ninth loses it after the write.
+        summary: json => json["operations"]!["name"]![8] = null);
         IReadOnlyList<TableStorage> tables = StorageMeasures.ForTables(doc.Summary, null, doc.Manifest.Collection);
 
         // The latest of 09-05, 09-07 ("vacuum end", lower case), and 09-06, whatever their order. OPTIMIZE without a
@@ -543,7 +565,8 @@ public class Section10AllMeasuresTests
     [Fact]
     public void Rule_10_7_every_sum_is_null_when_no_table_has_the_value()
     {
-        using PqaxDocument doc = Build(b => b.AddTable(new TableRow { Id = 1, Name = "bare", Format = "Delta" }));
+        // A table without a detailDepth, which is required and which the builder refuses.
+        using PqaxDocument doc = Written(("tables", [new JsonObject { ["id"] = 1, ["name"] = "bare", ["format"] = "Delta" }]));
         CollectionMeasures collection = StorageMeasures.ForCollection(doc.Summary, StorageMeasures.ForTables(doc.Summary, null, doc.Manifest.Collection));
         Assert.Equal(0L, collection.Sources);
         Assert.Equal(1L, collection.Tables);
@@ -571,7 +594,7 @@ public class Section10AllMeasuresTests
         {
             long source = b.AddSource(new SourceRow { Kind = "Lakehouse" });
             long table = b.AddTable(new TableRow { Source = source, Name = "t", Format = "Delta", DetailDepth = "Summary", FileCount = 2, FileSize = 500, FooterCount = 4 });
-            b.AddColumn(new ColumnRow { Table = table, Name = "c", ValueCount = 10, NullCount = 5, FileCountWithoutColumn = 2 });
+            b.AddColumn(new ColumnRow { Table = table, Name = "c", DataType = "string", ValueCount = 10, NullCount = 5, FileCountWithoutColumn = 2 });
         });
         FootprintMeasures measures = StorageMeasures.Compute(doc);
         ColumnStorage column = Assert.Single(measures.Columns);

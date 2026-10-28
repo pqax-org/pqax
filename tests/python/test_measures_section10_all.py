@@ -399,8 +399,9 @@ def test_10_7_every_sum_is_none_when_no_table_has_the_value():
 def test_measure_gives_the_columns_and_the_collection(tmp_path):
     builder = pqax.Builder({"collectorApp": "pqax-tests", "collectorAppVersion": "0.0", "level": 2})
     source = builder.add_source(kind="Lakehouse")
-    table = builder.add_table(source=source, name="t", detailDepth="Summary", fileCount=2, fileSize=500, footerCount=4)
-    builder.add_column(table=table, name="c", valueCount=10, nullCount=5, fileCountWithoutColumn=2)
+    table = builder.add_table(source=source, name="t", format="Delta", detailDepth="Summary", fileCount=2, fileSize=500,
+                              footerCount=4)
+    builder.add_column(table=table, name="c", dataType="string", valueCount=10, nullCount=5, fileCountWithoutColumn=2)
     path = tmp_path / "columns.pqax"
     builder.write(str(path))
     with pqax.open(str(path)) as doc:
@@ -427,9 +428,9 @@ DOCUMENT_KEYS = ["file", "embeddedPart", "format", "formatVersion", "collector",
 def test_tables_json_prints_only_the_keys_it_printed_before(tmp_path, capsys):
     builder = pqax.Builder({"collectorApp": "pqax-tests", "collectorAppVersion": "0.0", "level": 2,
                             "completedAt": datetime(2026, 10, 11, tzinfo=timezone.utc)})
-    table = builder.add_table(name="t", detailDepth="Files", fileCount=2, fileSize=300, partitionCount=1,
-                              vOrderedFileCount=1)
-    builder.add_column(table=table, name="c", valueCount=10, nullCount=1)
+    table = builder.add_table(name="t", format="Delta", detailDepth="Files", fileCount=2, fileSize=300,
+                              partitionCount=1, vOrderedFileCount=1)
+    builder.add_column(table=table, name="c", dataType="string", valueCount=10, nullCount=1)
     builder.add_operation(table=table, name="VACUUM END", commitCount=1,
                           lastAt=datetime(2026, 9, 1, tzinfo=timezone.utc))
     builder.add_partition(table=table, lastModifiedAt=datetime(2026, 9, 1, tzinfo=timezone.utc))

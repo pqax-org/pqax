@@ -87,18 +87,32 @@ internal static class Archive
         }
     }
 
-    /// <summary>
-    /// The range of the PQAX file that a VPAX file embeds as the part <paramref name="partName"/>. A stored part is
-    /// a range of the VPAX file, read in place. A deflated part is inflated into memory, and <paramref name="inflated"/>
-    /// is then the stream that holds it. <paramref name="name"/> is the name of the entry: the part name without a
-    /// leading slash, or the entry whose name differs from it only in case.
-    /// </summary>
+    /// <summary>The error <c>embedded.partMissing</c> for a package without the part <paramref name="partName"/>.</summary>
+    public static PqaxFormatException PartMissing(string partName)
+        => new PqaxFormatException("embedded.partMissing", $"The package has no part named {partName.TrimStart('/')}, so it holds no footprint.");
+
+    /// <summary>As <see cref="FindEmbedded"/>, and <c>embedded.partMissing</c> when the package has no such part.</summary>
     public static ByteRange LocateEmbedded(ByteRange package, string partName, out string name, out MemoryStream? inflated)
+        => FindEmbedded(package, partName, out name, out inflated) ?? throw PartMissing(partName);
+
+    /// <summary>
+    /// The range of the PQAX file that a VPAX file embeds as the part <paramref name="partName"/>, or null when the
+    /// package has no such part. A stored part is a range of the VPAX file, read in place. A deflated part is inflated
+    /// into memory, and <paramref name="inflated"/> is then the stream that holds it. <paramref name="name"/> is the name
+    /// of the entry: the part name without a leading slash, or the entry whose name differs from it only in case.
+    /// </summary>
+    public static ByteRange? FindEmbedded(ByteRange package, string partName, out string name, out MemoryStream? inflated)
     {
         ZipDirectory directory = OpenDirectory(package, "VPAX file");
         string wanted = partName.TrimStart('/');
-        ZipEntry entry = directory.FindLoosely(wanted)
-            ?? throw new PqaxFormatException("embedded.partMissing", $"The package has no part named {wanted}, so it holds no footprint.");
+        ZipEntry? entry = directory.FindLoosely(wanted);
+        if (entry == null)
+        {
+            name = wanted;
+            inflated = null;
+            return null;
+        }
+
         name = entry.Name;
         if (entry.IsStored && !entry.IsEncrypted && !entry.NeedsZip64)
         {

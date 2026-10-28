@@ -70,8 +70,8 @@ def schema_errors(path, check):
         errors += [f"manifest.json: {describe(e)}" for e in check["manifest"].iter_errors(manifest)]
         for part in manifest.get("parts", []) if isinstance(manifest.get("parts"), list) else []:
             name = part.get("name") if isinstance(part, dict) else None
-            if name not in names:
-                continue
+            if name not in names or archive.getinfo(name).flag_bits & 0x1:
+                continue  # a part that is missing or encrypted has no JSON for the schema to check
             try:
                 content = load(name)
             except ValueError as error:

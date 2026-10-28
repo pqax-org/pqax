@@ -44,7 +44,8 @@ internal sealed class ValidationRun
     /// <summary>The members of an object. When a name repeats, the last value wins, as in most JSON parsers.</summary>
     private static Dictionary<string, JsonElement> Members(JsonElement element) => ManifestReader.Members(element);
 
-    private static bool IsPartName(string name)
+    /// <summary>Whether a name is one that a part may have: not empty, and only ASCII letters, digits, '.', '-', and '_'.</summary>
+    internal static bool IsPartName(string name)
     {
         if (name.Length == 0)
         {

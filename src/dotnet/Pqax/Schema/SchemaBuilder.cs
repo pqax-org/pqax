@@ -58,9 +58,17 @@ internal sealed class SchemaBuilder<T>
         return this;
     }
 
+    /// <summary>A list of strings whose elements are never null in a valid file. A null element that a file has anyway is read as it is.</summary>
     public SchemaBuilder<T> StringList(string field, Func<T, IReadOnlyList<string>?> get, Action<T, IReadOnlyList<string>?> set, bool required = false)
     {
-        fields.Add(new StringListAccessor<T>(new FieldInfo(field, FieldKind.StringList, required, null, null), get, set));
+        fields.Add(new StringListAccessor<T>(new FieldInfo(field, FieldKind.StringList, required, null, null), target => get(target), (target, value) => set(target, value!)));
+        return this;
+    }
+
+    /// <summary>A list of strings whose elements can be null: <c>partitions.values</c>.</summary>
+    public SchemaBuilder<T> NullableStringList(string field, Func<T, IReadOnlyList<string?>?> get, Action<T, IReadOnlyList<string?>?> set)
+    {
+        fields.Add(new StringListAccessor<T>(new FieldInfo(field, FieldKind.StringList, false, null, null), get, set));
         return this;
     }
 

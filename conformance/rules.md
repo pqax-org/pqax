@@ -259,8 +259,8 @@ A reader is more tolerant than a validator (contracts 4.1). It skips a byte orde
 | Code | Invalid samples |
 |---|---|
 | `container.method` | `container.method.pqax` |
-| `container.encrypted` | None. The `zipfile` module of Python cannot write an encrypted entry. |
-| `container.zip64` | None. The `zipfile` module of Python writes ZIP64 records in the central directory only for an archive that needs them, over 4 GB or 65,535 entries. |
+| `container.encrypted` | `container.encrypted.pqax`. The `zipfile` module of Python cannot write an encrypted entry, so `make_kit.py` crafts it byte by byte. |
+| `container.zip64` | `container.zip64.pqax`, `container.zip64.extraField.pqax`: the locator and the extra field of the condition, each alone. The `zipfile` module of Python writes ZIP64 records only for an archive that needs them, over 4 GB or 65,535 entries, so `make_kit.py` crafts them byte by byte. |
 | `container.partName` | `container.partName.pqax` |
 | `container.caseCollision` | `container.caseCollision.pqax` |
 | `container.manifestMissing` | `container.manifestMissing.pqax` |

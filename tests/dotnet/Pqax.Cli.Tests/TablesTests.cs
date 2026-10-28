@@ -328,7 +328,7 @@ public class TablesTests
     {
         var builder = new FootprintBuilder(new CollectionInfo { CollectorApp = "pqax-tests", CollectorAppVersion = "0.0", CompletedAt = new DateTimeOffset(2026, 10, 11, 0, 0, 0, TimeSpan.Zero), Level = 2 });
         long table = builder.AddTable(new TableRow { Name = "t", Format = "Delta", DetailDepth = "Files", FileCount = 2, FileSize = 300, PartitionCount = 1, VOrderedFileCount = 1 });
-        builder.AddColumn(new ColumnRow { Table = table, Name = "c", ValueCount = 10, NullCount = 1 });
+        builder.AddColumn(new ColumnRow { Table = table, Name = "c", DataType = "string", ValueCount = 10, NullCount = 1 });
         builder.AddOperation(new OperationRow { Table = table, Name = "VACUUM END", CommitCount = 1, LastAt = new DateTimeOffset(2026, 9, 1, 0, 0, 0, TimeSpan.Zero) });
         builder.AddPartition(new PartitionRow { Table = table, LastModifiedAt = new DateTimeOffset(2026, 9, 1, 0, 0, 0, TimeSpan.Zero) });
         builder.AddFile(new FileRow { Table = table, FileSize = 100, IsVOrdered = true });

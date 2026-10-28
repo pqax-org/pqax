@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Text.Json;
 
@@ -18,9 +19,9 @@ namespace Pqax;
 /// longest array, whatever number the manifest states. A reference to a row that the file does not have keeps its
 /// number, and <see cref="PqaxTable{TRow}.FindById(long)"/> finds no row for it. What this version does not know is
 /// kept: a field in <see cref="PqaxTable{TRow}.ExtraFields"/>, a table in <see cref="ReadRaw(string)"/>, a member of
-/// the manifest, of the collection, or of a nested object in its <c>Extensions</c>. An entry that the manifest does not
-/// list, a member of a part descriptor, and a member of a table that is not an array are ignored. A
-/// <c>summary.json</c> that the manifest does not list or the archive does not have gives empty summary tables.
+/// the manifest, of a part descriptor, of the collection, or of a nested object in its <c>Extensions</c>. An entry
+/// that the manifest does not list and a member of a table that is not an array are ignored. A <c>summary.json</c>
+/// that the manifest does not list or the archive does not have gives empty summary tables.
 /// </para>
 /// <para>
 /// The open throws <see cref="PqaxFormatException"/> only for these codes: <c>container.manifestMissing</c> when the
@@ -30,8 +31,9 @@ namespace Pqax;
 /// <c>container.zip64</c>, <c>container.encrypted</c>, or <c>container.method</c> when the archive, or an entry that it
 /// reads, needs ZIP64, is encrypted, or uses a compression other than deflate. <c>OpenEmbedded</c> adds
 /// <c>embedded.partMissing</c> when the package has no part with the name of the footprint, and
-/// <c>container.manifestMissing</c> when the package is not a zip archive or its part cannot be inflated. A detail part
-/// that is missing (<c>manifest.partMissing</c>) or that cannot be read fails only the read of its table.
+/// <c>container.manifestMissing</c> when the package is not a zip archive or its part cannot be inflated;
+/// <c>TryOpenEmbedded</c> returns false instead of the first. A detail part that is missing
+/// (<c>manifest.partMissing</c>) or that cannot be read fails only the read of its table.
 /// </para>
 /// <para>
 /// Every member is safe to call from several threads, and the reads of one document are serialized on one lock. The
@@ -198,26 +200,89 @@ public sealed class PqaxDocument : IDisposable
             throw new ArgumentNullException(nameof(partName));
         }
 
-        Stream source = Archive.Seekable(vpaxStream, leaveOpen, out Stream? owned);
-        try
-        {
-            var sync = new object();
-            ByteRange range = Archive.LocateEmbedded(new ByteRange(source, 0, source.Length, sync), partName, out string name, out MemoryStream? inflated);
-            if (inflated == null)
-            {
-                return Create(range, owned, name, "stored", sync);
-            }
+        return OpenPart(vpaxStream, partName, leaveOpen) ?? throw Archive.PartMissing(partName);
+    }
 
-            // The footprint is in memory now, so the package is no longer needed.
-            owned?.Dispose();
-            owned = inflated;
-            return Create(range, inflated, name, "deflated", sync);
-        }
-        catch
+    /// <summary>
+    /// Opens the PQAX file that a VPAX file embeds as the part <c>Footprint.pqax</c>, as
+    /// <see cref="OpenEmbedded(string, string)"/> does, or returns false when the package has no such part, which is
+    /// the case of most VPAX files of today. Any other failure throws as <see cref="OpenEmbedded(string, string)"/> does.
+    /// </summary>
+    /// <param name="vpaxPath">The path of the VPAX file.</param>
+    /// <param name="document">The document, or null when the package has no such part; the file is then closed.</param>
+    /// <returns>True when the package has the part and the document is open.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="vpaxPath"/> is null.</exception>
+    /// <exception cref="IOException">The file cannot be opened or read, such as <see cref="FileNotFoundException"/> when it does not exist.</exception>
+    /// <exception cref="UnauthorizedAccessException">The caller may not read the file.</exception>
+    /// <exception cref="PqaxFormatException">The package or its part cannot be read, or the part is not a PQAX file that this library reads.</exception>
+    public static bool TryOpenEmbedded(string vpaxPath, [NotNullWhen(true)] out PqaxDocument? document)
+        => TryOpenEmbedded(vpaxPath, FootprintPartName, out document);
+
+    /// <summary>
+    /// Opens the PQAX file that a VPAX file embeds as one of its parts, as <see cref="OpenEmbedded(string, string)"/>
+    /// does, or returns false when the package has no part with that name. Any other failure throws as
+    /// <see cref="OpenEmbedded(string, string)"/> does.
+    /// </summary>
+    /// <param name="vpaxPath">The path of the VPAX file.</param>
+    /// <param name="partName">The name of the part, found as <see cref="OpenEmbedded(string, string)"/> finds it.</param>
+    /// <param name="document">The document, or null when the package has no such part; the file is then closed.</param>
+    /// <returns>True when the package has the part and the document is open.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="vpaxPath"/> or <paramref name="partName"/> is null.</exception>
+    /// <exception cref="IOException">The file cannot be opened or read, such as <see cref="FileNotFoundException"/> when it does not exist.</exception>
+    /// <exception cref="UnauthorizedAccessException">The caller may not read the file.</exception>
+    /// <exception cref="PqaxFormatException">The package or its part cannot be read, or the part is not a PQAX file that this library reads.</exception>
+    public static bool TryOpenEmbedded(string vpaxPath, string partName, [NotNullWhen(true)] out PqaxDocument? document)
+    {
+        if (partName == null)
         {
-            owned?.Dispose();
-            throw;
+            throw new ArgumentNullException(nameof(partName));
         }
+
+        document = OpenPart(OpenFile(vpaxPath), partName, false);
+        return document != null;
+    }
+
+    /// <summary>
+    /// Opens the PQAX file that a VPAX stream embeds as the part <c>Footprint.pqax</c>, as
+    /// <see cref="OpenEmbedded(Stream, string, bool)"/> does, or returns false when the package has no such part. The
+    /// stream is closed when the method returns false, as when a document that holds it is disposed.
+    /// </summary>
+    /// <param name="vpaxStream">A readable stream of the VPAX file.</param>
+    /// <param name="document">The document, or null when the package has no such part.</param>
+    /// <returns>True when the package has the part and the document is open.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="vpaxStream"/> is null.</exception>
+    /// <exception cref="NotSupportedException">The stream cannot read.</exception>
+    /// <exception cref="IOException">The stream cannot be read.</exception>
+    /// <exception cref="PqaxFormatException">The package or its part cannot be read, or the part is not a PQAX file that this library reads.</exception>
+    public static bool TryOpenEmbedded(Stream vpaxStream, [NotNullWhen(true)] out PqaxDocument? document)
+        => TryOpenEmbedded(vpaxStream, FootprintPartName, false, out document);
+
+    /// <summary>
+    /// Opens the PQAX file that a VPAX stream embeds as one of its parts, as <see cref="OpenEmbedded(Stream, string, bool)"/>
+    /// does, or returns false when the package has no part with that name. Any other failure throws as
+    /// <see cref="OpenEmbedded(Stream, string, bool)"/> does.
+    /// </summary>
+    /// <param name="vpaxStream">A readable stream of the VPAX file.</param>
+    /// <param name="partName">The name of the part, found as <see cref="OpenEmbedded(Stream, string, bool)"/> finds it.</param>
+    /// <param name="leaveOpen">
+    /// True to leave the stream open when the document is disposed, and when the method returns false; otherwise the
+    /// stream is closed when it returns false.
+    /// </param>
+    /// <param name="document">The document, or null when the package has no such part.</param>
+    /// <returns>True when the package has the part and the document is open.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="vpaxStream"/> or <paramref name="partName"/> is null.</exception>
+    /// <exception cref="NotSupportedException">The stream cannot read.</exception>
+    /// <exception cref="IOException">The stream cannot be read.</exception>
+    /// <exception cref="PqaxFormatException">The package or its part cannot be read, or the part is not a PQAX file that this library reads.</exception>
+    public static bool TryOpenEmbedded(Stream vpaxStream, string partName, bool leaveOpen, [NotNullWhen(true)] out PqaxDocument? document)
+    {
+        if (partName == null)
+        {
+            throw new ArgumentNullException(nameof(partName));
+        }
+
+        document = OpenPart(vpaxStream, partName, leaveOpen);
+        return document != null;
     }
 
     /// <summary>
@@ -426,6 +491,40 @@ public sealed class PqaxDocument : IDisposable
         }
 
         return new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read, 4096, FileOptions.RandomAccess);
+    }
+
+    /// <summary>
+    /// The document of a part of a package, or null when the package has no part with that name; the stream that the
+    /// caller hands over is then closed, as on a failure.
+    /// </summary>
+    private static PqaxDocument? OpenPart(Stream vpaxStream, string partName, bool leaveOpen)
+    {
+        Stream source = Archive.Seekable(vpaxStream, leaveOpen, out Stream? owned);
+        try
+        {
+            var sync = new object();
+            ByteRange? range = Archive.FindEmbedded(new ByteRange(source, 0, source.Length, sync), partName, out string name, out MemoryStream? inflated);
+            if (range == null)
+            {
+                owned?.Dispose();
+                return null;
+            }
+
+            if (inflated == null)
+            {
+                return Create(range, owned, name, "stored", sync);
+            }
+
+            // The footprint is in memory now, so the package is no longer needed.
+            owned?.Dispose();
+            owned = inflated;
+            return Create(range, inflated, name, "deflated", sync);
+        }
+        catch
+        {
+            owned?.Dispose();
+            throw;
+        }
     }
 
     private static PqaxDocument Create(ByteRange range, Stream? owned, string? embeddedPart, string? embeddedCompression, object sync)

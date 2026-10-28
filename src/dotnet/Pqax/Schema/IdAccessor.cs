@@ -32,4 +32,6 @@ internal sealed class IdAccessor<T> : FieldAccessor<T>
     public override int ValueHash(T target) => get(target).GetHashCode();
 
     public override void Copy(T source, T target) => set(target, get(source));
+
+    public override long? IntegerOutOfRange(T target) => IsOutOfRange(get(target)) ? get(target) : null;
 }

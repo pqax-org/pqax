@@ -45,4 +45,21 @@ internal sealed class ReferenceListAccessor<T> : FieldAccessor<T>
     public override int ValueHash(T target) => Equality.ListHash(get(target), EqualityComparer<long>.Default);
 
     public override void Copy(T source, T target) => set(target, get(source));
+
+    public override long? IntegerOutOfRange(T target)
+    {
+        IReadOnlyList<long>? value = get(target);
+        if (value != null)
+        {
+            for (int i = 0; i < value.Count; i++)
+            {
+                if (IsOutOfRange(value[i]))
+                {
+                    return value[i];
+                }
+            }
+        }
+
+        return null;
+    }
 }

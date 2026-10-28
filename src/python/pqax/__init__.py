@@ -25,19 +25,20 @@ __version__ = "0.2.2"
 
 from ._errors import (
     ContainerError, FormatError, JsonError, ManifestMissingError, PartMissingError, PqaxError, UnknownVersionError,
+    WriteError,
 )
 from ._json import format_timestamp, parse_timestamp
 from ._schema import DETAIL_TABLES, FIELDS, FORMAT_VERSION, REFERENCES, REQUIRED, ROWS_PER_PART, SUMMARY_TABLES, TABLES
 from . import collect, export, measures
 from .builder import Builder, BuilderOptions
 from .dataframe import to_dataframe
-from .reader import PqaxDocument, open, open_embedded
+from .reader import PqaxDocument, open, open_embedded, try_open_embedded
 from .validator import Issue, ValidationResult, validate, validate_embedded
 
 __all__ = [
     "Builder", "BuilderOptions", "ContainerError", "DETAIL_TABLES", "FIELDS", "FORMAT_VERSION", "FormatError",
     "Issue", "JsonError", "ManifestMissingError", "PartMissingError", "PqaxDocument", "PqaxError", "REFERENCES",
-    "REQUIRED", "ROWS_PER_PART", "SUMMARY_TABLES", "TABLES", "UnknownVersionError", "ValidationResult",
-    "format_timestamp", "measures", "open", "open_embedded", "parse_timestamp", "to_dataframe", "validate",
-    "validate_embedded",
+    "REQUIRED", "ROWS_PER_PART", "SUMMARY_TABLES", "TABLES", "UnknownVersionError", "ValidationResult", "WriteError",
+    "format_timestamp", "measures", "open", "open_embedded", "parse_timestamp", "to_dataframe", "try_open_embedded",
+    "validate", "validate_embedded",
 ]

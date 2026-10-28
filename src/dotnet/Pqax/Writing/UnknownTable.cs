@@ -20,8 +20,8 @@ internal sealed class UnknownTable : ITableWriter
 
     public int Count => table.Count;
 
-    /// <summary>The ids of a table that this version does not know have no meaning that the builder could check.</summary>
-    public void CheckIds()
+    /// <summary>The fields of a table that this version does not know have no rules that the builder could check.</summary>
+    public void Check()
     {
     }
 

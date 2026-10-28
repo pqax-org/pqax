@@ -96,6 +96,20 @@ internal sealed class Schema<T>
         return getExtensions == null || Equality.Extensions(getExtensions(a), getExtensions(b));
     }
 
+    /// <summary>The first integer of the fields of a nested object that is beyond 2^53 - 1 in absolute value, or null.</summary>
+    public long? IntegerOutOfRange(T value)
+    {
+        foreach (FieldAccessor<T> field in Fields)
+        {
+            if (field.IntegerOutOfRange(value) is long far)
+            {
+                return far;
+            }
+        }
+
+        return null;
+    }
+
     public int Hash(T value)
     {
         int hash = 17;
