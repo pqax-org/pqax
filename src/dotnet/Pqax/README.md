@@ -29,15 +29,15 @@ using (PqaxDocument doc = PqaxDocument.Open("footprint.pqax"))
     Console.WriteLine($"PQAX {doc.Manifest.FormatVersion}, level {doc.Manifest.Collection.Level}, {doc.Summary.Tables.Count} tables");
 }
 
-// The footprint that a VPAX file holds as the part Footprint.pqax.
-try
+// The footprint that a VPAX file holds as the part Footprint.pqax, when it has one.
+if (PqaxDocument.TryOpenEmbedded("model.vpax", out PqaxDocument? embedded))
 {
-    using (PqaxDocument doc = PqaxDocument.OpenEmbedded("model.vpax"))
+    using (embedded)
     {
-        Console.WriteLine($"{doc.EmbeddedPart}, {doc.EmbeddedCompression}");
+        Console.WriteLine($"{embedded.EmbeddedPart}, {embedded.EmbeddedCompression}");
     }
 }
-catch (PqaxFormatException e) when (e.Code == "embedded.partMissing")
+else
 {
     Console.WriteLine("The VPAX file has no footprint.");
 }
@@ -47,6 +47,7 @@ catch (PqaxFormatException e) when (e.Code == "embedded.partMissing")
 |---|---|
 | `PqaxDocument.Open(path)`, `Open(stream, leaveOpen)` | The central directory of the zip, `manifest.json`, and `summary.json`. Nothing else. A stream that cannot seek is copied into memory first. |
 | `PqaxDocument.OpenEmbedded(vpaxPath, partName)`, `OpenEmbedded(stream, partName, leaveOpen)` | The same, for the PQAX file that a VPAX file holds as the part `Footprint.pqax`. A stored part is read in place, a deflated part is inflated in memory first. `EmbeddedPart` gives the name of the part and `EmbeddedCompression` gives `stored` or `deflated`; both are null for a PQAX file of its own. |
+| `PqaxDocument.TryOpenEmbedded(vpaxPath, out document)`, `TryOpenEmbedded(vpaxPath, partName, out document)`, `TryOpenEmbedded(stream, out document)`, `TryOpenEmbedded(stream, partName, leaveOpen, out document)` | The same as `OpenEmbedded`, but false and a null document when the VPAX file has no part with that name, as most VPAX files have none yet, where `OpenEmbedded` throws `embedded.partMissing`. The file is then closed, and so is the stream unless `leaveOpen`. Every other failure throws as in `OpenEmbedded`. |
 
 ## Read the tables
 
@@ -95,7 +96,7 @@ A row is a class with one property for each field of the object model, named as 
 | string | `string?` |
 | boolean | `bool?` |
 | timestamp | `DateTimeOffset?`, in UTC |
-| list of string | `IReadOnlyList<string>?`. The format allows a null element only in `PartitionRow.Values`, for a null partition value. |
+| list of string | `IReadOnlyList<string>?`, except `PartitionRow.Values`, which is `IReadOnlyList<string?>?`: the format allows a null element only there, for a null partition value. |
 | map of string to string | `IReadOnlyDictionary<string, string>?` |
 | `Distribution`, `DeltaDetails`, `IcebergDetails` | Classes of the same names. Their members that this version does not know are in `Extensions`. |
 
@@ -237,11 +238,20 @@ builder.Write("orders.pqax");
 
 There is one Add method for each of the 21 tables. For a table with ids, it keeps a positive id that the row brings, gives a row whose id is 0 the next free id, one more than the largest id so far, and returns the id. For a table without ids, it returns the position of the row, from 0. The caller puts the ids in the references of other rows. The builder keeps the row instance itself, so a property set after Add, such as the clustering columns of a table once its columns have ids, is written.
 
-`Write` refuses a table with the same id in two rows, or with an id that is not positive: it throws `InvalidOperationException`, with the table and the id in the message, before it writes anything. Apart from the ids, the builder does not check what it writes. Validate the file when it matters.
+`Write` refuses a footprint that breaks a rule that it can check, before it writes anything, with a `PqaxWriteException` whose `Code` is the code that the validator reports, and whose `Table` and `Field` say where:
+
+| Code | When |
+|---|---|
+| `manifest.required` | The collection has no `Level` |
+| `table.idUnique` | A table has the same id in two rows, or an id that is not positive |
+| `table.required` | A row has no value in a required field of its table, such as `ColumnRow.DataType`. Section 4.4 of the rules of the conformance kit lists them. |
+| `json.integerRange` | An id, an integer, a reference, an element of a list of references, an integer of a `Distribution`, `DeltaDetails`, or `IcebergDetails`, or `Level`, `RequestCount`, or `BytesRead` of the collection is beyond 2^53 - 1 in absolute value |
+
+`PqaxWriteException` is an `InvalidOperationException`, as the error of a repeated id was before it had a code. The builder does not check what a producer adds, nor the other rules of the validator, such as the references and the totals. Validate the file when it matters.
 
 The file has `manifest.json`, then `summary.json`, then the parts of the detail tables, with at most `Options.RowsPerPart` rows in a part: 250,000, the most that the format allows, by default. The JSON is compact UTF-8, deflated at `Options.CompressionLevel`, `Optimal` by default. Every entry has the date of `Collection.CompletedAt`, so the same footprint gives the same bytes on the same .NET runtime. The documentation of `FootprintBuilder` has the details.
 
-`FootprintBuilder.From(document)` copies every table of a document, with its ids, the fields and tables that this version does not know, the members of the manifest and of nested objects that it does not know, the collection, and the obfuscation fields. A tool that rewrites a file starts there. The written file has format version 0.2, also when the document is a 0.1 file, and its detail parts are named after their tables.
+`FootprintBuilder.From(document)` copies every table of a document, with its ids, the fields and tables that this version does not know, the members of the manifest and of nested objects that it does not know, the collection, the obfuscation fields, and the parts. A tool that rewrites a file starts there. The written file has format version 0.2, also when the document is a 0.1 file. It keeps the parts of the document: a detail table is written in the parts that it was read from, with their names, their rows, and the members that a producer added to their descriptors in the manifest, which the reader gives in `PartInfo.Extensions`, and `summary.json` keeps the members of its descriptor. A table keeps its parts when each of them lists this table alone, has a name that a part may have, and holds at most `Options.RowsPerPart` rows, and when they hold the rows that the table had when it was copied. The rows added after `From` go to new parts after them, numbered after them, as in `files.2.json`. A table that keeps no parts is written in parts named after it, after the kept ones, and the members of the descriptors of its old parts are dropped. A plain rewrite of a valid file therefore has the parts of the file.
 
 ## Embed a footprint in a VPAX file
 
@@ -318,7 +328,7 @@ A library that another application loads, such as a plug-in, runs with the redir
 | `ArgumentNullException` | An argument is null |
 | `IOException`, such as `FileNotFoundException`, and `UnauthorizedAccessException` | A file or a stream cannot be opened, read, or written |
 | `ObjectDisposedException` | A read, after `Dispose`, of a table that the document had not read before |
-| `InvalidOperationException` | `Write` finds an id that repeats in a table, or that is not positive |
+| `PqaxWriteException`, an `InvalidOperationException` | `Write` finds a footprint that breaks a rule that it checks. `Code` is the code of the rule, as in the section Write. |
 | `ArgumentException` | A path is empty, or `Write` gets a stream that cannot write |
 | `ArgumentOutOfRangeException` | `Options.RowsPerPart` outside 1 to 250,000, or an index outside a table |
 
@@ -327,7 +337,7 @@ The reader refuses a file with a `PqaxFormatException` only in these cases:
 | Code | When |
 |---|---|
 | `container.manifestMissing` | The file is not a zip, or it has no `manifest.json`. For `OpenEmbedded`, also a VPAX file that is not a zip, or a part that cannot be inflated. |
-| `embedded.partMissing` | `OpenEmbedded`: the VPAX file has no part with the name of the footprint |
+| `embedded.partMissing` | `OpenEmbedded`: the VPAX file has no part with the name of the footprint. `TryOpenEmbedded` returns false instead. |
 | `manifest.format` | The format is not `pqax` |
 | `manifest.versionUnknown` | The first number of the format version is not 0 |
 | `json.invalid` | A part that it reads is damaged or is not valid JSON. For a detail part, the read of that table fails, not the open. |

@@ -10,8 +10,9 @@ Version 0.2.2. Reads 0.1 and 0.2, and any format version 0.x, whatever the secon
 |---|---|
 | `openPqax(input)` | Opens a PQAX file. It reads the zip directory, `manifest.json`, and `summary.json`, and nothing else. |
 | `openEmbedded(input, partName?)` | Opens the PQAX file that a VPAX package holds as a part, by default `Footprint.pqax`. A stored part is read in place, and a deflated part is inflated in memory first. |
+| `tryOpenEmbedded(input, partName?)` | The same as `openEmbedded`, or `null` when the package has no such part, as most VPAX files have none yet |
 | `embeddedSource(input, partName?)` | The bytes of that part as a `ByteSource`, to validate it: `validate(await embeddedSource(vpax))` |
-| `doc.manifest` | The manifest, with the members that this version does not know |
+| `doc.manifest` | The manifest, with the members that this version does not know, in the manifest and in each element of `parts` |
 | `doc.summary` | The 15 summary tables, read when the file opens |
 | `doc.readTable(name)` | Reads a detail table: every part of it, joined, and cached |
 | `doc.readRaw(name)` | Reads a table as the file holds it, with the fields and members that this version does not know |
@@ -72,7 +73,7 @@ for (const table of rows(doc.summary.tables)) {
 In Node:
 
 ```js
-import { embeddedSource, indexById, openEmbedded, openPqax, validate } from "@pqax/pqax";
+import { embeddedSource, indexById, openPqax, tryOpenEmbedded, validate } from "@pqax/pqax";
 import { fromFile } from "@pqax/pqax/node";
 
 const doc = await openPqax(await fromFile("sample.pqax"));
@@ -84,7 +85,7 @@ for (let i = 0; i < chunks.length; i++) {
   const leaf = physical.get(chunks.physicalColumn[i]);   // a position in doc.summary.physicalColumns
 }
 
-const footprint = await openEmbedded(await fromFile("model.vpax"));
+const footprint = await tryOpenEmbedded(await fromFile("model.vpax"));   // null when the VPAX file has no footprint
 
 const result = await validate(await fromFile("sample.pqax"));
 for (const issue of result.issues) console.log(issue.code, issue.message);
@@ -130,7 +131,7 @@ The reader is tolerant. It skips a byte order mark, ignores what it does not kno
 | `manifest.versionUnknown` | `formatVersion` does not start with the number 0 |
 | `json.invalid` | `manifest.json` or `summary.json` is not valid JSON |
 
-It also throws a `PqaxError` when an entry that it must read cannot be read: `container.method`, `container.encrypted`, or `container.zip64` for the entry, and `json.invalid` for damaged bytes. A detail part is read only by `readTable` and `readRaw`, so a broken detail part fails only the read of its table, with `json.invalid`, or with `manifest.partMissing` when the archive does not have it. `openEmbedded` throws `embedded.partMissing` when the package has no such part.
+It also throws a `PqaxError` when an entry that it must read cannot be read: `container.method`, `container.encrypted`, or `container.zip64` for the entry, and `json.invalid` for damaged bytes. A detail part is read only by `readTable` and `readRaw`, so a broken detail part fails only the read of its table, with `json.invalid`, or with `manifest.partMissing` when the archive does not have it. `openEmbedded` throws `embedded.partMissing` when the package has no such part, where `tryOpenEmbedded` returns `null`.
 
 ## Validation
 

@@ -70,7 +70,7 @@ The additions in `extensions.pqax`:
 | Addition | Where |
 |---|---|
 | A member of a producer in the manifest | `acme_build`, an object |
-| A member of a producer in an element of `parts` | `acme_checksum` in the element for `files.json` |
+| Members of a producer in elements of `parts` | `acme_checksum` in the elements for `summary.json` and `files.json`, and `acme_version` in the element for `acme_extra.json` |
 | A table of a producer in `summary.json`, stated in the manifest | `acme_reviews`, 2 rows |
 | A field of a producer in a summary table | `tables.acme_score`: `[7, 9]` |
 | A field of a producer in a detail table | `files.acme_tier`: `"hot"` in all 5 rows |
@@ -96,7 +96,15 @@ Each file in `samples/invalid` is a valid sample with one change. It is named af
 | `codes` | The codes that a validator must report. It may report more: a change can break a rule that depends on the one it targets. |
 | `change` | What differs from the valid file, for people |
 
-No file tests `container.encrypted` or `container.zip64`: the `zipfile` module of Python, which writes the kit, cannot write an encrypted entry, or ZIP64 records in the central directory of a small archive.
+The `zipfile` module of Python, which writes the kit, cannot write an encrypted entry, or ZIP64 records in a small archive, so `make_kit.py` crafts the three samples of `container.encrypted` and `container.zip64` byte by byte from the entries of `sample.pqax`, and reads each back with `zipfile` to check it:
+
+| File | The structure that it adds |
+|---|---|
+| `container.encrypted.pqax` | `commits.json` is encrypted with the traditional PKWARE encryption of section 6.1 of the zip specification, with the password `pqax`: bit 0 of its flags is set, and its data is the 12-byte encryption header followed by the encrypted deflated data |
+| `container.zip64.pqax` | A ZIP64 end of central directory record and its locator precede the end record, which keeps the real counts, size, and offset |
+| `container.zip64.extraField.pqax` | The central directory gives `commits.json` a ZIP64 extra field, header 0x0001, with no data, since its sizes and offset fit in 32 bits |
+
+None of the three needs ZIP64 or a password to open: the manifest, the summary, and the other parts are as in `sample.pqax`.
 
 ## Expected results
 
@@ -223,7 +231,7 @@ These facts are not in the expected files, and a test can check them too:
 | `embedded-stored.vpax`, `embedded-deflated.vpax` | The entry `Footprint.pqax` has the same bytes as `sample.pqax` |
 | Every sample | Opening a file reads `manifest.json` and `summary.json`, and no detail part |
 
-A reader refuses three invalid files when it opens them: `container.manifestMissing.pqax`, `manifest.format.pqax`, and `manifest.versionUnknown.pqax`. It opens `json.bom.pqax` and gets the results of `sample.pqax`. It opens `json.invalid.pqax` and fails only when it reads `commits`.
+A reader refuses three invalid files when it opens them: `container.manifestMissing.pqax`, `manifest.format.pqax`, and `manifest.versionUnknown.pqax`. It opens `json.bom.pqax` and gets the results of `sample.pqax`. It opens `json.invalid.pqax` and fails only when it reads `commits`. It opens `container.zip64.pqax` and `container.zip64.extraField.pqax` and gets the results of `sample.pqax`, since neither needs ZIP64 to be read, and it opens `container.encrypted.pqax` and fails only when it reads `commits`, with the code `container.encrypted`.
 
 ### A validator test
 
@@ -271,7 +279,7 @@ python conformance/check_schema.py
 
 `make_kit.py` deletes the files in `samples/`, `samples/invalid/`, and `expected/`, and writes them again. Do not edit them by hand: change the script.
 
-It reads `fixtures/probe-dump` and builds the tables with `build_pqax.py`, the builder of the [prototype](../research/prototype/README.md). It builds `format-0.1.pqax` with the format version 0.1 of the builder, which leaves out the fields that 0.2 added. That import is the one exception to the rule that the kit depends on nothing outside `conformance/`, `src/`, and `tests/`. The Python package now has a writer, `pqax.Builder`, and the [backlog](../docs/backlog.md) has the item that makes the script use it.
+It reads `fixtures/probe-dump` and builds the tables with `build_pqax.py`, the builder of the [prototype](../research/prototype/README.md). It writes the zip archives with the `zipfile` module, and crafts the three samples of `container.encrypted` and `container.zip64` byte by byte, as the section on the invalid samples says. It builds `format-0.1.pqax` with the format version 0.1 of the builder, which leaves out the fields that 0.2 added. That import is the one exception to the rule that the kit depends on nothing outside `conformance/`, `src/`, and `tests/`. The Python package now has a writer, `pqax.Builder`, and the [backlog](../docs/backlog.md) has the item that makes the script use it.
 
 The output is deterministic: every zip entry has the date 2026-10-07 00:00 and the same attributes, and the entries are written in a fixed order. Two runs with the same Python give the same bytes. Another zlib can compress differently: the samples in the repository were written by Python 3.14 on Windows, whose zlib is zlib-ng 1.3.1. The content and the expected results do not depend on it.
 
@@ -445,7 +453,7 @@ The kit fills the other fields of the samples without a field of the dump: `tabl
 
 ## Cross-implementation check
 
-`cross_check.py` checks that the packages agree with each other. Each writer rewrites three samples, and every validator and every reader checks every file that the writers produce, and the samples themselves as a reference.
+`cross_check.py` checks that the packages agree with each other. Each writer rewrites four samples, and every validator and every reader checks every file that the writers produce, and the samples themselves as a reference.
 
 ```bash
 python conformance/cross_check.py                  # prints one row for each file and one column for each validator and reader
@@ -461,7 +469,9 @@ python conformance/cross_check.py --skip dotnet    # leaves out an implementatio
 | Reader | `pqax.open` | `PqaxDocument.Open` | `openPqax`, through `node` |
 | Measures | `pqax.measures.measure` | `StorageMeasures.Compute`, through the runner | `buildModel` of `@pqax/views`, through `node` and `make_measures.py` |
 
-The files are `sample.pqax`, `sample.pqax` with at most 20 rows in a detail part, and `extensions.pqax`, as each writer writes them, the fixture as each collector writes it, which must give the results of `expected/sample.json`, and the samples `sample.pqax`, `multipart.pqax`, `extensions.pqax`, and `format-0.1.pqax` of the kit. Every validator must accept every file. Every reader must get the `rows`, the length of every table read whole, and `tablesFileSize`, `tablesRowCount`, `columnChunksCompressedSize`, `tables`, and `largestColumns` of the expected file of the sample. A written file has format version 0.2 and part names of its writer, so the parts are not compared. The measures of every file, by the three implementations, must equal `expected/measures/` of its sample value for value, for the tables, the columns, and the collection; for the collected fixture, the days since the last commit are left out, since they count to the time of the collection.
+The files are `sample.pqax`, `sample.pqax` with at most 20 rows in a detail part, `extensions.pqax`, and `multipart.pqax`, as each writer writes them, the fixture as each collector writes it, which must give the results of `expected/sample.json`, and the samples `sample.pqax`, `multipart.pqax`, `extensions.pqax`, and `format-0.1.pqax` of the kit. Every validator must accept every file. Every reader must get the `rows`, the length of every table read whole, and `tablesFileSize`, `tablesRowCount`, `columnChunksCompressedSize`, `tables`, and `largestColumns` of the expected file of the sample. A written file has format version 0.2. A rewrite with the default rows per part keeps the parts of its sample, so every reader must find the descriptors of the parts of the sample as they are, in their order: the names, the rows of each table, and the members of a producer, such as `acme_checksum` and `acme_version` in `extensions.pqax`. The file with 20 rows in a part has the part names of its writer for `columnChunks`, and only `summary.json` first is checked there.
+
+Every validator must also report at least the codes of `samples/invalid/expected.json` for every invalid sample, and every reader must read the three samples of the container rules as the reader test says: `container.zip64.pqax` and `container.zip64.extraField.pqax` with the results of `expected/sample.json`, and `container.encrypted.pqax` until `commits`, whose read fails with the code `container.encrypted`. The measures of every file, by the three implementations, must equal `expected/measures/` of its sample value for value, for the tables, the columns, and the collection; for the collected fixture, the days since the last commit are left out, since they count to the time of the collection.
 
 When both collectors run, their two files of the fixture are read whole with the Python reader and compared in every table and every field, a missing field counting as nulls, and in the collection of the manifest without `collectorApp`, `collectorAppVersion`, `collectorLib`, `collectorLibVersion`, `startedAt`, and `completedAt`: the requests and the bytes read must be equal too. Without pyarrow, the Python collector is skipped with a message, and with one collector the comparison is skipped.
 
@@ -480,6 +490,6 @@ The fixture is small, and much of the format is not in it:
 - No issues, no model bindings, and no obfuscation fields.
 - No data values: no `minValue`, `maxValue`, partition values, or commit parameters, and `collection` says so.
 - Every string is ASCII, so no sample tests the decoding of other UTF-8 text.
-- No encrypted entry and no ZIP64 archive.
+- No valid sample has an encrypted entry or ZIP64 records: only the three invalid samples of the container rules, crafted byte by byte, do.
 - The largest detail table has 52 rows. Only `part.tooLarge.pqax` has a large part: 1.5 MB of JSON text, which takes 1.5 KB in the zip.
 - The expected results check counts, sums, and the joins between tables, not the value of every field.

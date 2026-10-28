@@ -47,7 +47,10 @@ export interface CollectionInfo {
   readonly bytesRead?: number;
 }
 
-/** A part of the file, as the manifest lists it. */
+/**
+ * A part of the file, as the manifest lists it. Members that this version does not know, such as those that a producer
+ * adds, are kept on the object.
+ */
 export interface PartInfo {
   /** The name of the zip entry. */
   readonly name: string;

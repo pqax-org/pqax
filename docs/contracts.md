@@ -167,6 +167,9 @@ public sealed class PqaxDocument : IDisposable
     public static PqaxDocument Open(Stream stream, bool leaveOpen = false);   // seekable; parts are read on demand
     public static PqaxDocument OpenEmbedded(string vpaxPath, string partName = "Footprint.pqax");
     public static PqaxDocument OpenEmbedded(Stream vpaxStream, string partName = "Footprint.pqax", bool leaveOpen = false);
+    public static bool TryOpenEmbedded(string vpaxPath, out PqaxDocument? document);   // and (vpaxPath, partName, out),
+    public static bool TryOpenEmbedded(Stream vpaxStream, string partName, bool leaveOpen, out PqaxDocument? document);
+                                               // (vpaxStream, out): false where OpenEmbedded throws embedded.partMissing
     public Manifest Manifest { get; }
     public Summary Summary { get; }            // every summary table, read when the document opens
     public string? EmbeddedPart { get; }       // the name of the part when the document was opened inside a VPAX, and
@@ -188,7 +191,7 @@ public sealed class Manifest
     string? ObfuscatorDictionaryId; string? ObfuscatorLib; string? ObfuscatorLibVersion;
     IReadOnlyList<PartInfo> Parts; IReadOnlyDictionary<string, JsonElement> Extensions;
 }
-public sealed class PartInfo { string Name; IReadOnlyDictionary<string, int> Tables; }
+public sealed class PartInfo { string Name; IReadOnlyDictionary<string, int> Tables; IReadOnlyDictionary<string, JsonElement> Extensions; }
 
 public sealed class FootprintBuilder
 {
@@ -197,10 +200,11 @@ public sealed class FootprintBuilder
     public long AddSource(SourceRow row);             // one Add method per table; for a table with ids it assigns the next Id when the row
                                                       // has none, keeps a positive Id that the row brings, and returns it; for the others
                                                       // it returns the row position; Write refuses a repeated id
-    public static FootprintBuilder From(PqaxDocument document);   // copies every table, extra fields included, for tools that rewrite a file
-    public void Write(Stream stream);
-    public void Write(string path);
+    public static FootprintBuilder From(PqaxDocument document);   // copies every table, extra fields included, and the parts, for tools that rewrite a file
+    public void Write(Stream stream);                 // PqaxWriteException, before anything is written, for a footprint that
+    public void Write(string path);                   // breaks manifest.required, table.idUnique, table.required, or json.integerRange
 }
+public sealed class PqaxWriteException : InvalidOperationException { string Code; string? Table; string? Field; }
 
 public static class PqaxValidator { ValidationResult Validate(string path); ValidationResult Validate(Stream stream);
                                     ValidationResult ValidateEmbedded(string vpaxPath, string partName = "Footprint.pqax"); ValidationResult ValidateEmbedded(Stream vpaxStream, string partName = "Footprint.pqax"); }
@@ -208,7 +212,7 @@ public sealed class ValidationResult { bool IsValid; IReadOnlyList<ValidationIss
 public sealed class ValidationIssue { string Code; string Message; string? Part; string? Table; string? Field; }
 ```
 
-Rules of the library: the reader reads the central directory itself, so that an embedded footprint is read in place and a part is read only when asked; the writer may use `ZipArchive`. The reader keeps unknown fields and unknown manifest members, and `FootprintBuilder.From` writes them back. Writing a footprint into a VPAX package needs `System.IO.Packaging` and belongs to the VPAX library, not here. The `System.Text.Json`, `System.Memory`, and `Microsoft.Bcl.*` packages are allowed for netstandard2.0, because they are the base library itself.
+Rules of the library: the reader reads the central directory itself, so that an embedded footprint is read in place and a part is read only when asked; the writer may use `ZipArchive`. The reader keeps unknown fields, unknown manifest members, and unknown members of the part descriptors, and `FootprintBuilder.From` writes them back. A rewrite keeps the parts of the document: a detail table keeps the parts it was read from, with their names, their rows, and their descriptor members, when each lists it alone, has a valid name, and holds at most `RowsPerPart` rows, and when they hold the rows that the table had; rows added after `From` go to new parts after them. The writer checks what the validator checks on the values that it can see before it writes: the collection level, the ids, the required fields, and the range of the integers of the format, and throws `PqaxWriteException` with the code of the rule. `PartitionRow.Values` is `IReadOnlyList<string?>?`, the one list whose elements can be null. Writing a footprint into a VPAX package needs `System.IO.Packaging` and belongs to the VPAX library, not here. The `System.Text.Json`, `System.Memory`, and `Microsoft.Bcl.*` packages are allowed for netstandard2.0, because they are the base library itself.
 
 The derived measures of section 10 of the [object model](object-model.md) are in the static class `StorageMeasures`, in the namespace `Pqax` of the same library, as decided on 22 October 2026. They are pure functions over the rows that the reader returns, with no new dependency. A measure that cannot be computed is null, never 0: `double?` for bytes, shares, and ratios, `long?` for counts and days, `DateTimeOffset?` for times. The two thresholds of section 10.1 are optional, through `MeasureOptions`, 128 MiB and 8 MiB by default.
 
@@ -319,6 +323,7 @@ export interface ByteSource { readonly size: number; read(offset: number, length
 export type PqaxInput = Blob | ArrayBuffer | Uint8Array | ByteSource;
 export function openPqax(input: PqaxInput): Promise<PqaxDocument>;
 export function openEmbedded(input: PqaxInput, partName?: string): Promise<PqaxDocument>;   // default "Footprint.pqax"
+export function tryOpenEmbedded(input: PqaxInput, partName?: string): Promise<PqaxDocument | null>;   // null where openEmbedded throws embedded.partMissing
 export interface PqaxDocument {
   readonly manifest: Manifest;
   readonly summary: Summary;                   // typed columnar tables: summary.tables.fileCount is (number | null)[]
@@ -353,6 +358,7 @@ Standard library only. Python 3.10 or later.
 ```python
 pqax.open(path_or_file) -> PqaxDocument
 pqax.open_embedded(path_or_file, part_name="Footprint.pqax") -> PqaxDocument
+pqax.try_open_embedded(path_or_file, part_name="Footprint.pqax") -> PqaxDocument | None   # None for embedded.partMissing
 doc.manifest -> dict
 doc.summary -> dict[str, dict[str, list]]       # table name, then field name, then the values
 doc.row_count(name) -> int                       # from the manifest
@@ -366,7 +372,7 @@ python -m pqax check <file>                      # exit code 1 when invalid; one
 python -m pqax info <file>
 ```
 
-A writer, `pqax.Builder`, with the shape of the C# builder, is a should: the kit generator can use it later.
+A writer, `pqax.Builder`, with the shape of the C# builder, is a should: the kit generator can use it later. `Builder.from_document` keeps the parts of the document as `FootprintBuilder.From` does, and `Builder.write` raises `pqax.WriteError`, a `PqaxError` and a `ValueError`, with the code of the rule, for what the C# writer refuses, and `json.integer` for a `float` in an integer of the format.
 
 The derived measures of section 10 of the [object model](object-model.md) are in the module `pqax.measures`, as decided on 22 October 2026: pure functions over the tables that the reader returns, standard library only. A measure that cannot be computed is `None`. A result is a dict with the names of the JSON of `pqax tables --json`, which are those of the storage views, and a whole number in a float is returned as an `int`. The two thresholds are optional keyword arguments, 128 MiB and 8 MiB by default.
 
@@ -473,7 +479,7 @@ The tests are written from the kit and from section 4, not from the code.
 
 | Suite | Tool | What it checks |
 |---|---|---|
-| `tests/dotnet/Pqax.Tests` | xunit | Every sample of the kit opens and gives the expected results. Every invalid sample is rejected with at least the expected codes. A footprint built with `FootprintBuilder` is written, read back, and equal, and its file passes the validator. Unknown fields survive `From` and `Write`. A table of 600,000 rows is split in parts of 250,000 and read back whole. An embedded footprint opens from a stored and from a deflated part. |
+| `tests/dotnet/Pqax.Tests` | xunit | Every sample of the kit opens and gives the expected results. Every invalid sample is rejected with at least the expected codes. A footprint built with `FootprintBuilder` is written, read back, and equal, and its file passes the validator. Unknown fields survive `From` and `Write`, and so do the part names and the members of the part descriptors. `Write` refuses what breaks the rules it checks, with their codes. A table of 600,000 rows is split in parts of 250,000 and read back whole. An embedded footprint opens from a stored and from a deflated part. |
 | `tests/dotnet/Pqax.Collector.Tests` | xunit | The fixture lakehouse and warehouse are collected from `LocalStorage` at levels 1 and 2, and the result equals the probe dump of the same fixture in files, rows, row groups, column chunks, and sizes. The footer parser agrees with the dump on every footer. A missing checkpoint reader produces an issue, not an exception. Locations, every footer failure with its code and its effect on the totals, and the commit limit on synthetic logs. The unreferenced files and the removal times of the non-live files on the fixture, and distinct oldest and newest removal times on synthetic logs. |
 | `tests/dotnet/Pqax.Cli.Tests` | xunit | `check` returns 0 on a valid sample and 1 on an invalid one, with the codes in the output. `info` prints the parts and the rows. |
 | `tests/typescript` | vitest | The same conformance checks as the C# reader and validator, from `Uint8Array`, `Blob`, and a `ByteSource` that counts its reads: opening a sample must not read a detail part. The suite runs in Node and, through Playwright, in Chromium, Firefox, and WebKit. |

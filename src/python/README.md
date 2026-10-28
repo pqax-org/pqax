@@ -62,7 +62,7 @@ with pqax.open_embedded("model.vpax") as doc:    # the part Footprint.pqax, stor
     print(doc.embedded_part, doc.embedded_compression)
 ```
 
-The part is read into memory, and the VPAX file is closed before `open_embedded` returns.
+The part is read into memory, and the VPAX file is closed before `open_embedded` returns. Most VPAX files have no footprint yet: `pqax.try_open_embedded("model.vpax")` returns `None` for them, where `open_embedded` raises `PartMissingError` with the code `embedded.partMissing`, and raises as `open_embedded` does for any other failure.
 
 ## Validate a file
 
@@ -105,14 +105,26 @@ builder.write("footprint.pqax")
 | `add(table, **fields)` | Adds a row to any table, also one that this version does not define, with any field |
 | `extend(table, columns, detail=None)` | Adds many rows from a columnar table. `detail` places a table that the format does not define. |
 | `update(table, id_or_position, **fields)` | Sets fields of a row already added, such as totals that are known after the detail |
-| `write(path_or_file)` | Writes the file. It raises `ValueError`, naming the table and the id, when a table has an id in more than one row. |
+| `write(path_or_file)` | Writes the file. It raises `WriteError`, before it writes anything, when the footprint breaks a rule that it checks, as below. |
 | `Builder.from_document(doc)` | A builder with every table of a document, to rewrite a file |
 
 The fields are named as in the file. An `add_` method refuses a field that its table does not have, unless the name has a producer's prefix and an underscore, as in `acme_note`. A field set to `None` has no value. A `datetime` becomes a timestamp in UTC with three decimals; a naive `datetime` is taken as UTC.
 
 `write` lays out the file as the serialization says: `manifest.json` first, then `summary.json`, always present, then one part for each detail table, named after it, as `files.json`. A table with more than `rows_per_part` rows, 250,000 by default and at most, continues in parts numbered from 1, as `columnChunks.1.json`. A field with no value in any row of a part is left out of that part, and so is a table with no rows. The JSON is compact UTF-8 with no byte order mark, the entries are deflated at level 9 by default (`compression_level`), and every entry has the same date, so the same footprint gives the same bytes. A path is written through a temporary file.
 
-`from_document` keeps the ids, the collection, the obfuscation fields, the other members of the manifest, and the fields and tables that this version does not define. It loses what the reader does not keep: the entries that the manifest does not list, the members of a table that are not arrays, and the members of an element of `parts` other than `name` and `tables`. It writes format version 0.2, and its own part names.
+`write` refuses a footprint that breaks a rule that it can check, with `pqax.WriteError`, a `PqaxError` and a `ValueError`, whose `code` is the code that `validate` reports, and whose `table` and `field` say where:
+
+| Code | When |
+|---|---|
+| `manifest.required` | The collection has no `level` |
+| `table.idUnique` | A table has the same id in two rows. An `add_` method already refuses an id that is not a positive integer. |
+| `table.required` | A row has no value in a required field of its table, such as `dataType` of `columns`. `pqax.REQUIRED` lists them. |
+| `json.integer` | An integer of the format is a `float`, which JSON would write with a fraction or an exponent |
+| `json.integerRange` | An integer of the format is beyond 2^53 - 1 in absolute value |
+
+The integers of the format are the ids, the references, the elements of the lists of references, the fields that the object model types as integer, their members in `delta`, `iceberg`, and the distributions, and `level`, `requestCount`, and `bytesRead` of the collection. `write` does not check what a producer adds, nor the other rules of the validator, such as the JSON types of other fields, the references, and the totals. Validate the file when it matters.
+
+`from_document` keeps the ids, the collection, the obfuscation fields, the other members of the manifest, the fields and tables that this version does not define, and the parts. It loses what the reader does not keep: the entries that the manifest does not list, and the members of a table that are not arrays. It writes format version 0.2. It keeps the parts of the document: a detail table is written in the parts that it was read from, with their names, their rows, and the members that a producer added to their descriptors in `manifest["parts"]`, and `summary.json` keeps the members of its descriptor. A table keeps its parts when each of them lists this table alone, has a name that a part may have, and holds at most `rows_per_part` rows, and when they hold the rows that the table had when it was copied. The rows added since go to new parts after them, numbered after them, as in `files.2.json`. A table that keeps no parts is written in parts named after it, after the kept ones, and the members of the descriptors of its old parts are dropped. A plain rewrite of a valid file therefore has the parts of the file, as `FootprintBuilder.From` gives in C#.
 
 ## Measure the tables, the columns, and the collection
 
@@ -328,6 +340,7 @@ What differs from C#: the message of an issue that quotes the error of a JSON pa
 |---|---|
 | `open(path_or_file)` | A `PqaxDocument`. The source is a path, the bytes of a file, or a binary file object, which is left open. |
 | `open_embedded(path_or_file, part_name="Footprint.pqax")` | A `PqaxDocument` of the PQAX file that a package holds as a part |
+| `try_open_embedded(path_or_file, part_name="Footprint.pqax")` | The same, or `None` when the package has no part of that name |
 | `PqaxDocument` | `manifest`, `summary`, `row_count(name)`, `table(name)`, `rows(name)`, `raw(name, part=None)`, `table_names`, `part_names`, `format_version`, `collection`, `embedded_part`, `embedded_compression`, `close()`, and the `with` statement |
 | `validate(path_or_file)`, `validate_embedded(path_or_file, part_name)` | A `ValidationResult`: `is_valid`, `checks`, `issues`, `codes` |
 | `Issue` | `code`, `message`, `part`, `table`, `field` |
@@ -349,9 +362,10 @@ Errors:
 | `UnknownVersionError` | The first number of `formatVersion` is not 0 |
 | `JsonError` | A part that is read is not valid JSON |
 | `PartMissingError` | A detail part that the manifest lists is not in the archive, when its table is read (`manifest.partMissing`), or the embedded part is not in the package (`embedded.partMissing`) |
-| `ContainerError` | The file is not a zip archive, or an entry cannot be read: encrypted, compressed with another method, or corrupt |
+| `ContainerError` | The file is not a zip archive, or an entry cannot be read: encrypted (`container.encrypted`), compressed with another method, or corrupt |
+| `WriteError` | `Builder.write` finds a footprint that breaks a rule that it checks. Its `code` is the code of the rule, as in Write a file. |
 
-All derive from `PqaxError`, whose `code` is the validation code that the error matches, when there is one. A reader refuses a file for the first four, when it opens it, and `open_embedded` also for a missing embedded part. Opening also fails when the manifest or the summary cannot be read from the zip, for example because the entry is encrypted. A `summary.json` that the manifest lists and the archive does not have gives empty summary tables, and `validate` reports it. A detail part that is broken fails only the read of its tables.
+All derive from `PqaxError`, whose `code` is the validation code that the error matches, when there is one. A reader refuses a file for the first four, when it opens it, and `open_embedded` also for a missing embedded part, where `try_open_embedded` returns `None`. Opening also fails when the manifest or the summary cannot be read from the zip, for example because the entry is encrypted. A `summary.json` that the manifest lists and the archive does not have gives empty summary tables, and `validate` reports it. A detail part that is broken fails only the read of its tables.
 
 ## Limits
 
