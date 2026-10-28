@@ -18,9 +18,9 @@ namespace Pqax;
 /// longest array, whatever number the manifest states. A reference to a row that the file does not have keeps its
 /// number, and <see cref="PqaxTable{TRow}.FindById(long)"/> finds no row for it. What this version does not know is
 /// kept: a field in <see cref="PqaxTable{TRow}.ExtraFields"/>, a table in <see cref="ReadRaw(string)"/>, a member of
-/// the manifest, of the collection, or of a nested object in its <c>Extensions</c>. An entry that the manifest does not
-/// list, a member of a part descriptor, and a member of a table that is not an array are ignored. A
-/// <c>summary.json</c> that the manifest does not list or the archive does not have gives empty summary tables.
+/// the manifest, of a part descriptor, of the collection, or of a nested object in its <c>Extensions</c>. An entry
+/// that the manifest does not list and a member of a table that is not an array are ignored. A <c>summary.json</c>
+/// that the manifest does not list or the archive does not have gives empty summary tables.
 /// </para>
 /// <para>
 /// The open throws <see cref="PqaxFormatException"/> only for these codes: <c>container.manifestMissing</c> when the

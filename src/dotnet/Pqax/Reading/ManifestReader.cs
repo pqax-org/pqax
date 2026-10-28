@@ -168,7 +168,16 @@ internal static class ManifestReader
             }
         }
 
-        return new PartInfo(name, tables);
+        var extensions = new OrderedMap<JsonElement>();
+        foreach (KeyValuePair<string, JsonElement> member in members)
+        {
+            if (member.Key != "name" && member.Key != "tables")
+            {
+                extensions.Set(member.Key, member.Value.Clone());
+            }
+        }
+
+        return new PartInfo(name, tables, extensions);
     }
 
     private static string? StringOf(Dictionary<string, JsonElement> members, string name)

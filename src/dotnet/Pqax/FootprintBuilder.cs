@@ -26,6 +26,17 @@ namespace Pqax;
 /// 1 January 1980. The same footprint therefore gives the same bytes on the same .NET runtime.
 /// </para>
 /// <para>
+/// A builder made by <see cref="From(PqaxDocument)"/> keeps the parts of the document: a detail table is written in
+/// the parts that it was read from, with their names, their rows, and the members that a producer added to their
+/// descriptors in the manifest, in the order of the manifest of the document, and the descriptor of
+/// <c>summary.json</c> keeps its members too. A table keeps its parts when each of them holds this table alone, has a
+/// name that a part may have and that no other part has in another case, and holds at most
+/// <see cref="FootprintBuilderOptions.RowsPerPart"/> rows, and when the manifest states for them the rows that the
+/// table had when it was copied. Rows added after <c>From</c> go to new parts after those, numbered after them, as in
+/// <c>files.2.json</c>. A table that keeps no parts is written by the rule above, after the parts that are kept, and the
+/// members of the descriptors of its old parts are dropped.
+/// </para>
+/// <para>
 /// The builder keeps the row instances that the Add methods receive, so a property set after Add, such as the
 /// clustering columns of a table once its columns have ids, is written. Write refuses, with
 /// <see cref="PqaxWriteException"/> and the code of the rule, a footprint that breaks a rule of the format that it
@@ -82,6 +93,11 @@ public sealed class FootprintBuilder
     private readonly List<UnknownTable> unknownTables = new List<UnknownTable>();
     private readonly OrderedMap<JsonElement> manifestExtensions = new OrderedMap<JsonElement>();
 
+    // The parts of the document that From copied, each name once, in the order of its manifest, and the rows that each
+    // detail table had then. Write keeps the parts of a table when they still hold its rows.
+    private readonly List<PartInfo> sourceParts = new List<PartInfo>();
+    private readonly Dictionary<string, int> copiedRows = new Dictionary<string, int>(StringComparer.Ordinal);
+
     /// <summary>Creates a builder for a footprint collected as <paramref name="collection"/> says.</summary>
     /// <param name="collection">How and when the footprint was collected. It is written as the collection of the manifest when the file is written, so later changes to it count.</param>
     /// <exception cref="ArgumentNullException"><paramref name="collection"/> is null.</exception>
@@ -107,8 +123,9 @@ public sealed class FootprintBuilder
 
     /// <summary>
     /// A builder with every table of a document: the rows with their ids, the fields and the tables that this version
-    /// does not know, the members of the manifest that it does not know, and the collection. A tool that rewrites a
-    /// file, such as an obfuscator, starts here. The rows are copies, so later changes to the document do not count.
+    /// does not know, the members of the manifest that it does not know, the collection, and the parts, with their
+    /// names and the members of their descriptors that it does not know, as the remarks of the class say. A tool that
+    /// rewrites a file, such as an obfuscator, starts here. The rows are copies, so later changes to the document do not count.
     /// </summary>
     /// <param name="document">The document to copy. Its detail tables, and the tables that this version does not know, are read now.</param>
     /// <returns>The builder.</returns>
@@ -167,6 +184,20 @@ public sealed class FootprintBuilder
                     builder.unknownTables.Add(new UnknownTable(raw, document.IsInSummaryPart(name)));
                 }
             }
+        }
+
+        var names = new HashSet<string>(StringComparer.Ordinal);
+        foreach (PartInfo part in manifest.Parts)
+        {
+            if (names.Add(part.Name))
+            {
+                builder.sourceParts.Add(part);
+            }
+        }
+
+        foreach (ITableWriter table in builder.DetailTables())
+        {
+            builder.copiedRows[table.Name] = table.Count;
         }
 
         return builder;
@@ -365,6 +396,13 @@ public sealed class FootprintBuilder
         return stem.Length == 0 ? "table" : stem.ToString();
     }
 
+    private static string First(IEnumerable<string> names)
+    {
+        using IEnumerator<string> enumerator = names.GetEnumerator();
+        enumerator.MoveNext();
+        return enumerator.Current;
+    }
+
     private static string UniqueName(string stem, string suffix, HashSet<string> used)
     {
         string name = stem + suffix;
@@ -493,10 +531,14 @@ public sealed class FootprintBuilder
         }
     }
 
-    /// <summary>The parts: summary.json, always, then the detail tables, split at <see cref="FootprintBuilderOptions.RowsPerPart"/>.</summary>
+    /// <summary>
+    /// The parts: summary.json, always, then the parts that the detail tables keep from the document of
+    /// <see cref="From(PqaxDocument)"/>, then the rows that no kept part holds, split at
+    /// <see cref="FootprintBuilderOptions.RowsPerPart"/>.
+    /// </summary>
     private List<PartPlan> Plan()
     {
-        var summary = new PartPlan(SummaryPartName);
+        var summary = new PartPlan(SummaryPartName, sourceParts.Find(part => part.Name == SummaryPartName)?.Extensions);
         foreach (ITableWriter table in SummaryTables())
         {
             if (table.Count > 0)
@@ -508,19 +550,53 @@ public sealed class FootprintBuilder
         var plan = new List<PartPlan> { summary };
         var used = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "manifest.json", SummaryPartName };
         int perPart = Options.RowsPerPart;
-        foreach (ITableWriter table in DetailTables())
+        var tables = new List<ITableWriter>(DetailTables());
+        var detail = new Dictionary<string, ITableWriter>(StringComparer.Ordinal);
+        foreach (ITableWriter table in tables)
         {
-            if (table.Count == 0)
+            detail[table.Name] = table;
+        }
+
+        // The rows and the parts of each table that the kept parts hold.
+        var keptRows = new Dictionary<string, int>(StringComparer.Ordinal);
+        var keptParts = new Dictionary<string, int>(StringComparer.Ordinal);
+        HashSet<string> keeping = TablesThatKeepTheirParts(detail, perPart);
+        foreach (PartInfo source in sourceParts)
+        {
+            string? name = source.Tables.Count == 1 ? First(source.Tables.Keys) : null;
+            if (name == null || source.Name == SummaryPartName || !keeping.Contains(name))
             {
                 continue;
             }
 
-            int count = (int)((table.Count + (long)perPart - 1) / perPart);
+            keptRows.TryGetValue(name, out int start);
+            keptParts.TryGetValue(name, out int count);
+            int rows = source.Tables[name];
+            var part = new PartPlan(source.Name, source.Extensions);
+            part.Slices.Add(new PartSlice(detail[name], start, rows));
+            plan.Add(part);
+            used.Add(source.Name);
+            keptRows[name] = start + rows;
+            keptParts[name] = count + 1;
+        }
+
+        foreach (ITableWriter table in tables)
+        {
+            keptRows.TryGetValue(table.Name, out int first);
+            keptParts.TryGetValue(table.Name, out int kept);
+            int remaining = table.Count - first;
+            if (remaining <= 0)
+            {
+                continue;
+            }
+
+            int count = (int)((remaining + (long)perPart - 1) / perPart);
             string stem = PartStem(table.Name);
             for (int k = 0; k < count; k++)
             {
-                string name = UniqueName(count == 1 ? stem : stem + "." + (k + 1), ".json", used);
-                int start = k * perPart;
+                // A table that keeps parts numbers its new parts after them; another is numbered only when it has several.
+                string name = UniqueName(kept == 0 && count == 1 ? stem : stem + "." + (kept + k + 1), ".json", used);
+                int start = first + (k * perPart);
                 var part = new PartPlan(name);
                 part.Slices.Add(new PartSlice(table, start, Math.Min(perPart, table.Count - start)));
                 plan.Add(part);
@@ -528,6 +604,57 @@ public sealed class FootprintBuilder
         }
 
         return plan;
+    }
+
+    /// <summary>
+    /// The detail tables that keep the parts that they were read from: each part lists this table alone, with a name
+    /// that a part may have and that no other part has in another case, and holds at most <paramref name="perPart"/>
+    /// rows, and the parts hold the rows that the table had when <see cref="From(PqaxDocument)"/> copied it.
+    /// </summary>
+    private HashSet<string> TablesThatKeepTheirParts(Dictionary<string, ITableWriter> detail, int perPart)
+    {
+        var keeping = new HashSet<string>(StringComparer.Ordinal);
+        if (sourceParts.Count == 0)
+        {
+            return keeping;
+        }
+
+        var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "manifest.json", SummaryPartName };
+        var clashing = new HashSet<string>(StringComparer.Ordinal);
+        foreach (PartInfo part in sourceParts)
+        {
+            if (part.Name != SummaryPartName && !names.Add(part.Name))
+            {
+                clashing.Add(part.Name);
+            }
+        }
+
+        foreach (ITableWriter table in detail.Values)
+        {
+            if (!copiedRows.TryGetValue(table.Name, out int copied) || copied == 0)
+            {
+                continue;
+            }
+
+            long stated = 0;
+            bool keep = true;
+            foreach (PartInfo part in sourceParts)
+            {
+                if (part.Tables.TryGetValue(table.Name, out int rows))
+                {
+                    keep &= part.Name != SummaryPartName && part.Tables.Count == 1 && ValidationRun.IsPartName(part.Name)
+                        && !clashing.Contains(part.Name) && rows > 0 && rows <= perPart;
+                    stated += rows;
+                }
+            }
+
+            if (keep && stated == copied && table.Count >= copied)
+            {
+                keeping.Add(table.Name);
+            }
+        }
+
+        return keeping;
     }
 
     /// <summary>The time of the zip entries: when the collection completed, so that the same footprint gives the same bytes.</summary>
@@ -574,6 +701,18 @@ public sealed class FootprintBuilder
             }
 
             writer.WriteEndObject();
+            if (part.Extensions != null)
+            {
+                foreach (KeyValuePair<string, JsonElement> extension in part.Extensions)
+                {
+                    if (extension.Key != "name" && extension.Key != "tables")
+                    {
+                        writer.WritePropertyName(extension.Key);
+                        extension.Value.WriteTo(writer);
+                    }
+                }
+            }
+
             writer.WriteEndObject();
         }
 
