@@ -84,6 +84,7 @@ FAILURES = (
     ("no container", ["--adls", ACCOUNT + "/"]),
     ("no container left", ["--adls", ACCOUNT + "/lake/.."]),
     ("a .. after an encoded slash", ["--adls", ACCOUNT + "/lake/data%2F..%2Fother"]),
+    ("an encoded backslash", ["--adls", ACCOUNT + "/lake/data%5Cother"]),
     ("an upper-case container", ["--adls", "abfss://Lake@pqaxtest.dfs.core.windows.net/data"]),
     ("a short container", ["--adls", ACCOUNT + "/ab/data"]),
     ("an item", ["--adls", ACCOUNT + "/lake/data", "--item", "Sales.Lakehouse"]),

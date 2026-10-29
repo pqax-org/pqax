@@ -393,6 +393,12 @@ public sealed class CollectOptions
             return "the container of --adls is not a valid name: 3 to 63 lowercase letters, digits, and dashes.";
         }
 
+        // A backslash in the path is already a slash, so one left after decoding came from a %5C.
+        if (segments.Any(s => s.Contains('\\')))
+        {
+            return Form + ": the folder cannot hold a backslash; separate its folders with /.";
+        }
+
         if (segments.SelectMany(s => s.Split('/')).Any(s => s == "." || s == ".."))
         {
             return Form + ": the folder cannot hold . or .. segments.";
