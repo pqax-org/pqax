@@ -1,0 +1,5 @@
+﻿{
+  "Description": "Domain ownership verification file for Microsoft 365 - place in the website root",
+  "Domain": "pqax.org",
+  "Id": "f545bd66-7c3f-4729-851a-b7ca3ac9fb6e"
+}
