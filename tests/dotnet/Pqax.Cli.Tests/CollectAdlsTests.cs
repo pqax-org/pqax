@@ -370,6 +370,9 @@ public class CollectAdlsTests
         { "encoded slash and .", ["collect", "--adls", Account + "/lake/x%2F.", "--output", UnusedOutput], "cannot hold . or .. segments" },
         { "encoded slash and encoded ..", ["collect", "--adls", Account + "/lake/x%2F%2E%2E%2Fy", "--output", UnusedOutput], "cannot hold . or .. segments" },
         { "encoded slash and .. abfss", ["collect", "--adls", Container + "/..%2Fy", "--output", UnusedOutput], "cannot hold . or .. segments" },
+        { "encoded backslash", ["collect", "--adls", Account + "/lake/x%5Cy", "--output", UnusedOutput], "cannot hold a backslash" },
+        { "encoded backslash and ..", ["collect", "--adls", Account + "/lake/x%5C..%5Cy", "--output", UnusedOutput], "cannot hold a backslash" },
+        { "encoded backslash abfss", ["collect", "--adls", Container + "/x%5c", "--output", UnusedOutput], "cannot hold a backslash" },
         { "sas", ["collect", "--adls", Url + "?sv=2024-01-01&sp=rl&sig=" + Signature, "--output", UnusedOutput], null },
         { "sas abfss", ["collect", "--adls", Container + "/data?sig=" + Signature, "--output", UnusedOutput], null },
     };

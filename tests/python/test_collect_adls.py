@@ -283,6 +283,8 @@ MISSING = "--adls takes https://<account>.dfs.core.windows.net/<container>[/<fol
 NAME = "the container of --adls is not a valid name: 3 to 63 lowercase letters, digits, and dashes."
 DOTS = ("--adls takes https://<account>.dfs.core.windows.net/<container>[/<folder>]: the folder cannot hold . or .. "
         "segments.")
+BACKSLASH = ("--adls takes https://<account>.dfs.core.windows.net/<container>[/<folder>]: the folder cannot hold a "
+             "backslash; separate its folders with /.")
 BLOB = "--adls takes the DFS endpoint of the account, <account>.dfs.core.windows.net, not the blob endpoint."
 ONELAKE = "--adls is for a storage account; for OneLake, use --workspace and --item."
 SAS = ("--adls takes a URL without a query: a SAS token is not accepted, since it would stay in the shell history. "
@@ -320,6 +322,9 @@ WRONG_COMMAND_LINES = [
     ("encoded slash and .", ["--adls", ACCOUNT_ENDPOINT + "/lake/x%2F."], DOTS),
     ("encoded slash and encoded ..", ["--adls", ACCOUNT_ENDPOINT + "/lake/x%2F%2E%2E%2Fy"], DOTS),
     ("encoded slash and .. abfss", ["--adls", CONTAINER + "/..%2Fy"], DOTS),
+    ("encoded backslash", ["--adls", ACCOUNT_ENDPOINT + "/lake/x%5Cy"], BACKSLASH),
+    ("encoded backslash and ..", ["--adls", ACCOUNT_ENDPOINT + "/lake/x%5C..%5Cy"], BACKSLASH),
+    ("encoded backslash abfss", ["--adls", CONTAINER + "/x%5c"], BACKSLASH),
     ("uppercase filesystem", ["--adls", ACCOUNT_ENDPOINT + "/Lake/data"], NAME),
     ("uppercase filesystem abfss", ["--adls", "abfss://Lake@pqaxtest.dfs.core.windows.net/data"], NAME),
     ("short filesystem", ["--adls", ACCOUNT_ENDPOINT + "/ab/data"], NAME),
